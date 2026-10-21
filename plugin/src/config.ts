@@ -2,6 +2,8 @@ import type { JsonSchema } from "@paperclipai/plugin-sdk";
 
 export const DEFAULT_MAX_TASKS_PER_NIGHT = 3;
 export const MAX_PEOPLE = 10;
+export const DEFAULT_MAX_DIFF_LINES = 400;
+export const DEFAULT_CHECK_TIMEOUT_SECONDS = 600;
 
 export type SecretAccess = "read-only" | "read-write";
 
@@ -28,8 +30,17 @@ export interface Person {
   secrets: PersonSecret[];
 }
 
+/** Checks gate settings. Commands are set by the operator, never by agents. */
+export interface ChecksSettings {
+  testCommand: string | null;
+  lintCommand: string | null;
+  maxDiffLines: number;
+  timeoutSeconds: number;
+}
+
 export interface PluginSettings {
   people: Person[];
+  checks: ChecksSettings;
 }
 
 /**
@@ -41,6 +52,28 @@ export const instanceConfigSchema: JsonSchema = {
   type: "object",
   required: ["people"],
   properties: {
+    checks: {
+      type: "object",
+      title: "Checks gate",
+      description: "Runs in the task's own worktree before work counts as ready.",
+      properties: {
+        testCommand: { type: "string", title: "Test command (e.g. pnpm test)" },
+        lintCommand: { type: "string", title: "Lint command (e.g. pnpm lint)" },
+        maxDiffLines: {
+          type: "integer",
+          title: "Max changed lines per task",
+          minimum: 1,
+          default: DEFAULT_MAX_DIFF_LINES,
+        },
+        timeoutSeconds: {
+          type: "integer",
+          title: "Time limit per check (seconds)",
+          minimum: 10,
+          maximum: 3600,
+          default: DEFAULT_CHECK_TIMEOUT_SECONDS,
+        },
+      },
+    },
     people: {
       type: "array",
       title: "People",
@@ -207,7 +240,46 @@ export function parseSettings(raw: unknown): ParseResult {
     });
   });
 
-  return errors.length > 0 ? { ok: false, errors } : { ok: true, settings: { people } };
+  const checks = parseChecks(raw.checks, errors);
+
+  return errors.length > 0 ? { ok: false, errors } : { ok: true, settings: { people, checks } };
+}
+
+function parseChecks(raw: unknown, errors: string[]): ChecksSettings {
+  const checks: ChecksSettings = {
+    testCommand: null,
+    lintCommand: null,
+    maxDiffLines: DEFAULT_MAX_DIFF_LINES,
+    timeoutSeconds: DEFAULT_CHECK_TIMEOUT_SECONDS,
+  };
+  if (raw === undefined) return checks;
+  if (!isRecord(raw)) {
+    errors.push("checks: must be an object");
+    return checks;
+  }
+  for (const key of ["testCommand", "lintCommand"] as const) {
+    const value = raw[key];
+    if (value === undefined || value === null || value === "") continue;
+    if (typeof value !== "string") errors.push(`checks.${key}: must be text`);
+    else checks[key] = value.trim();
+  }
+  if (raw.maxDiffLines !== undefined) {
+    if (!Number.isInteger(raw.maxDiffLines) || (raw.maxDiffLines as number) < 1) {
+      errors.push("checks.maxDiffLines: must be a whole number, 1 or more");
+    } else checks.maxDiffLines = raw.maxDiffLines as number;
+  }
+  if (raw.timeoutSeconds !== undefined) {
+    const t = raw.timeoutSeconds;
+    if (!Number.isInteger(t) || (t as number) < 10 || (t as number) > 3600) {
+      errors.push("checks.timeoutSeconds: must be a whole number 10-3600");
+    } else checks.timeoutSeconds = t as number;
+  }
+  return checks;
+}
+
+export function findPersonByEmail(settings: PluginSettings, email: string): Person | undefined {
+  const wanted = email.trim().toLowerCase();
+  return settings.people.find((p) => p.email === wanted);
 }
 
 export function findPersonByAgent(settings: PluginSettings, agentId: string): Person | undefined {

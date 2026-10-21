@@ -51,7 +51,8 @@ fail() { FAIL=$((FAIL + 1)); echo "  FAIL  $1"; }
 check() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (expected '$3', got '$2')"; fi; }
 
 # json <expression> : evaluate a JS expression against stdin parsed as `d`.
-json() { node -e "let s='';process.stdin.on('data',c=>s+=c).on('end',()=>{const d=JSON.parse(s);const v=($1);process.stdout.write(v===undefined?'':typeof v==='string'?v:JSON.stringify(v))})"; }
+# Prints nothing when the body is not JSON or the expression does not apply.
+json() { node -e "let s='';process.stdin.on('data',c=>s+=c).on('end',()=>{let v;try{const d=JSON.parse(s);v=($1)}catch{v=undefined}process.stdout.write(v===undefined||v===null?'':typeof v==='string'?v:JSON.stringify(v))})"; }
 
 # api METHOD PATH [BODY] : prints "<status> <body>"
 api() {
@@ -122,7 +123,16 @@ check "server version is pinned" "$(echo "$API_BODY" | json 'd.version')" "$PAPE
 
 echo "== 2. Build and install the plugin"
 (cd "$ROOT/plugin" && pnpm install --frozen-lockfile >/dev/null && pnpm build >/dev/null)
-if "${PC[@]}" plugin list 2>/dev/null | grep -q "key=$PLUGIN_KEY"; then
+WANT_VERSION=$(node -p "require('$ROOT/plugin/package.json').version")
+HAVE=$("${PC[@]}" plugin list 2>/dev/null | grep "key=$PLUGIN_KEY" || true)
+if [ -n "$HAVE" ] && ! echo "$HAVE" | grep -q "version=$WANT_VERSION "; then
+  # Paperclip refuses upgrades that add capabilities; reinstalling re-grants them.
+  # Uninstall without --force keeps the plugin's settings.
+  echo "  installed version differs from $WANT_VERSION: reinstalling"
+  "${PC[@]}" plugin uninstall "$PLUGIN_KEY" >"$LOG_DIR/plugin-uninstall.log" 2>&1
+  HAVE=""
+fi
+if [ -n "$HAVE" ]; then
   echo "  already installed"
 else
   "${PC[@]}" plugin install "$ROOT/plugin" >"$LOG_DIR/plugin-install.log" 2>&1 || { cat "$LOG_DIR/plugin-install.log"; exit 1; }

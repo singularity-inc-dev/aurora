@@ -1,6 +1,6 @@
 {
   "name": "@vision-and-tom/paperclip-plugin",
-  "version": "0.1.0",
+  "version": "0.2.2",
   "private": true,
   "type": "module",
   "description": "Vision and Tom: one personal night agent per teammate, approve-before-merge.",
