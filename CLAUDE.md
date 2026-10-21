@@ -36,7 +36,8 @@ checks result, outcome (accepted, rejected, blocked, failed), reject reason, han
 
 ## Environment notes
 - Cloud sessions: `. ~/.nvm/nvm.sh` before node/pnpm. `scripts/cloud-setup.sh` sets up Node 24 and pnpm.
-- Paperclip is not runnable in the cloud session; live tests happen on the founder's laptop.
+- Live test bed: `scripts/integration-test.sh` runs real Paperclip (pinned) on 127.0.0.1:3199 with data in `.paperclip-data/it` (gitignored). Milestone live checks go in `scripts/it/*.sh`.
+- Paperclip API reference: `npx -y paperclipai@2026.1012.0 openapi` (no source clone needed so far).
 
 ## Decisions
 - 2026-10-21: Plugin lives in `plugin/`. Pinned `@paperclipai/plugin-sdk` and `@paperclipai/shared` to 2026.1012.0 (shared is dev-only, for the manifest validator test).
@@ -44,3 +45,6 @@ checks result, outcome (accepted, rejected, blocked, failed), reject reason, han
 - 2026-10-21: Night budget cap is stored as whole US cents (`nightBudgetCapCents`).
 - 2026-10-21: Keys are `{name, secret_ref, access}` per person; `access` defaults to read-only. The read-only flag is our guard; the token's real scope is set where it was issued.
 - 2026-10-21: M1 capabilities: only `secrets.read-ref`.
+- 2026-10-21: Test bed runs `paperclipai@2026.1012.0` via npx (same version as the SDK). As root, embedded Postgres runs as user `postgres`, so the npm cache and db folder live in `.paperclip-data/` owned/readable accordingly. Telemetry off in the test bed.
+- 2026-10-21: Answer: Paperclip enforces `instanceConfigSchema` on save (HTTP 400) but does NOT call `onValidateConfig` on save; only "Test" (`POST /api/plugins/:id/config/test`) runs it. So every feature must call `parseSettings` and do nothing when settings are invalid (fail closed).
+- 2026-10-21: Answer: `npx -y paperclipai@<version> plugin ...` works with no global install; a bare `paperclipai` command is not on PATH after npx.
