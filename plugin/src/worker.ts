@@ -8,6 +8,9 @@ import { HANDOFF_ORIGIN, NIGHT_TICK_JOB } from "./ids.js";
 import { listRuns } from "./nightstore.js";
 import { proposeTonight, ProposalRefused, tickAll } from "./nightrunner.js";
 import { startTicker, type Ticker } from "./ticker.js";
+import { renderBriefing } from "./briefing.js";
+import { getAction, getBriefingById, listPendingBriefings, markBriefingSent } from "./briefstore.js";
+import { executeLink, previewLink } from "./links.js";
 import { HANDOFF_TOOL, PROPOSE_TOOL, RUN_CHECKS_TOOL, TOOL_HANDOFF, TOOL_PROPOSE, TOOL_RUN_CHECKS } from "./tools.js";
 import { taskWorkspaceSettings } from "./workspace.js";
 
@@ -25,6 +28,7 @@ export function checksDocumentKey(now: Date = new Date()): string {
 class Refused extends Error {}
 
 let ticker: Ticker | null = null;
+let pluginContext: PluginContext | null = null;
 
 /** Every feature goes through this: invalid settings mean the plugin does nothing. */
 async function loadSettings(ctx: PluginContext, companyId: string): Promise<PluginSettings> {
@@ -106,6 +110,7 @@ const plugin = definePlugin({
 
     // One tick drives every person's night routine (see night.ts for the rules).
     // The scheduled job only kicks the ticker; see ticker.ts for why.
+    pluginContext = ctx;
     ticker?.stop();
     const nightTicker = startTicker(() => tickAll(ctx, new Date()));
     ticker = nightTicker;
@@ -230,7 +235,7 @@ const plugin = definePlugin({
             agent: run.agentId,
             taskKind: "task",
           });
-          await recordChecks(ctx.db, issueId, report.passed ? "passed" : "failed");
+          await recordChecks(ctx.db, issueId, report.passed ? "passed" : "failed", report.headSha);
           return {
             content: `Checks ${report.passed ? "passed" : "failed"}: ${report.results.map((r) => `${r.name} ${r.status}`).join(", ")}.`,
             data: { passed: report.passed, headSha: report.headSha, documentKey, results: report.results.map(({ output: _o, ...r }) => r) },
@@ -249,6 +254,46 @@ const plugin = definePlugin({
 
   async onHealth() {
     return { status: "ok" };
+  },
+
+  /** Board-only routes for the email service (see manifest `apiRoutes`). */
+  async onApiRequest(input) {
+    const ctx = pluginContext;
+    if (!ctx) return { status: 503, body: { error: "plugin is starting" } };
+    const parsed = parseSettings(await ctx.config.get(input.companyId));
+    if (!parsed.ok) return { status: 409, body: { error: "plugin settings are invalid" } };
+    const settings = parsed.settings;
+    const body = (typeof input.body === "object" && input.body !== null ? input.body : {}) as Record<string, unknown>;
+    const token = typeof body.token === "string" ? body.token : "";
+    const now = new Date();
+
+    switch (input.routeKey) {
+      case "briefings-pending": {
+        if (!settings.links) return { status: 409, body: { error: "morning email links are not configured" } };
+        const pending = await listPendingBriefings(ctx.db, input.companyId);
+        if (pending.length === 0) return { status: 200, body: { emails: [] } };
+        // Paperclip allows 30 secret reads a minute per company, so only read the key when there is mail to sign.
+        const secret = await ctx.secrets.resolve(settings.links.signingSecret, { companyId: input.companyId });
+        const emails = [];
+        for (const b of pending) {
+          const first = b.items[0]?.rejectActionId;
+          const expiresAt = (first ? (await getAction(ctx.db, first))?.expiresAt : null) ?? now;
+          emails.push(renderBriefing(b, settings.links, secret, expiresAt));
+        }
+        return { status: 200, body: { emails } };
+      }
+      case "briefing-sent": {
+        const id = input.params.briefingId ?? "";
+        if (!(await getBriefingById(ctx.db, input.companyId, id))) return { status: 404, body: { error: "briefing not found" } };
+        return { status: 200, body: { marked: await markBriefingSent(ctx.db, input.companyId, id) } };
+      }
+      case "link-preview":
+        return { status: 200, body: await previewLink(ctx, settings, input.companyId, token, now) };
+      case "link-execute":
+        return { status: 200, body: await executeLink(ctx, settings, input.companyId, token, body.reason, now) };
+      default:
+        return { status: 404, body: { error: "unknown route" } };
+    }
   },
 
   async onShutdown() {

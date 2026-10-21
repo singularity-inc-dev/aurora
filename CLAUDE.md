@@ -16,7 +16,7 @@ changes nothing shared until its owner taps Approve in a morning email.
 
 ## Hard rules
 1. Never print, log, commit or ask the user to paste secrets. Keys live in Paperclip secrets or a local `.env` listed in `.gitignore`.
-2. Ask before any command that installs global tools, deletes files, pushes to a remote (except per Git rules), or touches files outside this folder.
+2. Ask before any command that installs global tools, deletes files, pushes to a remote (except per Git rules), or touches files outside this folder. You may delete build output and test data you generated; ask before deleting any file tracked in git.
 3. Never push to Paperclip's repository or any third-party repository. Feature branch in our own private repo.
 4. Do not guess Paperclip APIs. Read the plugin SDK types in `node_modules` and the official docs first. Pin `@paperclipai/plugin-sdk` to an exact version (alpha).
 5. Agents never get merge, deploy, send, delete or spend actions. Only the Approve link merges, and only after an idempotency check and a version check.
@@ -61,3 +61,15 @@ checks result, outcome (accepted, rejected, blocked, failed), reject reason, han
 - 2026-10-21 M3: Tasks start by moving backlog -> todo (Paperclip wakes the assignee). Retry = comment + backlog -> todo. Budget cap reads `public.cost_events` since the person's night start; at the cap the running task is blocked and nothing else starts. The plugin cannot kill an in-flight run, so also set a Paperclip agent budget as a hard backstop.
 - 2026-10-21 M3: Night settings (`night` box): projectId, proposalLeadHours 2, nightLengthHours 8, stepTimeoutMinutes 60, maxRetries 1.
 - 2026-10-21: Paperclip's dev file watcher loses a reinstalled plugin; the integration script disables/enables the plugin after each build.
+- 2026-10-21 (owner answers to Phase C questions):
+  1. Keep Paperclip's experimental worktrees, pinned at 2026.1012.0. If a worktree is missing, the checks gate fails safely and never runs a task in a shared folder.
+  2. Hand-off tickets keep waiting for the teammate's owner to approve.
+  3. "Any human can approve any plan" is accepted until M4's per-owner signed links.
+  4. Add the `agents.pause` permission: pause an agent when it hits the night budget cap (resume stays manual).
+  5. Defaults stay: plan opens 2 h before night, 8 h night, 60 min per task, 1 retry.
+- 2026-10-21 M4: Architecture: plugin decides everything (signs/verifies links, idempotency, version check, merge); `email-service/` only sends mail (SMTP via nodemailer 10.0.16) and serves link pages. It reaches the plugin through 4 board-only plugin API routes, because Paperclip 2026.1012.0 does not enable public ("webhook") plugin routes.
+- 2026-10-21 M4: Links: HMAC-SHA256 signed claims {action, company, owner, task, kind, expiry}; signing key is a Paperclip secret (`links.signingSecret`); default expiry 24 h. Tokens are never stored; the `link_actions` row id is the idempotency key and must match the claims exactly (owner binding). Opening a link (GET) changes nothing; the button (POST) acts.
+- 2026-10-21 M4: Approve merges into the local base branch only if the branch head equals the head in the email, via a temporary worktree then a fast-forward/compare-and-swap of the base. Pushing to a remote is in the "never" tier until M5 decides.
+- 2026-10-21 M4: Ready = finished, worktree clean, checks passed on exactly the branch head. Only Ready tasks get Approve; every task gets Reject (reject may close blocked/failed tasks). Rejected tickets are set to cancelled.
+- 2026-10-21 M4: Paperclip limits secret reads to 30/min per company and the SDK forbids caching secrets, so the plugin reads the signing key only when there is mail to sign or a link to check.
+- 2026-10-21 M4: Board PATCH to `blocked` needs a reason/blocker in Paperclip; the plugin's own block action works. Test mail goes to Mailpit v1.27.0 (pinned by SHA-256) in `.vendor/`.

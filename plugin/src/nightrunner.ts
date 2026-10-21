@@ -2,7 +2,10 @@ import type { PluginContext } from "@paperclipai/plugin-sdk";
 import { MAX_TASKS_PER_NIGHT, parseSettings, type Person, type PluginSettings } from "./config.js";
 import { decideNight, type NightDecision, type NightRun, type StepClose } from "./night.js";
 import { nightClock } from "./nightclock.js";
-import { claimRun, getOpenRun, getRun, setTaskOutcome, spentSince, stampTasks, updateRun } from "./nightstore.js";
+import { claimRun, getLatestDoneRun, getOpenRun, getRun, setTaskOutcome, spentSince, stampTasks, updateRun } from "./nightstore.js";
+import { createBriefing } from "./briefing.js";
+import { getBriefing } from "./briefstore.js";
+import type { NightClock } from "./nightclock.js";
 import { ensureTaskRow } from "./eventlog.js";
 import { NIGHT_TASK_ORIGIN, PLAN_ORIGIN } from "./ids.js";
 import { parseProposal, ProposalRefused } from "./proposal.js";
@@ -38,6 +41,20 @@ export async function tickCompany(ctx: PluginContext, companyId: string, setting
 
 export async function tickPerson(ctx: PluginContext, companyId: string, settings: PluginSettings, person: Person, now: Date): Promise<NightDecision> {
   const clock = nightClock(now, person.timezone, person.nightStartHour, settings.night.proposalLeadHours, settings.night.nightLengthHours);
+  const decision = await decideAndApply(ctx, companyId, settings, person, clock, now);
+  // After the night is over (possibly closed just now), build the morning briefing once.
+  await maybeBrief(ctx, companyId, settings, person, clock, now);
+  return decision;
+}
+
+async function decideAndApply(
+  ctx: PluginContext,
+  companyId: string,
+  settings: PluginSettings,
+  person: Person,
+  clock: NightClock,
+  now: Date,
+): Promise<NightDecision> {
   const run = (await getOpenRun(ctx.db, companyId, person.email)) ?? (await getRun(ctx.db, companyId, person.email, clock.nightDate));
   // A finished night for this date stays finished: one routine per person per night.
   if (run && !["proposing", "awaiting_approval", "approved", "running"].includes(run.status)) return { kind: "none" };
@@ -58,6 +75,16 @@ export async function tickPerson(ctx: PluginContext, companyId: string, settings
   );
   await apply(ctx, companyId, settings, person, run, clock.nightDate, decision, now);
   return decision;
+}
+
+/** Once a person's night is over, build its morning briefing (once). */
+async function maybeBrief(ctx: PluginContext, companyId: string, settings: PluginSettings, person: Person, clock: NightClock, now: Date): Promise<void> {
+  if (!settings.links) return; // fail closed: no signed links, no briefing
+  const run = await getLatestDoneRun(ctx.db, companyId, person.email);
+  if (!run || run.taskIds.length === 0) return;
+  if (clock.phase === "night" && clock.nightDate === run.nightDate) return; // wait for the morning
+  if (await getBriefing(ctx.db, companyId, person.email, run.nightDate)) return;
+  await createBriefing(ctx, person, settings.links, run, now);
 }
 
 async function taskStatus(ctx: PluginContext, companyId: string, taskId: string | undefined): Promise<string | null> {
@@ -131,6 +158,7 @@ async function apply(
       if (!run || !(await updateRun(ctx.db, run, { status: "approved" }))) return;
       await stampTasks(ctx.db, run.taskIds, "approved_at", now);
       await comment(ctx, companyId, run.planIssueId, `Plan approved. Work starts at the night start (${person.timezone}).`);
+      if (run.planIssueId) await ctx.issues.update(run.planIssueId, { status: "done" }, companyId);
       return;
     }
 
@@ -203,7 +231,18 @@ async function advance(
     await stampTasks(ctx.db, [nextId], "started_at", now);
     await ctx.issues.update(nextId, { status: "todo" }, companyId);
   } else if ("budgetStop" in then) {
-    await comment(ctx, companyId, run.planIssueId, `Stopped for tonight: the night budget cap of ${person.nightBudgetCapCents} cents was reached.`);
+    // Automatic tier: pause the agent so it cannot keep spending; resuming stays manual.
+    try {
+      await ctx.agents.pause(person.agentId, companyId);
+    } catch (err) {
+      ctx.logger.warn("could not pause agent at budget cap", { companyId, owner: person.email, error: err instanceof Error ? err.message : "unknown" });
+    }
+    await comment(
+      ctx,
+      companyId,
+      run.planIssueId,
+      `Stopped for tonight: the night budget cap of ${person.nightBudgetCapCents} cents was reached. The agent is paused; resume it in Paperclip.`,
+    );
   } else {
     await comment(ctx, companyId, run.planIssueId, `Night finished: ${then.finish}.`);
   }

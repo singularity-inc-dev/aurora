@@ -6,7 +6,7 @@ import { HANDOFF_TOOL, PROPOSE_TOOL, RUN_CHECKS_TOOL } from "./tools.js";
 const manifest: PaperclipPluginManifestV1 = {
   id: PLUGIN_ID,
   apiVersion: 1,
-  version: "0.3.2",
+  version: "0.4.2",
   displayName: "Vision and Tom",
   description:
     "One personal night agent per teammate. Agents use only their owner's keys, hand off via board tickets, and change nothing shared until the owner approves.",
@@ -30,6 +30,8 @@ const manifest: PaperclipPluginManifestV1 = {
     "issue.interactions.create",
     "issue.interactions.read",
     "jobs.schedule",
+    "agents.pause",
+    "api.routes.register",
   ],
   entrypoints: {
     worker: "./dist/worker.js",
@@ -50,6 +52,13 @@ const manifest: PaperclipPluginManifestV1 = {
     },
   ],
   tools: [HANDOFF_TOOL, RUN_CHECKS_TOOL, PROPOSE_TOOL],
+  // Used only by the email service. Board-only: agents can never call them.
+  apiRoutes: [
+    { routeKey: "briefings-pending", method: "GET", path: "/briefings/pending", auth: "board", capability: "api.routes.register", companyResolution: { from: "query", key: "companyId" } },
+    { routeKey: "briefing-sent", method: "POST", path: "/briefings/:briefingId/sent", auth: "board", capability: "api.routes.register", companyResolution: { from: "body", key: "companyId" } },
+    { routeKey: "link-preview", method: "POST", path: "/links/preview", auth: "board", capability: "api.routes.register", companyResolution: { from: "body", key: "companyId" } },
+    { routeKey: "link-execute", method: "POST", path: "/links/execute", auth: "board", capability: "api.routes.register", companyResolution: { from: "body", key: "companyId" } },
+  ],
 };
 
 export default manifest;

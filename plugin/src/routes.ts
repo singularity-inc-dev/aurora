@@ -12,7 +12,6 @@ export const FORBIDDEN_CAPABILITIES: readonly PluginCapability[] = [
   "agent.sessions.close",
   "agents.invoke",
   "agents.managed",
-  "agents.pause",
   "agents.resume",
   "issues.wakeup",
   "events.emit",

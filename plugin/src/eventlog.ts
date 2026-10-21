@@ -33,9 +33,11 @@ export async function recordHandoff(db: Db, row: TaskEventRow, handedOffTo: stri
   ]);
 }
 
-export async function recordChecks(db: Db, taskId: string, result: ChecksResult): Promise<void> {
-  await db.execute(`UPDATE ${table(db)} SET checks_result = $1, updated_at = now() WHERE task_id = $2`, [
+/** Store the checks result together with the commit it was run on. */
+export async function recordChecks(db: Db, taskId: string, result: ChecksResult, head: string | null): Promise<void> {
+  await db.execute(`UPDATE ${table(db)} SET checks_result = $1, checks_head = $2, updated_at = now() WHERE task_id = $3`, [
     result,
+    head,
     taskId,
   ]);
 }

@@ -59,10 +59,22 @@ export interface NightSettings {
   maxRetries: number;
 }
 
+/** Morning email links. Without these, no briefing is built (fail closed). */
+export interface LinkSettings {
+  /** Public address of the email service that serves the link pages. */
+  baseUrl: string;
+  /** Paperclip secret used to sign links. */
+  signingSecret: SecretRef;
+  expiresMinutes: number;
+}
+
+export const DEFAULT_LINK_EXPIRES_MINUTES = 24 * 60;
+
 export interface PluginSettings {
   people: Person[];
   checks: ChecksSettings;
   night: NightSettings;
+  links: LinkSettings | null;
 }
 
 /**
@@ -74,6 +86,21 @@ export const instanceConfigSchema: JsonSchema = {
   type: "object",
   required: ["people"],
   properties: {
+    links: {
+      type: "object",
+      title: "Morning email links",
+      properties: {
+        baseUrl: { type: "string", title: "Email service address (e.g. https://approve.example.com)" },
+        signingSecret: { type: "object", title: "Link signing key", format: "secret-ref" },
+        expiresMinutes: {
+          type: "integer",
+          title: "Links expire after (minutes)",
+          minimum: 1,
+          maximum: 4320,
+          default: DEFAULT_LINK_EXPIRES_MINUTES,
+        },
+      },
+    },
     night: {
       type: "object",
       title: "Night routine",
@@ -279,8 +306,35 @@ export function parseSettings(raw: unknown): ParseResult {
 
   const checks = parseChecks(raw.checks, errors);
   const night = parseNight(raw.night, errors);
+  const links = parseLinks(raw.links, errors);
 
-  return errors.length > 0 ? { ok: false, errors } : { ok: true, settings: { people, checks, night } };
+  return errors.length > 0 ? { ok: false, errors } : { ok: true, settings: { people, checks, night, links } };
+}
+
+function parseLinks(raw: unknown, errors: string[]): LinkSettings | null {
+  if (raw === undefined || raw === null) return null;
+  if (!isRecord(raw)) {
+    errors.push("links: must be an object");
+    return null;
+  }
+  if (raw.baseUrl === undefined && raw.signingSecret === undefined) return null;
+  let baseUrl = "";
+  try {
+    const url = new URL(String(raw.baseUrl ?? ""));
+    if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error("protocol");
+    baseUrl = url.toString().replace(/\/+$/, "");
+  } catch {
+    errors.push("links.baseUrl: must be an http(s) address");
+  }
+  const signingSecret = parseSecretRef(raw.signingSecret);
+  if (!signingSecret) errors.push("links.signingSecret: must be a Paperclip secret reference");
+  let expiresMinutes = DEFAULT_LINK_EXPIRES_MINUTES;
+  if (raw.expiresMinutes !== undefined) {
+    const v = raw.expiresMinutes;
+    if (!Number.isInteger(v) || (v as number) < 1 || (v as number) > 4320) errors.push("links.expiresMinutes: must be a whole number 1-4320");
+    else expiresMinutes = v as number;
+  }
+  return baseUrl && signingSecret ? { baseUrl, signingSecret, expiresMinutes } : null;
 }
 
 function intInRange(raw: Record<string, unknown>, key: string, min: number, max: number, errors: string[], fallback: number): number {

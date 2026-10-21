@@ -67,7 +67,10 @@ api() {
 }
 
 STARTED_PID=""
+# Helper processes started by milestone checks (Mailpit, email service); always stopped.
+EXTRA_PIDS=""
 cleanup() {
+  for pid in $EXTRA_PIDS; do kill "$pid" 2>/dev/null || true; done
   if [ -n "$STARTED_PID" ] && [ "${KEEP_RUNNING:-0}" != "1" ]; then
     kill -- "-$STARTED_PID" 2>/dev/null || kill "$STARTED_PID" 2>/dev/null || true
   fi
@@ -204,6 +207,8 @@ check "restore valid settings" "$API_STATUS" "200"
 # Later milestones append their live checks here (see scripts/it/*.sh).
 for extra in "$ROOT"/scripts/it/*.sh; do
   [ -e "$extra" ] || continue
+  # IT_ONLY=m4 runs just that milestone's live checks (after the basic ones).
+  if [ -n "${IT_ONLY:-}" ] && [ "$(basename "$extra" .sh)" != "$IT_ONLY" ]; then continue; fi
   echo "== $(basename "$extra")"
   # shellcheck source=/dev/null
   . "$extra"

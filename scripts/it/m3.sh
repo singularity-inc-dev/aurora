@@ -148,6 +148,8 @@ check "record 300 cents of spend for Ana's agent" "$API_STATUS" "201"
 m3_tick
 check "night stops at the budget cap" "$(m3_night ana@example.com status)" "budget_stopped"
 check "running task is blocked" "$(m3_issue "$M3_T2" status)" "blocked"
+api GET "/api/agents/$M3_A"
+check "agent is paused at the budget cap" "$(echo "$API_BODY" | json 'd.status')" "paused"
 check "event log records outcome blocked" "$(m3_event "$M3_T2" outcome)" "blocked"
 
 echo "-- per-step time-out and retry"

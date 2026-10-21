@@ -120,6 +120,48 @@ SLOW=1 scripts/integration-test.sh     # also waits out a real 5-minute time-out
 5. At your night start, the first task moves to "todo" and your agent starts on it in its own worktree.
 6. The plugin's `night-status` view shows each person's night: proposing, awaiting approval, approved, running, finished, budget stopped, rejected or expired.
 
+## How to test milestone 4
+
+Milestone 4 adds the morning email. After each person's night ends, they get one email listing their tasks under **Ready**, **Blocked** and **Failed**. Each task shows:
+
+- what changed, in one line
+- its checks result
+- an Approve link (Ready tasks only) and a Reject link
+
+The links are signed, expire (default 24 hours) and work once. Approve merges only if the branch is unchanged since the email. Reject asks for a one-line reason, which is saved in the event log. Opening a link only shows a page; nothing happens until you press the button. That matters because email scanners open links automatically.
+
+Two parts work together:
+
+- **The plugin** decides everything: it checks the signature, the expiry, the owner and the one-click rule, compares the branch with the email, and merges.
+- **`email-service/`** sends the email and serves the link pages.
+
+**A. Automatic tests**
+
+```bash
+(cd plugin && pnpm install && pnpm test)
+(cd email-service && pnpm install && pnpm test)
+scripts/integration-test.sh     # about 10 minutes; the M4 part waits 4 minutes for links to expire
+```
+
+The integration test starts Mailpit, a fake mail server that catches the emails so nothing is really sent, plus the email service. It plays one night for two people, then proves:
+
+- a double click merges exactly once
+- a branch changed after the email is not merged
+- forged links, expired links, and correctly signed links naming another person are all refused
+- Reject saves its reason
+
+`IT_ONLY=m4 scripts/integration-test.sh` runs just the M4 part. On Linux the script downloads a pinned Mailpit itself; on a Mac, install it once with `brew install mailpit` (a global tool, so that's your call).
+
+**B. Setting it up for real (local)**
+
+1. In Paperclip, create a secret named `vt-link-signing` holding a long random value. Don't paste it anywhere else.
+2. In the plugin settings, open the "Morning email links" box and set:
+   - Email service address: where the email service is reachable, e.g. `http://127.0.0.1:3299`
+   - Link signing key: the secret from step 1
+   - Expiry: in minutes, default 1440
+3. In `email-service/`, copy `.env.example` to `.env` and fill in `VT_COMPANY_ID` and your SMTP server. Then run `pnpm install && pnpm start`.
+4. The morning after a night, your email arrives. To try it safely first, run `mailpit` and keep `SMTP_PORT=1025`, then open http://127.0.0.1:8025 to read the emails.
+
 ## Cloud environment setup
 
 `scripts/cloud-setup.sh` installs Node 24 (via nvm) and pnpm 10.28.0. Paste it into the cloud environment's setup script setting so every new session starts with both.

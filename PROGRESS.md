@@ -2,6 +2,48 @@
 
 Updated after every phase. Newest phase first.
 
+## Milestone 4: morning email with signed links (done; M5 not started)
+
+### Checked against live Paperclip (2026.1012.0), Mailpit and the email service, in the cloud session
+`scripts/integration-test.sh` runs M1 to M4 live: 124 checks, all passing from a cold start (with `SLOW=1`). The M4 part plays one night for Ana (3 tasks) and Bo (1 task):
+- **The email:**
+  - One email per person arrives in Mailpit after their night ends. Nothing is sent during the night, and nothing is merged during the night.
+  - Subject "Your night of …: 2 ready, 1 blocked, 0 failed", with Ready, Blocked and Failed sections.
+  - Each task shows what changed in one line ("Add greeting: 1 file changed, 1 insertion(+)"), its checks result (and why, when blocked), Approve for Ready tasks and Reject for every task.
+- **Opening a link changes nothing.** It shows a page with a button.
+- **A double click equals one merge.** Two simultaneous clicks gave exactly one merge commit in `main`, one "Merged" page and one "Already done" page. A third click also did nothing. The event log says `accepted` and the ticket is `done`.
+- **A changed branch blocks the merge.** After a commit was added to the branch post-email, Approve answered "the branch changed after the email was sent". Nothing was merged and the task stayed undecided.
+- **Forged and expired links are refused.** A link with one character changed got "Link not usable". After the links' 4-minute test lifetime, Bo's untouched Approve link got "Link expired" and merged nothing.
+- **Another person's link is refused.** The test holds the real signing key and builds correctly signed links that point Bo's link at Ana's task, or claim Ana's task for Bo. Both were refused, and nothing was merged.
+- **Reject asks for a one-line reason and stores it.** Without a reason, the page asks again and the link stays usable. With one, the event log shows `rejected` / "Too risky for one night". A second click changes nothing. Reject also works on a task the night routine had blocked.
+- **Budget cap pauses the agent** (your answer 4). Checked live in the M3 part: the agent's status is `paused` after the cap.
+
+### Unit tests only
+- Plugin: 164 tests, including signed links (tampering, other secret, garbage), action tiers, Ready/Blocked/Failed rules, email content and escaping, and merges on real git repos (double approve, moved branch, conflict, `main` not checked out).
+- Email service: 11 tests, including that opening a link never acts, the reason form, oversized requests, bad tokens never reaching Paperclip, a briefing only marked sent after sending, and Paperclip being down.
+- A "Failed" task in the email is unit-tested; making one live needs two real time-outs (about 11 minutes).
+- A merge conflict refused by Approve (unit-tested on real git repos).
+
+### Unverified
+- A real mail server (SMTP with login and TLS). Only Mailpit was used, as you asked; nothing was really sent.
+- Paperclip in authenticated mode, where the email service needs a board API key (`PAPERCLIP_API_KEY`). That's M5.
+- Pushing merges to GitHub. Merges go into the repository's local `main`; pushing is in the "never" tier until M5 decides how.
+
+### How to test on your laptop
+```bash
+cd aurora && git pull
+(cd plugin && pnpm install && pnpm test)          # 164 passed
+(cd email-service && pnpm install && pnpm test)   # 11 passed
+scripts/integration-test.sh                       # about 10 minutes
+IT_ONLY=m4 scripts/integration-test.sh            # just the M4 part, about 6 minutes
+```
+On a Mac, install Mailpit first with `brew install mailpit` (I didn't do that for you, since it installs a global tool). To read the test emails yourself, run `KEEP_RUNNING=1 IT_ONLY=m4 scripts/integration-test.sh` and open http://127.0.0.1:8025 while the M4 part runs (Mailpit stops when the script ends).
+
+### Open questions for you
+1. Link lifetime: 24 hours by default. Shorter? A link that expires before you wake up is useless; one that lasts days stays usable for a forwarded email.
+2. Anyone holding your email can use its links (that's how one-tap links work). Do you want a second step later, e.g. a short code, or being logged in to Paperclip?
+3. Merges land in the repository's local `main` for now. In M5, should Approve push to GitHub, or open and merge a pull request there?
+
 ## Phase C: milestone 3 (done; M4 not started)
 
 ### Checked against live Paperclip (2026.1012.0, in the cloud session)

@@ -48,7 +48,7 @@ describe("event log", () => {
     const row = { taskId: "t1", companyId: "co", owner: "ana@example.com", agent: "a1", taskKind: "handoff" };
     await ensureTaskRow(db, row);
     await recordHandoff(db, row, "bo@example.com");
-    await recordChecks(db, "t1", "passed");
+    await recordChecks(db, "t1", "passed", "abc123");
     for (const c of calls) {
       expect(c.sql).toContain('"ns".task_events');
       const placeholders = new Set([...c.sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])));

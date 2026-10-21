@@ -39,6 +39,15 @@ export async function getOpenRun(db: Db, companyId: string, owner: string): Prom
   return rows[0] ? toRun(rows[0]) : null;
 }
 
+/** The person's newest night that ran and is over (a candidate for the morning briefing). */
+export async function getLatestDoneRun(db: Db, companyId: string, owner: string): Promise<NightRun | null> {
+  const rows = await db.query(
+    `SELECT * FROM ${table(db)} WHERE company_id = $1 AND owner = $2 AND status IN ('finished','budget_stopped') ORDER BY night_date DESC LIMIT 1`,
+    [companyId, owner],
+  );
+  return rows[0] ? toRun(rows[0]) : null;
+}
+
 export async function getRun(db: Db, companyId: string, owner: string, nightDate: string): Promise<NightRun | null> {
   const rows = await db.query(`SELECT * FROM ${table(db)} WHERE company_id = $1 AND owner = $2 AND night_date = $3`, [
     companyId,
