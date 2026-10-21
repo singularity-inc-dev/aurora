@@ -75,7 +75,7 @@ cd plugin && pnpm install && pnpm test && cd ..
 scripts/integration-test.sh
 ```
 
-Expected: all unit tests pass, then `Result: 50 passed, 0 failed`. The integration script starts its own private Paperclip on port 3199, so it won't touch your real one.
+Expected: all unit tests pass, then `Result: … passed, 0 failed` (50 checks at milestone 2, more as milestones are added). The integration script starts its own private Paperclip on port 3199, so it won't touch your real one.
 
 **B. One-time setup in your own Paperclip (needed for real use)**
 
@@ -92,6 +92,33 @@ Paperclip won't upgrade a plugin that asks for new permissions. Uninstall it (yo
 npx -y paperclipai@2026.1012.0 plugin uninstall vision-and-tom.night-agents
 npx -y paperclipai@2026.1012.0 plugin install "$(pwd)/plugin"
 ```
+
+## How to test milestone 3
+
+Milestone 3 adds the evening plan and the night routine:
+
+- **Evening plan:** a set number of hours before each person's night (default 2), the plugin opens an "Evening plan" ticket for their agent. The agent proposes up to 3 tasks with `propose_tonight`, either new ones or backlog tickets it already has, such as hand-offs.
+- **One-tap approval:** the owner approves or rejects the plan with one tap on the plan ticket. Only humans can answer; agents are refused.
+- **Night routine:** one per person per night. At their night start it releases the approved tasks one at a time.
+  - **Time-outs and retries:** a task that runs past the time limit is retried, by default once, then marked failed.
+  - **Budget cap:** spending is counted from the start of the night; at the person's night budget cap the routine stops and the running task is blocked.
+
+**A. Automatic tests**
+
+```bash
+cd plugin && pnpm install && pnpm test && cd ..
+scripts/integration-test.sh            # expect: Result: 82 passed, 0 failed (about 3 minutes)
+SLOW=1 scripts/integration-test.sh     # also waits out a real 5-minute time-out: 84 passed
+```
+
+**B. Try it by hand in your own Paperclip**
+
+1. Do the milestone 2 setup first (isolated workspaces, project policy, locked agents).
+2. In the plugin settings, open the "Night routine" box and set "Project for night tasks" to your project's id.
+3. Set your own night start hour to 1 to 2 hours from now. Within 5 minutes an "Evening plan for you@…" ticket appears, assigned to your agent.
+4. When your agent has proposed, the plan ticket shows "Approve tonight's plan" and "Not tonight". Tap one.
+5. At your night start, the first task moves to "todo" and your agent starts on it in its own worktree.
+6. The plugin's `night-status` view shows each person's night: proposing, awaiting approval, approved, running, finished, budget stopped, rejected or expired.
 
 ## Cloud environment setup
 

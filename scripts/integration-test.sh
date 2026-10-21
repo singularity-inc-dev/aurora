@@ -137,6 +137,10 @@ if [ -n "$HAVE" ]; then
 else
   "${PC[@]}" plugin install "$ROOT/plugin" >"$LOG_DIR/plugin-install.log" 2>&1 || { cat "$LOG_DIR/plugin-install.log"; exit 1; }
 fi
+# Paperclip's file watcher can lose track of a reinstalled plugin; a disable/enable
+# cycle guarantees the worker runs the code that was just built.
+"${PC[@]}" plugin disable "$PLUGIN_KEY" >/dev/null 2>&1 || true
+"${PC[@]}" plugin enable "$PLUGIN_KEY" >/dev/null 2>&1
 LIST=$("${PC[@]}" plugin list 2>/dev/null | grep "key=$PLUGIN_KEY" || true)
 check "plugin is listed as ready" "$(echo "$LIST" | grep -o 'status=[a-z_]*')" "status=ready"
 PLUGIN_ID=$(echo "$LIST" | sed -n 's/.*id=\([0-9a-f-]*\).*/\1/p')

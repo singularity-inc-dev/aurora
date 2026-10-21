@@ -41,7 +41,7 @@ checks result, outcome (accepted, rejected, blocked, failed), reject reason, han
 
 ## Decisions
 - 2026-10-21: Plugin lives in `plugin/`. Pinned `@paperclipai/plugin-sdk` and `@paperclipai/shared` to 2026.1012.0 (shared is dev-only, for the manifest validator test).
-- 2026-10-21: Built with plain `tsc`, not the SDK's esbuild presets (no UI yet). Hand-scaffolded because `paperclipai plugin init` needs a Paperclip checkout.
+- 2026-10-21: Hand-scaffolded because `paperclipai plugin init` needs a Paperclip checkout. Build uses the SDK's esbuild presets (esbuild 0.28.2) so dist/manifest.js and dist/worker.js are single files; with plain tsc, Paperclip mixed a new manifest with cached old modules.
 - 2026-10-21: Night budget cap is stored as whole US cents (`nightBudgetCapCents`).
 - 2026-10-21: Keys are `{name, secret_ref, access}` per person; `access` defaults to read-only. The read-only flag is our guard; the token's real scope is set where it was issued.
 - 2026-10-21: M1 capabilities: only `secrets.read-ref`.
@@ -54,3 +54,10 @@ checks result, outcome (accepted, rejected, blocked, failed), reject reason, han
 - 2026-10-21 M2: Checks gate commands come from plugin settings (operator only) and run with a minimal env (PATH, HOME, LANG, CI=1). Secret scan is built in (no third-party scanner); reports never include matched text.
 - 2026-10-21 M2: Paperclip 2026.1012.0 plugins can create but not update issue documents (no baseRevisionId), so each checks run adds a new `vt-checks-<timestamp>` document.
 - 2026-10-21 M2: Upgrades that add capabilities are refused by Paperclip; reinstall instead (uninstall without --force keeps settings). Bump the plugin version whenever the manifest changes.
+- 2026-10-21 M3: Max tasks per night is 1-3 (schema max 3), matching "up to 3 tasks".
+- 2026-10-21 M3: Night routine = plugin job `night-tick` (every 5 min) + table `night_runs` with primary key (company, owner, night_date): one routine per person per night. Paperclip managed routines can't carry a per-person timezone, so they were not used.
+- 2026-10-21 M3: Jobs run without a company context, and Paperclip refuses company calls there; the job only kicks a loop started in setup() (ticker.ts), which Paperclip allows for configured companies.
+- 2026-10-21 M3: One-tap approval = Paperclip `request_confirmation` on the plan ticket with resolver policy `human_only` (live-verified: an agent gets 403 "human-only"). Any human board member can approve for now; per-owner approval comes with M4's signed email links.
+- 2026-10-21 M3: Tasks start by moving backlog -> todo (Paperclip wakes the assignee). Retry = comment + backlog -> todo. Budget cap reads `public.cost_events` since the person's night start; at the cap the running task is blocked and nothing else starts. The plugin cannot kill an in-flight run, so also set a Paperclip agent budget as a hard backstop.
+- 2026-10-21 M3: Night settings (`night` box): projectId, proposalLeadHours 2, nightLengthHours 8, stepTimeoutMinutes 60, maxRetries 1.
+- 2026-10-21: Paperclip's dev file watcher loses a reinstalled plugin; the integration script disables/enables the plugin after each build.

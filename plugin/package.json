@@ -1,6 +1,6 @@
 {
   "name": "@vision-and-tom/paperclip-plugin",
-  "version": "0.2.2",
+  "version": "0.3.2",
   "private": true,
   "type": "module",
   "description": "Vision and Tom: one personal night agent per teammate, approve-before-merge.",
@@ -9,8 +9,8 @@
     "worker": "./dist/worker.js"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "dev": "tsc -p tsconfig.build.json --watch",
+    "build": "node esbuild.config.mjs",
+    "dev": "node --watch-path=src esbuild.config.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },
@@ -23,6 +23,7 @@
   "devDependencies": {
     "@paperclipai/shared": "2026.1012.0",
     "@types/node": "24.10.1",
+    "esbuild": "0.28.2",
     "typescript": "5.9.3",
     "vitest": "3.2.4"
   }

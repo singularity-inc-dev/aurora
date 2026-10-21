@@ -2,6 +2,7 @@ import type { PluginToolDeclaration } from "@paperclipai/plugin-sdk";
 
 export const TOOL_HANDOFF = "handoff_to_teammate";
 export const TOOL_RUN_CHECKS = "run_checks";
+export const TOOL_PROPOSE = "propose_tonight";
 
 export const HANDOFF_TOOL: PluginToolDeclaration = {
   name: TOOL_HANDOFF,
@@ -29,5 +30,31 @@ export const RUN_CHECKS_TOOL: PluginToolDeclaration = {
     type: "object",
     properties: { issueId: { type: "string", description: "The ticket whose worktree to check." } },
     required: ["issueId"],
+  },
+};
+
+export const PROPOSE_TOOL: PluginToolDeclaration = {
+  name: TOOL_PROPOSE,
+  displayName: "Propose tonight's tasks",
+  description:
+    "Propose up to 3 tasks for tonight. Each task is either an existing backlog ticket assigned to you (issueId) or a new one (title, description). Your owner approves the plan with one tap; nothing runs before that.",
+  parametersSchema: {
+    type: "object",
+    properties: {
+      tasks: {
+        type: "array",
+        minItems: 1,
+        maxItems: 3,
+        items: {
+          type: "object",
+          properties: {
+            issueId: { type: "string", description: "An existing backlog ticket assigned to you." },
+            title: { type: "string", description: "Title for a new ticket." },
+            description: { type: "string", description: "What needs doing and how to know it is done." },
+          },
+        },
+      },
+    },
+    required: ["tasks"],
   },
 };

@@ -49,7 +49,8 @@ describe("parseSettings", () => {
     [{ timezone: "Mars/Olympus" }, "people[0].timezone: must be an IANA timezone"],
     [{ nightStartHour: 24 }, "people[0].nightStartHour: must be a whole number 0-23"],
     [{ nightStartHour: 21.5 }, "people[0].nightStartHour: must be a whole number 0-23"],
-    [{ maxTasksPerNight: 0 }, "people[0].maxTasksPerNight: must be a whole number 1-10"],
+    [{ maxTasksPerNight: 0 }, "people[0].maxTasksPerNight: must be a whole number 1-3"],
+    [{ maxTasksPerNight: 4 }, "people[0].maxTasksPerNight: must be a whole number 1-3"],
     [{ nightBudgetCapCents: -1 }, "people[0].nightBudgetCapCents: must be a whole number of cents, 0 or more"],
   ])("rejects bad field %o", (overrides, message) => {
     const result = parseSettings({ people: [person(overrides)] });
@@ -93,5 +94,18 @@ describe("parseSettings", () => {
   it("rejects missing people list", () => {
     expect(parseSettings({}).ok).toBe(false);
     expect(parseSettings(null).ok).toBe(false);
+  });
+});
+
+describe("night settings", () => {
+  const p = { email: "a@example.com", agentId: "a", timezone: "UTC", nightStartHour: 22, nightBudgetCapCents: 0 };
+  it("uses safe defaults", () => {
+    const r = parseSettings({ people: [p] });
+    expect(r.ok && r.settings.night).toEqual({ projectId: null, proposalLeadHours: 2, nightLengthHours: 8, stepTimeoutMinutes: 60, maxRetries: 1 });
+  });
+  it("rejects out-of-range values", () => {
+    const r = parseSettings({ people: [p], night: { stepTimeoutMinutes: 1, maxRetries: 9 } });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors).toEqual(["night.stepTimeoutMinutes: must be a whole number 5-480", "night.maxRetries: must be a whole number 0-3"]);
   });
 });

@@ -4,11 +4,14 @@ import { findPersonByAgent, parseSettings, type PluginSettings } from "./config.
 import { ensureTaskRow, getTaskRow, recordChecks, recordHandoff } from "./eventlog.js";
 import { handoffDescription, HandoffRefused, parseHandoffRequest, planHandoff } from "./handoff.js";
 import { auditAgentRoutes } from "./routes.js";
-import { HANDOFF_TOOL, RUN_CHECKS_TOOL, TOOL_HANDOFF, TOOL_RUN_CHECKS } from "./tools.js";
+import { HANDOFF_ORIGIN, NIGHT_TICK_JOB } from "./ids.js";
+import { listRuns } from "./nightstore.js";
+import { proposeTonight, ProposalRefused, tickAll } from "./nightrunner.js";
+import { startTicker, type Ticker } from "./ticker.js";
+import { HANDOFF_TOOL, PROPOSE_TOOL, RUN_CHECKS_TOOL, TOOL_HANDOFF, TOOL_PROPOSE, TOOL_RUN_CHECKS } from "./tools.js";
 import { taskWorkspaceSettings } from "./workspace.js";
 
-export const PLUGIN_ID = "vision-and-tom.night-agents";
-export const HANDOFF_ORIGIN = `plugin:${PLUGIN_ID}:handoff` as const;
+export { HANDOFF_ORIGIN } from "./ids.js";
 export const CHECKS_DOCUMENT_PREFIX = "vt-checks-";
 
 /**
@@ -20,6 +23,8 @@ export function checksDocumentKey(now: Date = new Date()): string {
 }
 
 class Refused extends Error {}
+
+let ticker: Ticker | null = null;
 
 /** Every feature goes through this: invalid settings mean the plugin does nothing. */
 async function loadSettings(ctx: PluginContext, companyId: string): Promise<PluginSettings> {
@@ -34,7 +39,7 @@ async function requireSafeAgent(ctx: PluginContext, agentId: string, companyId: 
 }
 
 function refusal(err: unknown): ToolResult {
-  if (err instanceof Refused || err instanceof HandoffRefused) return { error: err.message };
+  if (err instanceof Refused || err instanceof HandoffRefused || err instanceof ProposalRefused) return { error: err.message };
   throw err;
 }
 
@@ -81,6 +86,45 @@ const plugin = definePlugin({
       if (!companyId || !taskId) return null;
       const row = await getTaskRow(ctx.db, taskId);
       return row && row.company_id === companyId ? row : null;
+    });
+
+    // Tonight's routines for a company: what each person's night is doing.
+    ctx.data.register("night-status", async (params) => {
+      const companyId = typeof params.companyId === "string" ? params.companyId : "";
+      if (!companyId) return [];
+      return (await listRuns(ctx.db, companyId, 50)).map((r) => ({
+        owner: r.owner,
+        nightDate: r.nightDate,
+        status: r.status,
+        planIssueId: r.planIssueId,
+        taskIds: r.taskIds,
+        currentIndex: r.currentIndex,
+        currentAttempt: r.currentAttempt,
+        stopReason: r.stopReason,
+      }));
+    });
+
+    // One tick drives every person's night routine (see night.ts for the rules).
+    // The scheduled job only kicks the ticker; see ticker.ts for why.
+    ticker?.stop();
+    const nightTicker = startTicker(() => tickAll(ctx, new Date()));
+    ticker = nightTicker;
+    ctx.jobs.register(NIGHT_TICK_JOB, () => nightTicker.kick());
+
+    ctx.tools.register(TOOL_PROPOSE, PROPOSE_TOOL, async (params, run) => {
+      try {
+        const settings = await loadSettings(ctx, run.companyId);
+        const person = findPersonByAgent(settings, run.agentId);
+        if (!person) throw new Refused("calling agent is not bound to any person");
+        await requireSafeAgent(ctx, run.agentId, run.companyId, "your");
+        const result = await proposeTonight(ctx, settings, person, run, params);
+        return {
+          content: `Proposed ${result.taskIds.length} task(s). Waiting for ${person.email} to approve the plan.`,
+          data: result,
+        };
+      } catch (err) {
+        return refusal(err);
+      }
     });
 
     ctx.tools.register(
@@ -205,6 +249,11 @@ const plugin = definePlugin({
 
   async onHealth() {
     return { status: "ok" };
+  },
+
+  async onShutdown() {
+    ticker?.stop();
+    ticker = null;
   },
 });
 

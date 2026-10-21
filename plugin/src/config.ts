@@ -4,6 +4,15 @@ export const DEFAULT_MAX_TASKS_PER_NIGHT = 3;
 export const MAX_PEOPLE = 10;
 export const DEFAULT_MAX_DIFF_LINES = 400;
 export const DEFAULT_CHECK_TIMEOUT_SECONDS = 600;
+/** Hard upper bound on tasks per agent per night (evening proposal of up to 3). */
+export const MAX_TASKS_PER_NIGHT = 3;
+export const DEFAULT_NIGHT: NightSettings = {
+  projectId: null,
+  proposalLeadHours: 2,
+  nightLengthHours: 8,
+  stepTimeoutMinutes: 60,
+  maxRetries: 1,
+};
 
 export type SecretAccess = "read-only" | "read-write";
 
@@ -38,9 +47,22 @@ export interface ChecksSettings {
   timeoutSeconds: number;
 }
 
+/** Night routine settings shared by everyone. */
+export interface NightSettings {
+  /** Project (with the repo) that night tasks are created in. */
+  projectId: string | null;
+  /** How many hours before a person's night start the evening plan opens. */
+  proposalLeadHours: number;
+  nightLengthHours: number;
+  /** Time limit for one task (step) before it is retried or failed. */
+  stepTimeoutMinutes: number;
+  maxRetries: number;
+}
+
 export interface PluginSettings {
   people: Person[];
   checks: ChecksSettings;
+  night: NightSettings;
 }
 
 /**
@@ -52,6 +74,17 @@ export const instanceConfigSchema: JsonSchema = {
   type: "object",
   required: ["people"],
   properties: {
+    night: {
+      type: "object",
+      title: "Night routine",
+      properties: {
+        projectId: { type: "string", title: "Project for night tasks (its repo gets the worktrees)" },
+        proposalLeadHours: { type: "integer", title: "Evening plan opens this many hours before night start", minimum: 1, maximum: 12, default: 2 },
+        nightLengthHours: { type: "integer", title: "Night length (hours)", minimum: 1, maximum: 16, default: 8 },
+        stepTimeoutMinutes: { type: "integer", title: "Time limit per task (minutes)", minimum: 5, maximum: 480, default: 60 },
+        maxRetries: { type: "integer", title: "Retries after a time-out", minimum: 0, maximum: 3, default: 1 },
+      },
+    },
     checks: {
       type: "object",
       title: "Checks gate",
@@ -91,7 +124,7 @@ export const instanceConfigSchema: JsonSchema = {
             type: "integer",
             title: "Max tasks per night",
             minimum: 1,
-            maximum: 10,
+            maximum: MAX_TASKS_PER_NIGHT,
             default: DEFAULT_MAX_TASKS_PER_NIGHT,
           },
           nightBudgetCapCents: {
@@ -190,8 +223,12 @@ export function parseSettings(raw: unknown): ParseResult {
     }
 
     const maxTasksPerNight = entry.maxTasksPerNight ?? DEFAULT_MAX_TASKS_PER_NIGHT;
-    if (!Number.isInteger(maxTasksPerNight) || (maxTasksPerNight as number) < 1 || (maxTasksPerNight as number) > 10) {
-      errors.push(`${at}.maxTasksPerNight: must be a whole number 1-10`);
+    if (
+      !Number.isInteger(maxTasksPerNight) ||
+      (maxTasksPerNight as number) < 1 ||
+      (maxTasksPerNight as number) > MAX_TASKS_PER_NIGHT
+    ) {
+      errors.push(`${at}.maxTasksPerNight: must be a whole number 1-${MAX_TASKS_PER_NIGHT}`);
     }
 
     const nightBudgetCapCents = entry.nightBudgetCapCents;
@@ -241,8 +278,39 @@ export function parseSettings(raw: unknown): ParseResult {
   });
 
   const checks = parseChecks(raw.checks, errors);
+  const night = parseNight(raw.night, errors);
 
-  return errors.length > 0 ? { ok: false, errors } : { ok: true, settings: { people, checks } };
+  return errors.length > 0 ? { ok: false, errors } : { ok: true, settings: { people, checks, night } };
+}
+
+function intInRange(raw: Record<string, unknown>, key: string, min: number, max: number, errors: string[], fallback: number): number {
+  const value = raw[key];
+  if (value === undefined) return fallback;
+  if (!Number.isInteger(value) || (value as number) < min || (value as number) > max) {
+    errors.push(`night.${key}: must be a whole number ${min}-${max}`);
+    return fallback;
+  }
+  return value as number;
+}
+
+function parseNight(raw: unknown, errors: string[]): NightSettings {
+  if (raw === undefined) return { ...DEFAULT_NIGHT };
+  if (!isRecord(raw)) {
+    errors.push("night: must be an object");
+    return { ...DEFAULT_NIGHT };
+  }
+  let projectId: string | null = null;
+  if (raw.projectId !== undefined && raw.projectId !== null && raw.projectId !== "") {
+    if (typeof raw.projectId !== "string") errors.push("night.projectId: must be text");
+    else projectId = raw.projectId.trim();
+  }
+  return {
+    projectId,
+    proposalLeadHours: intInRange(raw, "proposalLeadHours", 1, 12, errors, DEFAULT_NIGHT.proposalLeadHours),
+    nightLengthHours: intInRange(raw, "nightLengthHours", 1, 16, errors, DEFAULT_NIGHT.nightLengthHours),
+    stepTimeoutMinutes: intInRange(raw, "stepTimeoutMinutes", 5, 480, errors, DEFAULT_NIGHT.stepTimeoutMinutes),
+    maxRetries: intInRange(raw, "maxRetries", 0, 3, errors, DEFAULT_NIGHT.maxRetries),
+  };
 }
 
 function parseChecks(raw: unknown, errors: string[]): ChecksSettings {

@@ -2,6 +2,58 @@
 
 Updated after every phase. Newest phase first.
 
+## Phase C: milestone 3 (done; M4 not started)
+
+### Checked against live Paperclip (2026.1012.0, in the cloud session)
+`scripts/integration-test.sh` now runs 82 live checks (84 with `SLOW=1`), all passing from a cold start. The milestone 3 part:
+- **Evening plan:**
+  - In each person's evening window the night job opens exactly one "Evening plan" ticket for their agent, and a second tick doesn't open another.
+  - The agent proposes tasks with `propose_tonight`. More than the person's limit is refused.
+  - Proposed tasks wait in backlog, each set up for its own worktree. `proposed_at` lands in the event log.
+- **One-tap approval:**
+  - The plan ticket carries a Paperclip approve/reject request that only humans may answer.
+  - The agent's own attempt to approve was refused by Paperclip (`403 This issue-thread interaction is human-only`).
+  - The owner's tap moves the night to "approved". A "Not tonight" with a reason marks every task `rejected`, with that reason in the event log.
+- **Night routine:**
+  - Nothing starts before the night.
+  - At night start the first task goes to the agent, and Paperclip creates its own worktree on a `vt/` branch.
+  - The second task waits until the first is done. `started_at` and `finished_at` are logged.
+- **Budget cap:** after 300 cents of spend was recorded for the agent, the next tick stopped the night, blocked the running task and logged outcome `blocked`.
+- **Time-out and retry (`SLOW=1`):** after the 5-minute step limit, the task was released to the agent again as attempt 2.
+
+### Unit tests only (116 tests)
+- Every rule of the night decision engine (17 tests). Among them:
+  - an unanswered plan expires
+  - a cap of 0 means no work
+  - spend from before the night doesn't count
+  - a second time-out fails the task and moves on
+  - the night ending blocks the running task
+- The full evening-to-night flow through the SDK test kit, with an in-memory database (11 tests).
+- The night clock in different timezones, including nights that start after midnight.
+
+### Unverified
+- The second time-out turning into "failed" in live Paperclip (unit-tested only, to keep the live test short).
+- A real AI agent proposing tasks by itself. The test bed calls `propose_tonight` through Paperclip's tool API with the agent's real run, exactly as an agent would.
+- The night job firing by itself every 5 minutes over a whole night. The test triggers it on demand; Paperclip shows the schedule `*/5 * * * *` as active.
+
+### Known limits (recorded in CLAUDE.md Decisions)
+- At the budget cap the plugin blocks the task and starts nothing more, but it can't kill a run that is already in progress. Also set a monthly budget on each agent in Paperclip as a hard backstop.
+- Any human board member can approve any plan for now. Per-owner approval arrives with M4's signed email links.
+
+### How to test on your laptop
+```bash
+cd aurora && git pull
+(cd plugin && pnpm install && pnpm test)   # expect 116 passed
+scripts/integration-test.sh                # expect: Result: 82 passed, 0 failed
+SLOW=1 scripts/integration-test.sh         # optional, +6 minutes: 84 passed
+```
+To click through it yourself, follow README "How to test milestone 3", part B.
+
+### Open questions for you
+1. Should approval be limited to the plan's owner already in M3? Paperclip can only say "humans only", not "this human". M4's email links will be per owner.
+2. At the budget cap, do you also want the agent paused? The plugin would need Paperclip's "pause agent" permission, which I left out on purpose.
+3. Defaults OK? Plan opens 2 h before night, the night lasts 8 h, 60 min per task, 1 retry.
+
 ## Phase B: milestone 2 (done)
 
 ### Checked against live Paperclip (2026.1012.0, in the cloud session)
@@ -36,7 +88,7 @@ All of this runs in `scripts/integration-test.sh`: 50 live checks, all passing, 
 ```bash
 cd aurora && git pull
 (cd plugin && pnpm install && pnpm test)
-scripts/integration-test.sh          # expect: Result: 50 passed, 0 failed
+scripts/integration-test.sh          # at milestone 2: Result: 50 passed, 0 failed (now 82)
 ```
 To look around afterwards: `KEEP_RUNNING=1 scripts/integration-test.sh`, then open http://127.0.0.1:3199. In the "VT M2 …" company, open ticket 1: the comments and the `vt-checks-…` documents are the check reports.
 
