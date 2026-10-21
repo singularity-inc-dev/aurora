@@ -17,12 +17,48 @@ Every command below is copied from the source named in brackets. Nothing here wa
 
 Open points:
 
-- This repo has no plugin source yet (no `package.json`, no manifest). The build and install steps only apply once a plugin folder exists here.
+- The plugin lives in the `plugin/` folder. Run the build and install commands from there.
 - The docs write `paperclipai plugin ...` and the `paperclipai` command may not be on your PATH after `npx`. I did not find a documented `npx paperclipai@latest plugin install` form, so check `paperclipai --help` before relying on it.
 - The docs say local-path installs are development workflows and run trusted code from disk. For a deployed plugin they say to publish an npm package and install that [`@paperclipai/plugin-sdk` README, "Current deployment caveats"].
 - When we write the plugin, pin `@paperclipai/plugin-sdk` to an exact version. `2026.1012.0` is the current `latest` on npm and installs cleanly with Node 24.
 
 Sources, all from Paperclip's repo (github.com/paperclipai/paperclip): `doc/plugins/LOCAL_PLUGIN_DEVELOPMENT.md`, `doc/plugins/PLUGIN_AUTHORING_GUIDE.md`, and the README shipped inside `@paperclipai/plugin-sdk@2026.1012.0`.
+
+## How to test milestone 1
+
+Milestone 1 adds the plugin skeleton and its settings: one row per person (email, agent id, timezone, night start hour, max tasks per night, night budget cap, and the keys their agent may use).
+
+**A. Automatic tests (about 2 minutes)**
+
+```bash
+git clone https://github.com/singularity-inc-dev/aurora.git
+cd aurora
+git checkout claude/eloquent-hopper-9m2e04
+cd plugin
+pnpm install
+pnpm test
+pnpm build
+```
+
+Expected: `Tests  25 passed (25)`, then a `dist/` folder containing `manifest.js` and `worker.js`.
+
+What the tests prove:
+
+- The settings reject two people sharing one agent, the same email twice, a bad timezone, an hour outside 0-23, and a negative budget.
+- Keys must be picked from Paperclip's secret store. Pasting a raw token is rejected, and the error message never repeats the token.
+- An agent can only get its own owner's keys. Another person's key with the same name is never returned.
+- Keys are read-only unless marked `read-write`.
+- The manifest passes Paperclip's own manifest validator and asks only for `secrets.read-ref`.
+
+**B. In Paperclip (about 10 minutes)**
+
+1. Start Paperclip: `npx paperclipai@latest onboard --yes`, then open http://localhost:3100.
+2. In a second terminal, from the `plugin/` folder: `paperclipai plugin install "$(pwd)"`, then `paperclipai plugin list`. You should see `vision-and-tom.night-agents` with status ready.
+3. In Paperclip, create a test secret (any dummy value, not a real key).
+4. Open the plugin's settings page (Paperclip docs: `/settings/plugins/<plugin id>`). Add yourself as one person, set the agent id to an existing agent, and pick the test secret under "Keys".
+5. Add a second person with the same agent id. Use "Test Connection" if Paperclip shows it: it should report `agentId: already bound to another person`.
+
+Not verified yet: whether Paperclip blocks saving invalid settings, or only shows the error under "Test Connection". Please tell me which you see.
 
 ## Cloud environment setup
 
