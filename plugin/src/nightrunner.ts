@@ -4,7 +4,7 @@ import { decideNight, type NightDecision, type NightRun, type StepClose } from "
 import { nightClock } from "./nightclock.js";
 import { claimRun, getLatestDoneRun, getOpenRun, getRun, setTaskOutcome, spentSince, stampTasks, updateRun } from "./nightstore.js";
 import { createBriefing } from "./briefing.js";
-import { getBriefing } from "./briefstore.js";
+import { earlierBriefingTaskIds, getBriefing } from "./briefstore.js";
 import type { NightClock } from "./nightclock.js";
 import { ensureTaskRow } from "./eventlog.js";
 import { NIGHT_TASK_ORIGIN, PLAN_ORIGIN } from "./ids.js";
@@ -77,14 +77,37 @@ async function decideAndApply(
   return decision;
 }
 
-/** Once a person's night is over, build its morning briefing (once). */
+/** The calendar date before `date` (YYYY-MM-DD). */
+export function previousDate(date: string): string {
+  const d = new Date(`${date}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Once a person's night is over, build its morning briefing (once). Tasks from
+ * earlier emails that are still undecided come back in it with fresh links,
+ * also on a morning after a night without work.
+ */
 async function maybeBrief(ctx: PluginContext, companyId: string, settings: PluginSettings, person: Person, clock: NightClock, now: Date): Promise<void> {
   if (!settings.links) return; // fail closed: no signed links, no briefing
   const run = await getLatestDoneRun(ctx.db, companyId, person.email);
-  if (!run || run.taskIds.length === 0) return;
-  if (clock.phase === "night" && clock.nightDate === run.nightDate) return; // wait for the morning
-  if (await getBriefing(ctx.db, companyId, person.email, run.nightDate)) return;
-  await createBriefing(ctx, person, settings.links, run, now);
+  if (run && run.taskIds.length > 0 && !(clock.phase === "night" && clock.nightDate === run.nightDate)) {
+    if (!(await getBriefing(ctx.db, companyId, person.email, run.nightDate))) {
+      const carried = await earlierBriefingTaskIds(ctx.db, companyId, person.email, run.nightDate);
+      await createBriefing(ctx, person, settings.links, companyId, run.nightDate, run, carried, now);
+      return;
+    }
+  }
+  // The night before today's: a morning without a finished night still gets the undecided tasks.
+  const lastNight = previousDate(clock.nightDate);
+  if (run && run.taskIds.length > 0 && run.nightDate >= lastNight) return;
+  if (await getBriefing(ctx.db, companyId, person.email, lastNight)) return;
+  const open = await getRun(ctx.db, companyId, person.email, lastNight);
+  if (open && ["proposing", "awaiting_approval", "approved", "running"].includes(open.status)) return;
+  const carried = await earlierBriefingTaskIds(ctx.db, companyId, person.email, lastNight);
+  if (carried.length === 0) return;
+  await createBriefing(ctx, person, settings.links, companyId, lastNight, null, carried, now);
 }
 
 async function taskStatus(ctx: PluginContext, companyId: string, taskId: string | undefined): Promise<string | null> {

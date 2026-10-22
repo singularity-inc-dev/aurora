@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { peekClaims, signLink, verifyLink, type LinkClaims } from "../src/tokens.js";
+import { peekClaims, signInvite, signLink, verifyInvite, verifyLink, type InviteClaims, type LinkClaims } from "../src/tokens.js";
 import { actionsIn, assertTier, TierRefused } from "../src/tiers.js";
 
 const SECRET = "test-secret-" + "x".repeat(16);
@@ -35,9 +35,26 @@ describe("signed links", () => {
   });
 });
 
+describe("signed invite links", () => {
+  const invite: InviteClaims = { v: 1, k: "join", i: "inv-1", c: "co", o: "cy@example.com", e: NOW.getTime() / 1000 + 3600 };
+
+  it("accepts an invite signed with the right secret, refuses expired and tampered ones", () => {
+    expect(verifyInvite(signInvite(invite, SECRET), SECRET, NOW)).toEqual({ ok: true, claims: invite });
+    expect(verifyInvite(signInvite({ ...invite, e: NOW.getTime() / 1000 - 1 }, SECRET), SECRET, NOW)).toEqual({ ok: false, reason: "expired" });
+    const [, sig] = signInvite(invite, SECRET).split(".");
+    const tampered = Buffer.from(JSON.stringify({ ...invite, o: "mallory@example.com" })).toString("base64url");
+    expect(verifyInvite(`${tampered}.${sig}`, SECRET, NOW)).toEqual({ ok: false, reason: "invalid" });
+  });
+
+  it("an invite is never an Approve link, and an Approve link is never an invite", () => {
+    expect(verifyLink(signInvite(invite, SECRET), SECRET, NOW)).toEqual({ ok: false, reason: "invalid" });
+    expect(verifyInvite(signLink(claims, SECRET), SECRET, NOW)).toEqual({ ok: false, reason: "invalid" });
+  });
+});
+
 describe("action tiers", () => {
-  it("merge and reject need a tap; nothing else does", () => {
-    expect(actionsIn("needs-tap").sort()).toEqual(["merge-task", "reject-task"]);
+  it("merge, reject, publishing to GitHub and joining from an invite need a tap; nothing else does", () => {
+    expect(actionsIn("needs-tap").sort()).toEqual(["join-from-invite", "merge-task", "publish-to-github", "reject-task"]);
     expect(() => assertTier("merge-task", "needs-tap")).not.toThrow();
   });
 
@@ -46,7 +63,7 @@ describe("action tiers", () => {
     expect(() => assertTier("merge-task", "automatic")).toThrow(TierRefused);
   });
 
-  it.each(["deploy", "push-to-remote", "delete-branch", "spend", "send-external-message"])("%s is never allowed", (action) => {
+  it.each(["deploy", "push-to-base-branch-directly", "force-push", "bypass-branch-protection", "delete-branch", "spend", "send-external-message"])("%s is never allowed", (action) => {
     expect(() => assertTier(action, "needs-tap")).toThrow("never allowed");
     expect(() => assertTier(action, "automatic")).toThrow("never allowed");
   });

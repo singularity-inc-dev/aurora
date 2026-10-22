@@ -4,7 +4,7 @@
  * scripts/integration-test.sh.
  */
 type Row = Record<string, unknown>;
-type TableName = "task_events" | "night_runs" | "briefings" | "link_actions";
+type TableName = "task_events" | "night_runs" | "briefings" | "link_actions" | "invites" | "pull_requests";
 
 export interface FakeDb {
   namespace: string;
@@ -19,12 +19,16 @@ const KEYS: Record<TableName, string[]> = {
   night_runs: ["company_id", "owner", "night_date"],
   briefings: ["company_id", "owner", "night_date"],
   link_actions: ["id"],
+  invites: ["id"],
+  pull_requests: ["task_id"],
 };
 const DEFAULTS: Record<TableName, Row> = {
   task_events: {},
   night_runs: { task_ids: "[]", current_index: -1, current_attempt: 0 },
   briefings: { status: "pending", items: "[]", notes: "[]" },
   link_actions: { state: "new" },
+  invites: { state: "new" },
+  pull_requests: { state: "waiting" },
 };
 
 function tableOf(sql: string): TableName {
@@ -70,7 +74,7 @@ function applySet(row: Row, set: string, params: unknown[]): void {
 }
 
 export function createFakeDb(namespace = "ns"): FakeDb {
-  const tables: Record<TableName, Row[]> = { task_events: [], night_runs: [], briefings: [], link_actions: [] };
+  const tables: Record<TableName, Row[]> = { task_events: [], night_runs: [], briefings: [], link_actions: [], invites: [], pull_requests: [] };
   const costs: FakeDb["costs"] = [];
   return {
     namespace,

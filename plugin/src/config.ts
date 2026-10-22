@@ -70,11 +70,45 @@ export interface LinkSettings {
 
 export const DEFAULT_LINK_EXPIRES_MINUTES = 24 * 60;
 
+/**
+ * Approve publishes to GitHub when set: push the task branch, open a pull
+ * request and squash-merge it. The token lives only in the email service.
+ */
+export interface GithubSettings {
+  /** "owner/name" */
+  repo: string;
+}
+
+/** Defaults for people who join through an invite link. */
+export interface InviteSettings {
+  expiresMinutes: number;
+  defaultTimezone: string;
+  nightStartHour: number;
+  nightBudgetCapCents: number;
+  maxTasksPerNight: number;
+  agentAdapterType: string;
+  agentAdapterConfig: Record<string, unknown>;
+  agentMonthlyBudgetCents: number;
+}
+
+export const DEFAULT_INVITES: InviteSettings = {
+  expiresMinutes: 48 * 60,
+  defaultTimezone: "UTC",
+  nightStartHour: 22,
+  nightBudgetCapCents: 300,
+  maxTasksPerNight: DEFAULT_MAX_TASKS_PER_NIGHT,
+  agentAdapterType: "claude_local",
+  agentAdapterConfig: {},
+  agentMonthlyBudgetCents: 3000,
+};
+
 export interface PluginSettings {
   people: Person[];
   checks: ChecksSettings;
   night: NightSettings;
   links: LinkSettings | null;
+  github: GithubSettings | null;
+  invites: InviteSettings;
 }
 
 /**
@@ -86,6 +120,29 @@ export const instanceConfigSchema: JsonSchema = {
   type: "object",
   required: ["people"],
   properties: {
+    github: {
+      type: "object",
+      title: "GitHub (Approve opens and merges a pull request)",
+      description: "The token that can push and merge is not set here: it lives only in the email service.",
+      additionalProperties: false,
+      properties: {
+        repo: { type: "string", title: "Repository (owner/name)", pattern: "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" },
+      },
+    },
+    invites: {
+      type: "object",
+      title: "Invite links (defaults for new people)",
+      properties: {
+        expiresMinutes: { type: "integer", title: "Invite links expire after (minutes)", minimum: 1, maximum: 10080, default: DEFAULT_INVITES.expiresMinutes },
+        defaultTimezone: { type: "string", title: "Default timezone", default: DEFAULT_INVITES.defaultTimezone },
+        nightStartHour: { type: "integer", title: "Night start hour", minimum: 0, maximum: 23, default: DEFAULT_INVITES.nightStartHour },
+        nightBudgetCapCents: { type: "integer", title: "Night budget cap (US cents)", minimum: 0, default: DEFAULT_INVITES.nightBudgetCapCents },
+        maxTasksPerNight: { type: "integer", title: "Max tasks per night", minimum: 1, maximum: MAX_TASKS_PER_NIGHT, default: DEFAULT_INVITES.maxTasksPerNight },
+        agentAdapterType: { type: "string", title: "Agent adapter", default: DEFAULT_INVITES.agentAdapterType },
+        agentAdapterConfig: { type: "object", title: "Agent adapter settings" },
+        agentMonthlyBudgetCents: { type: "integer", title: "Agent monthly budget in Paperclip (US cents)", minimum: 0, default: DEFAULT_INVITES.agentMonthlyBudgetCents },
+      },
+    },
     links: {
       type: "object",
       title: "Morning email links",
@@ -307,8 +364,63 @@ export function parseSettings(raw: unknown): ParseResult {
   const checks = parseChecks(raw.checks, errors);
   const night = parseNight(raw.night, errors);
   const links = parseLinks(raw.links, errors);
+  const github = parseGithub(raw.github, errors);
+  const invites = parseInvites(raw.invites, errors);
 
-  return errors.length > 0 ? { ok: false, errors } : { ok: true, settings: { people, checks, night, links } };
+  return errors.length > 0 ? { ok: false, errors } : { ok: true, settings: { people, checks, night, links, github, invites } };
+}
+
+const REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+
+/** Only the repository name is accepted: there is deliberately no place for a token. */
+function parseGithub(raw: unknown, errors: string[]): GithubSettings | null {
+  if (raw === undefined || raw === null) return null;
+  if (!isRecord(raw)) {
+    errors.push("github: must be an object");
+    return null;
+  }
+  for (const key of Object.keys(raw)) {
+    if (key !== "repo") errors.push(`github.${key}: not allowed (the GitHub token belongs in the email service, never in Paperclip)`);
+  }
+  if (raw.repo === undefined || raw.repo === "") return null;
+  if (typeof raw.repo !== "string" || !REPO_RE.test(raw.repo.trim())) {
+    errors.push("github.repo: must look like owner/name");
+    return null;
+  }
+  return { repo: raw.repo.trim() };
+}
+
+function parseInvites(raw: unknown, errors: string[]): InviteSettings {
+  const inv: InviteSettings = { ...DEFAULT_INVITES, agentAdapterConfig: {} };
+  if (raw === undefined || raw === null) return inv;
+  if (!isRecord(raw)) {
+    errors.push("invites: must be an object");
+    return inv;
+  }
+  const int = (key: keyof InviteSettings, min: number, max: number) => {
+    const v = raw[key];
+    if (v === undefined) return;
+    if (!Number.isInteger(v) || (v as number) < min || (v as number) > max) errors.push(`invites.${key}: must be a whole number ${min}-${max}`);
+    else (inv as unknown as Record<string, unknown>)[key] = v;
+  };
+  int("expiresMinutes", 1, 10080);
+  int("nightStartHour", 0, 23);
+  int("nightBudgetCapCents", 0, Number.MAX_SAFE_INTEGER);
+  int("maxTasksPerNight", 1, MAX_TASKS_PER_NIGHT);
+  int("agentMonthlyBudgetCents", 0, Number.MAX_SAFE_INTEGER);
+  if (raw.defaultTimezone !== undefined) {
+    if (typeof raw.defaultTimezone !== "string" || !isValidTimezone(raw.defaultTimezone)) errors.push("invites.defaultTimezone: must be an IANA timezone");
+    else inv.defaultTimezone = raw.defaultTimezone;
+  }
+  if (raw.agentAdapterType !== undefined) {
+    if (typeof raw.agentAdapterType !== "string" || !/^[a-z0-9_]+$/.test(raw.agentAdapterType)) errors.push("invites.agentAdapterType: must be an adapter name");
+    else inv.agentAdapterType = raw.agentAdapterType;
+  }
+  if (raw.agentAdapterConfig !== undefined) {
+    if (!isRecord(raw.agentAdapterConfig)) errors.push("invites.agentAdapterConfig: must be an object");
+    else inv.agentAdapterConfig = raw.agentAdapterConfig;
+  }
+  return inv;
 }
 
 function parseLinks(raw: unknown, errors: string[]): LinkSettings | null {

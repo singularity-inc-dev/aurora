@@ -1,7 +1,7 @@
 import type { PluginContext } from "@paperclipai/plugin-sdk";
 import type { LinkSettings, Person } from "./config.js";
 import { getTaskRow } from "./eventlog.js";
-import { insertAction, insertBriefing, newId, type Briefing, type BriefingItem, type Category } from "./briefstore.js";
+import { getPullRequest, insertAction, insertBriefing, newId, type Briefing, type BriefingItem, type Category } from "./briefstore.js";
 import { isClean, revParse, shortStat } from "./merge.js";
 import type { NightRun } from "./night.js";
 import { actionsIn } from "./tiers.js";
@@ -14,6 +14,8 @@ export interface TaskFacts {
   title: string;
   issueStatus: string | null;
   outcome: string | null;
+  /** Link action holding the task's decision (an approval in progress or waiting for review). */
+  decisionActionId: string | null;
   startedAt: unknown;
   checksResult: string | null;
   checksHead: string | null;
@@ -58,6 +60,7 @@ async function gatherFacts(ctx: PluginContext, companyId: string, taskId: string
     title: issue?.title ?? "(missing ticket)",
     issueStatus: issue?.status ?? null,
     outcome: (ev.outcome as string | null) ?? null,
+    decisionActionId: (ev.decision_action_id as string | null) ?? null,
     startedAt: ev.started_at ?? null,
     checksResult: (ev.checks_result as string | null) ?? null,
     checksHead: (ev.checks_head as string | null) ?? null,
@@ -77,20 +80,56 @@ async function gatherFacts(ctx: PluginContext, companyId: string, taskId: string
   return facts;
 }
 
-/** Build and store the morning briefing for one finished night. Safe to call twice. */
-export async function createBriefing(ctx: PluginContext, person: Person, links: LinkSettings, run: NightRun, now: Date): Promise<Briefing | null> {
+/**
+ * Build and store the morning briefing for one person and one night. Safe to
+ * call twice. Tasks from earlier emails that are still undecided come back with
+ * fresh links; tasks whose pull request waits for review are listed without links.
+ */
+export async function createBriefing(
+  ctx: PluginContext,
+  person: Person,
+  links: LinkSettings,
+  companyId: string,
+  nightDate: string,
+  run: NightRun | null,
+  carriedTaskIds: string[],
+  now: Date,
+): Promise<Briefing | null> {
   const briefingId = newId();
   const expiresAt = new Date(now.getTime() + links.expiresMinutes * 60_000);
   const items: BriefingItem[] = [];
   const actions: Array<Parameters<typeof insertAction>[1]> = [];
-  for (const taskId of run.taskIds) {
-    const f = await gatherFacts(ctx, run.companyId, taskId);
+  const tonight = run?.taskIds ?? [];
+  const taskIds = [...tonight, ...carriedTaskIds.filter((id) => !tonight.includes(id))];
+  for (const taskId of taskIds) {
+    const f = await gatherFacts(ctx, companyId, taskId);
     if (f.outcome === "accepted" || f.outcome === "rejected") continue;
+    const carried = !tonight.includes(taskId);
+    if (f.decisionActionId) {
+      // Approved already: either waiting for review on GitHub, or still being processed.
+      const pr = await getPullRequest(ctx.db, taskId);
+      if (pr?.state === "waiting") {
+        items.push({
+          taskId,
+          identifier: f.identifier,
+          title: f.title,
+          category: "waiting",
+          summary: f.summary,
+          checks: `pull request #${pr.number} waiting for review`,
+          reason: pr.reason,
+          approveActionId: null,
+          rejectActionId: null,
+          prUrl: pr.url,
+          carried,
+        });
+      }
+      continue;
+    }
     const c = classify(f);
     const action = (kind: LinkKind) => {
       const a = {
         id: newId(),
-        companyId: run.companyId,
+        companyId,
         owner: person.email,
         taskId,
         kind,
@@ -114,10 +153,12 @@ export async function createBriefing(ctx: PluginContext, person: Person, links: 
       reason: c.reason,
       approveActionId: c.approvable ? action("approve") : null,
       rejectActionId: action("reject"),
+      carried,
     });
   }
-  const notes = run.status === "budget_stopped" ? ["Your agent hit tonight's budget cap and was paused. Resume it in Paperclip when you are ready."] : [];
-  const briefing = { id: briefingId, companyId: run.companyId, owner: person.email, nightDate: run.nightDate, items, notes };
+  if (!run && items.length === 0) return null;
+  const notes = run?.status === "budget_stopped" ? ["Your agent hit tonight's budget cap and was paused. Resume it in Paperclip when you are ready."] : [];
+  const briefing = { id: briefingId, companyId, owner: person.email, nightDate, items, notes };
   if (!(await insertBriefing(ctx.db, briefing))) return null;
   for (const a of actions) await insertAction(ctx.db, a);
   return { ...briefing, status: "pending" };
@@ -136,6 +177,7 @@ const SECTIONS: Array<[Category, string]> = [
   ["ready", "Ready"],
   ["blocked", "Blocked"],
   ["failed", "Failed"],
+  ["waiting", "Waiting for review"],
 ];
 
 /** Render a briefing as an email, with freshly signed links (tokens are never stored). */
@@ -144,7 +186,8 @@ export function renderBriefing(b: Briefing, links: LinkSettings, secret: string,
   const url = (actionId: string, item: BriefingItem, kind: LinkKind) =>
     `${links.baseUrl}/l/${signLink({ v: 1, a: actionId, c: b.companyId, o: b.owner, t: item.taskId, k: kind, e: exp }, secret)}`;
   const count = (c: Category) => b.items.filter((i) => i.category === c).length;
-  const subject = `Your night of ${b.nightDate}: ${count("ready")} ready, ${count("blocked")} blocked, ${count("failed")} failed`;
+  const waiting = count("waiting");
+  const subject = `Your night of ${b.nightDate}: ${count("ready")} ready, ${count("blocked")} blocked, ${count("failed")} failed${waiting ? `, ${waiting} waiting for review` : ""}`;
 
   const text: string[] = [`Good morning. Here is what your agent did on the night of ${b.nightDate}.`, ""];
   const html: string[] = [`<p>Good morning. Here is what your agent did on the night of ${esc(b.nightDate)}.</p>`];
@@ -154,6 +197,7 @@ export function renderBriefing(b: Briefing, links: LinkSettings, secret: string,
   }
   for (const [cat, label] of SECTIONS) {
     const items = b.items.filter((i) => i.category === cat);
+    if (cat === "waiting" && items.length === 0) continue;
     text.push(`${label.toUpperCase()} (${items.length})`);
     html.push(`<h2>${label} (${items.length})</h2>`);
     if (items.length === 0) {
@@ -167,11 +211,16 @@ export function renderBriefing(b: Briefing, links: LinkSettings, secret: string,
       const approve = i.approveActionId ? url(i.approveActionId, i, "approve") : null;
       const reject = i.rejectActionId ? url(i.rejectActionId, i, "reject") : null;
       text.push(`- ${name}`, `  ${i.checks}${i.reason ? ` (${i.reason})` : ""}`);
+      if (i.carried) text.push("  From an earlier email; still waiting for your decision.");
+      if (i.prUrl) text.push(`  Pull request: ${i.prUrl}`);
       if (approve) text.push(`  Approve: ${approve}`);
       if (reject) text.push(`  Reject: ${reject}`);
       text.push("");
       html.push(
-        `<li><p><strong>${esc(name)}</strong><br>${esc(i.checks)}${i.reason ? ` (${esc(i.reason)})` : ""}</p><p>` +
+        `<li><p><strong>${esc(name)}</strong><br>${esc(i.checks)}${i.reason ? ` (${esc(i.reason)})` : ""}` +
+          (i.carried ? "<br><em>From an earlier email; still waiting for your decision.</em>" : "") +
+          `</p><p>` +
+          (i.prUrl ? `<a href="${esc(i.prUrl)}">Pull request</a> &nbsp; ` : "") +
           (approve ? `<a href="${esc(approve)}">Approve</a> &nbsp; ` : "") +
           (reject ? `<a href="${esc(reject)}">Reject</a>` : "") +
           `</p></li>`,
@@ -180,7 +229,7 @@ export function renderBriefing(b: Briefing, links: LinkSettings, secret: string,
     html.push("</ul>");
   }
   const footer = [
-    `Links expire ${expiresAt.toISOString().replace("T", " ").slice(0, 16)} UTC and work once. Approve merges only if the branch is unchanged since this email.`,
+    `Links expire ${expiresAt.toISOString().replace("T", " ").slice(0, 16)} UTC and work once. Approve merges only if the branch is unchanged since this email. Anything you have not decided comes back in the next morning's email with fresh links.`,
     `Happens automatically: ${actionsIn("automatic").join(", ")}. Needs your tap: ${actionsIn("needs-tap").join(", ")}. Never: ${actionsIn("never").join(", ")}.`,
   ];
   text.push(...footer);

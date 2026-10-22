@@ -9,6 +9,7 @@ const facts = (o: Partial<TaskFacts> = {}): TaskFacts => ({
   title: "Fix login",
   issueStatus: "done",
   outcome: null,
+  decisionActionId: null,
   startedAt: "2026-10-21T22:00:00Z",
   checksResult: "passed",
   checksHead: "abc1234",
@@ -82,6 +83,6 @@ describe("renderBriefing", () => {
   it("escapes HTML and lists the action tiers", () => {
     expect(email.html).toContain("Docs &lt;draft&gt;");
     expect(email.html).not.toContain("Docs <draft>");
-    expect(email.text).toContain("Never: deploy, push-to-remote");
+    expect(email.text).toContain("Never: deploy, push-to-base-branch-directly");
   });
 });

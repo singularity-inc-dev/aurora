@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTestHarness } from "@paperclipai/plugin-sdk/testing";
 import type { Agent, Company, Issue, PluginApiRequestInput, PluginExecutionWorkspaceMetadata } from "@paperclipai/plugin-sdk";
 import manifest from "../src/manifest.js";
@@ -13,6 +13,13 @@ import { makeRepoWithWorktree, sh, write } from "./helpers.js";
 
 const CO = "co-1";
 const MORNING = new Date("2026-10-22T08:00:00Z");
+// Link routes read the real clock; pin it a minute after the briefing so links
+// with a 60-minute lifetime are valid whenever the tests run.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date(MORNING.getTime() + 60_000));
+});
+afterEach(() => vi.useRealTimers());
 const config = {
   links: { baseUrl: "http://mail.test", signingSecret: { type: "secret_ref", secretId: "sig" }, expiresMinutes: 60 },
   people: [

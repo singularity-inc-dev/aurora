@@ -5,7 +5,7 @@ import type { LinkKind } from "./tokens.js";
 type Db = Pick<PluginDatabaseClient, "namespace" | "execute" | "query">;
 const t = (db: Db, name: string) => `"${db.namespace}".${name}`;
 
-export type Category = "ready" | "blocked" | "failed";
+export type Category = "ready" | "blocked" | "failed" | "waiting";
 
 export interface BriefingItem {
   taskId: string;
@@ -18,6 +18,10 @@ export interface BriefingItem {
   reason: string | null;
   approveActionId: string | null;
   rejectActionId: string | null;
+  /** Pull request waiting for review on GitHub (category "waiting"). */
+  prUrl?: string | null;
+  /** Listed in an earlier email and still undecided. */
+  carried?: boolean;
 }
 
 export interface Briefing {
@@ -181,4 +185,71 @@ export async function setDecisionOutcome(db: Db, taskId: string, outcome: "accep
     rejectReason,
     taskId,
   ]);
+}
+
+/** A pull request opened by an Approve link (GitHub mode). */
+export interface PullRequestRow {
+  taskId: string;
+  companyId: string;
+  owner: string;
+  actionId: string;
+  number: number;
+  url: string;
+  headSha: string;
+  state: "waiting" | "merged" | "closed";
+  reason: string | null;
+}
+
+function toPullRequest(r: Record<string, unknown>): PullRequestRow {
+  return {
+    taskId: String(r.task_id),
+    companyId: String(r.company_id),
+    owner: String(r.owner),
+    actionId: String(r.action_id),
+    number: Number(r.number),
+    url: String(r.url),
+    headSha: String(r.head_sha),
+    state: String(r.state) as PullRequestRow["state"],
+    reason: (r.reason as string | null) ?? null,
+  };
+}
+
+export async function getPullRequest(db: Db, taskId: string): Promise<PullRequestRow | null> {
+  const rows = await db.query(`SELECT * FROM ${t(db, "pull_requests")} WHERE task_id = $1`, [taskId]);
+  return rows[0] ? toPullRequest(rows[0]) : null;
+}
+
+export async function listWaitingPullRequests(db: Db, companyId: string): Promise<PullRequestRow[]> {
+  const rows = await db.query(`SELECT * FROM ${t(db, "pull_requests")} WHERE company_id = $1 AND state = 'waiting' LIMIT 100`, [companyId]);
+  return rows.map(toPullRequest);
+}
+
+export async function insertWaitingPullRequest(db: Db, pr: Omit<PullRequestRow, "state">): Promise<void> {
+  await db.execute(
+    `INSERT INTO ${t(db, "pull_requests")} (task_id, company_id, owner, action_id, number, url, head_sha, reason) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [pr.taskId, pr.companyId, pr.owner, pr.actionId, pr.number, pr.url, pr.headSha, pr.reason],
+  );
+}
+
+/** Close a waiting pull request row; only the first update wins. */
+export async function closePullRequest(db: Db, taskId: string, state: "merged" | "closed", mergeSha: string | null): Promise<boolean> {
+  const { rowCount } = await db.execute(
+    `UPDATE ${t(db, "pull_requests")} SET state = $1, merge_sha = $2, updated_at = now() WHERE task_id = $3 AND state = 'waiting'`,
+    [state, mergeSha, taskId],
+  );
+  return rowCount === 1;
+}
+
+/** Task ids listed in this person's earlier briefings (newest first), for carrying undecided tasks over. */
+export async function earlierBriefingTaskIds(db: Db, companyId: string, owner: string, beforeNightDate: string): Promise<string[]> {
+  const rows = await db.query(
+    `SELECT * FROM ${t(db, "briefings")} WHERE company_id = $1 AND owner = $2 ORDER BY night_date DESC LIMIT 30`,
+    [companyId, owner],
+  );
+  const ids: string[] = [];
+  for (const r of rows) {
+    if (String(r.night_date) >= beforeNightDate) continue;
+    for (const item of json<BriefingItem[]>(r.items, [])) if (!ids.includes(item.taskId)) ids.push(item.taskId);
+  }
+  return ids;
 }

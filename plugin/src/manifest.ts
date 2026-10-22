@@ -6,7 +6,7 @@ import { HANDOFF_TOOL, PROPOSE_TOOL, RUN_CHECKS_TOOL } from "./tools.js";
 const manifest: PaperclipPluginManifestV1 = {
   id: PLUGIN_ID,
   apiVersion: 1,
-  version: "0.4.2",
+  version: "0.5.0",
   displayName: "Vision and Tom",
   description:
     "One personal night agent per teammate. Agents use only their owner's keys, hand off via board tickets, and change nothing shared until the owner approves.",
@@ -58,6 +58,13 @@ const manifest: PaperclipPluginManifestV1 = {
     { routeKey: "briefing-sent", method: "POST", path: "/briefings/:briefingId/sent", auth: "board", capability: "api.routes.register", companyResolution: { from: "body", key: "companyId" } },
     { routeKey: "link-preview", method: "POST", path: "/links/preview", auth: "board", capability: "api.routes.register", companyResolution: { from: "body", key: "companyId" } },
     { routeKey: "link-execute", method: "POST", path: "/links/execute", auth: "board", capability: "api.routes.register", companyResolution: { from: "body", key: "companyId" } },
+    { routeKey: "link-publish-result", method: "POST", path: "/links/publish-result", auth: "board", capability: "api.routes.register", companyResolution: { from: "body", key: "companyId" } },
+    { routeKey: "prs-waiting", method: "GET", path: "/prs/waiting", auth: "board", capability: "api.routes.register", companyResolution: { from: "query", key: "companyId" } },
+    { routeKey: "pr-update", method: "POST", path: "/prs/update", auth: "board", capability: "api.routes.register", companyResolution: { from: "body", key: "companyId" } },
+    { routeKey: "invite-create", method: "POST", path: "/invites", auth: "board", capability: "api.routes.register", companyResolution: { from: "body", key: "companyId" } },
+    { routeKey: "invite-preview", method: "POST", path: "/invites/preview", auth: "board", capability: "api.routes.register", companyResolution: { from: "body", key: "companyId" } },
+    { routeKey: "invite-claim", method: "POST", path: "/invites/claim", auth: "board", capability: "api.routes.register", companyResolution: { from: "body", key: "companyId" } },
+    { routeKey: "invite-finish", method: "POST", path: "/invites/finish", auth: "board", capability: "api.routes.register", companyResolution: { from: "body", key: "companyId" } },
   ],
 };
 

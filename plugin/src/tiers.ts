@@ -1,7 +1,8 @@
 /**
  * Action tiers (CLAUDE.md M4). Every action the system can take is listed once.
  * - automatic: the plugin does it on its own.
- * - needs-tap: only a signed morning-email link from the task's owner can do it.
+ * - needs-tap: only a signed link can do it (the task owner's morning-email
+ *   link, or the invited person's own invite link).
  * - never: nothing in this system may do it.
  */
 export type Tier = "automatic" | "needs-tap" | "never";
@@ -13,10 +14,17 @@ export const ACTION_TIERS = {
   "pause-agent-at-budget-cap": "automatic",
   "send-morning-briefing": "automatic",
   "record-event": "automatic",
+  "sync-pull-request-status": "automatic",
   "merge-task": "needs-tap",
   "reject-task": "needs-tap",
+  // Approve with GitHub: push the task branch, open a pull request, squash-merge it
+  // (branch protection decides; a blocked merge waits for review).
+  "publish-to-github": "needs-tap",
+  "join-from-invite": "needs-tap",
   deploy: "never",
-  "push-to-remote": "never",
+  "push-to-base-branch-directly": "never",
+  "force-push": "never",
+  "bypass-branch-protection": "never",
   "delete-branch": "never",
   "delete-ticket": "never",
   "send-external-message": "never",

@@ -10,7 +10,9 @@ import { proposeTonight, ProposalRefused, tickAll } from "./nightrunner.js";
 import { startTicker, type Ticker } from "./ticker.js";
 import { renderBriefing } from "./briefing.js";
 import { getAction, getBriefingById, listPendingBriefings, markBriefingSent } from "./briefstore.js";
-import { executeLink, previewLink } from "./links.js";
+import { executeLink, previewLink, recordPublishResult, recordPullRequestUpdate } from "./links.js";
+import { claimInvite, createInvite, finishInvite, previewInvite } from "./invites.js";
+import { listWaitingPullRequests } from "./briefstore.js";
 import { HANDOFF_TOOL, PROPOSE_TOOL, RUN_CHECKS_TOOL, TOOL_HANDOFF, TOOL_PROPOSE, TOOL_RUN_CHECKS } from "./tools.js";
 import { taskWorkspaceSettings } from "./workspace.js";
 
@@ -276,7 +278,7 @@ const plugin = definePlugin({
         const secret = await ctx.secrets.resolve(settings.links.signingSecret, { companyId: input.companyId });
         const emails = [];
         for (const b of pending) {
-          const first = b.items[0]?.rejectActionId;
+          const first = b.items.find((i) => i.rejectActionId)?.rejectActionId;
           const expiresAt = (first ? (await getAction(ctx.db, first))?.expiresAt : null) ?? now;
           emails.push(renderBriefing(b, settings.links, secret, expiresAt));
         }
@@ -291,6 +293,28 @@ const plugin = definePlugin({
         return { status: 200, body: await previewLink(ctx, settings, input.companyId, token, now) };
       case "link-execute":
         return { status: 200, body: await executeLink(ctx, settings, input.companyId, token, body.reason, now) };
+      case "link-publish-result":
+        return { status: 200, body: await recordPublishResult(ctx, settings, input.companyId, token, body, now) };
+      case "prs-waiting":
+        return {
+          status: 200,
+          body: {
+            repo: settings.github?.repo ?? null,
+            pullRequests: (await listWaitingPullRequests(ctx.db, input.companyId)).map((p) => ({ taskId: p.taskId, number: p.number, url: p.url, headSha: p.headSha })),
+          },
+        };
+      case "pr-update":
+        return { status: 200, body: await recordPullRequestUpdate(ctx, input.companyId, body) };
+      case "invite-create": {
+        const created = await createInvite(ctx, settings, input.companyId, body, now);
+        return { status: created.ok ? 201 : 409, body: created };
+      }
+      case "invite-preview":
+        return { status: 200, body: await previewInvite(ctx, settings, input.companyId, token, now) };
+      case "invite-claim":
+        return { status: 200, body: await claimInvite(ctx, settings, input.companyId, token, body.timezone, now) };
+      case "invite-finish":
+        return { status: 200, body: await finishInvite(ctx, settings, input.companyId, typeof body.inviteId === "string" ? body.inviteId : "", body) };
       default:
         return { status: 404, body: { error: "unknown route" } };
     }

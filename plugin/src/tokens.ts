@@ -59,3 +59,40 @@ export function verifyLink(token: string, secret: string, now: Date): VerifyResu
   if (claims.e * 1000 <= now.getTime()) return { ok: false, reason: "expired" };
   return { ok: true, claims };
 }
+
+/** What an invite link may do: let one new person join one company. */
+export interface InviteClaims {
+  v: 1;
+  k: "join";
+  /** Invite id (the one-time key). */
+  i: string;
+  c: string;
+  /** Invited email. */
+  o: string;
+  e: number;
+}
+
+export type InviteVerifyResult = { ok: true; claims: InviteClaims } | { ok: false; reason: "invalid" | "expired" };
+
+export function signInvite(claims: InviteClaims, secret: string): string {
+  return signLink(claims as unknown as LinkClaims, secret);
+}
+
+/** Like verifyLink, but only accepts invite claims (an Approve link is never an invite, and the other way round). */
+export function verifyInvite(token: string, secret: string, now: Date): InviteVerifyResult {
+  const [payload, signature, extra] = token.split(".");
+  if (!payload || !signature || extra !== undefined) return { ok: false, reason: "invalid" };
+  const expected = Buffer.from(sign(payload, secret));
+  const given = Buffer.from(signature);
+  if (expected.length !== given.length || !timingSafeEqual(expected, given)) return { ok: false, reason: "invalid" };
+  let claims: InviteClaims;
+  try {
+    claims = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+  } catch {
+    return { ok: false, reason: "invalid" };
+  }
+  const strings = [claims.i, claims.c, claims.o].every((x) => typeof x === "string" && x.length > 0);
+  if (claims.v !== 1 || claims.k !== "join" || !strings || !Number.isInteger(claims.e)) return { ok: false, reason: "invalid" };
+  if (claims.e * 1000 <= now.getTime()) return { ok: false, reason: "expired" };
+  return { ok: true, claims };
+}
