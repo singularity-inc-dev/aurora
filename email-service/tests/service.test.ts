@@ -26,6 +26,34 @@ function fakeApi(over: Partial<PluginApi> = {}): PluginApi & { calls: string[] }
       calls.push(`execute:${reason}`);
       return { ok: true, status: "merged", message: "VT-1 was merged into main." };
     },
+    async publishResult(_token, result): Promise<LinkOutcome> {
+      calls.push(`publish-result:${result.result}`);
+      return result.result === "waiting"
+        ? { ok: true, status: "waiting", message: `pull request #${result.number} is waiting for review` }
+        : result.result === "merged"
+          ? { ok: true, status: "merged", message: `merged as #${result.number}` }
+          : { ok: false, status: "refused", message: `Not merged: ${result.message}.` };
+    },
+    async waitingPullRequests() {
+      return { repo: null, pullRequests: [] };
+    },
+    async pullRequestUpdate(taskId, state) {
+      calls.push(`pr-update:${taskId}:${state}`);
+    },
+    async createInvite() {
+      return { ok: false, message: "not in this test" };
+    },
+    async previewInvite() {
+      return { ok: true, status: "valid", message: "ok", email: "cy@example.com", timezone: "Europe/Berlin" };
+    },
+    async claimInvite() {
+      calls.push("claim");
+      return { ok: true, status: "claimed", plan: { inviteId: "inv-1", email: "cy@example.com", timezone: "Europe/Berlin", defaults: { nightStartHour: 22, nightBudgetCapCents: 300, maxTasksPerNight: 3, agentAdapterType: "process", agentAdapterConfig: {}, agentMonthlyBudgetCents: 3000 } } };
+    },
+    async finishInvite(_id, result) {
+      calls.push(`finish:${result.ok}`);
+      return { ok: true, message: "joined" };
+    },
     ...over,
   };
 }
