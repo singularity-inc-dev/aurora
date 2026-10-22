@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Bring the project's base branch up to date from GitHub (fast-forward only),
+# so tonight's tasks start from what was merged today. Runs as the paperclip user.
+#   vt-repo-sync <repo folder> [base branch]
+set -euo pipefail
+repo="${1:?usage: vt-repo-sync <repo> [branch]}"
+base="${2:-main}"
+cd "$repo"
+git fetch -q origin "$base"
+cur=$(git rev-parse --verify -q "refs/heads/$base" || true)
+new=$(git rev-parse FETCH_HEAD)
+[ "$cur" = "$new" ] && exit 0
+if [ -n "$cur" ] && ! git merge-base --is-ancestor "$cur" "$new"; then
+  echo "$base has commits that are not on GitHub; leaving it alone" >&2
+  exit 1
+fi
+if [ "$(git symbolic-ref -q --short HEAD || true)" = "$base" ]; then
+  git merge -q --ff-only "$new"
+else
+  git update-ref "refs/heads/$base" "$new" ${cur:+"$cur"}
+fi
+echo "$base is now at ${new:0:7}"

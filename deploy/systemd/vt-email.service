@@ -1,0 +1,36 @@
+[Unit]
+Description=Vision and Tom email service (morning emails, Approve/Reject and invite pages)
+After=network-online.target paperclip.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Its own user: Paperclip and the agents (user "paperclip") cannot read its secrets.
+User=vt-mail
+Group=vt-mail
+# Read-only access to Paperclip's files, to copy an approved task branch.
+SupplementaryGroups=paperclip
+UMask=0077
+WorkingDirectory=@OPT@/app/email-service
+EnvironmentFile=@ETC@/email-service.env
+# Secrets are handed over by systemd, readable only by this service.
+LoadCredential=smtp-password:@ETC@/secrets/smtp-password
+LoadCredential=paperclip-api-key:@ETC@/secrets/paperclip-api-key
+LoadCredential=github-token:@ETC@/secrets/github-token
+Environment=SMTP_PASS_FILE=%d/smtp-password
+Environment=PAPERCLIP_API_KEY_FILE=%d/paperclip-api-key
+Environment=GITHUB_TOKEN_FILE=%d/github-token
+Environment=STATE_DIR=@MAILDATA@
+Environment=HOME=@MAILDATA@
+Environment=PATH=@OPT@/node/bin:/usr/bin:/bin
+ExecStart=@OPT@/node/bin/node src/main.ts
+Restart=always
+RestartSec=5
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=@MAILDATA@
+
+[Install]
+WantedBy=multi-user.target

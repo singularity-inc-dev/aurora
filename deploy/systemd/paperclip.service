@@ -1,0 +1,31 @@
+[Unit]
+Description=Paperclip (Vision and Tom), authenticated mode
+After=network-online.target postgresql.service
+Wants=network-online.target
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=paperclip
+Group=paperclip
+# New files are readable by the group (the email service reads task branches), never by others.
+UMask=0027
+WorkingDirectory=@PCDATA@
+Environment=HOME=@PCDATA@
+Environment=PATH=@OPT@/node/bin:@OPT@/agents/node_modules/.bin:/usr/local/bin:/usr/bin:/bin
+Environment=PAPERCLIP_TELEMETRY_DISABLED=1
+Environment=DO_NOT_TRACK=1
+Environment=NODE_ENV=production
+# The public address (behind Caddy): Paperclip trusts sign-ins and changes coming from it.
+Environment=PAPERCLIP_PUBLIC_URL=@PUBLIC_URL@
+# "run" checks the setup first (and creates Paperclip's encryption key on first start).
+ExecStart=@OPT@/node/bin/node @OPT@/paperclip/node_modules/paperclipai/dist/index.js run --data-dir @PCDATA@
+Restart=always
+RestartSec=5
+TimeoutStopSec=60
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

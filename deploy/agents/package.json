@@ -1,0 +1,8 @@
+{
+  "name": "vision-and-tom-agent-tools",
+  "private": true,
+  "description": "Command-line tools the agents run with (Paperclip's claude_local adapter). Install with npm ci.",
+  "dependencies": {
+    "@anthropic-ai/claude-code": "2.1.293"
+  }
+}

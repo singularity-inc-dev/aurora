@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Is everything working? Prints one line per check: OK or PROBLEM.
+#   sudo vt-check
+. "$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)/lib/common.sh"
+need_root
+load_conf
+bad=0
+ok() { printf '  OK       %s\n' "$1"; }
+problem() { printf '  PROBLEM  %s\n' "$1"; bad=$((bad + 1)); }
+if ! rehearsal; then
+  for s in postgresql paperclip vt-email caddy vt-backup.timer; do
+    systemctl is-active --quiet "$s" && ok "$s is running" || problem "$s is not running (see: journalctl -u $s -n 50)"
+    systemctl is-enabled --quiet "$s" && ok "$s starts after a reboot" || problem "$s will not start after a reboot (fix: systemctl enable $s)"
+  done
+fi
+URL="${VT_CHECK_URL:-$PUBLIC_URL}"
+CURL=(curl -sS -m 10 ${VT_CHECK_CACERT:+--cacert "$VT_CHECK_CACERT"})
+[ "$("${CURL[@]}" -o /dev/null -w '%{http_code}' "$URL/api/health" 2>/dev/null)" = "200" ] && ok "Paperclip answers on $URL" || problem "Paperclip does not answer on $URL"
+[ "$("${CURL[@]}" "$URL/vt/health" 2>/dev/null)" = "ok" ] && ok "email service answers on $URL/vt" || problem "email service does not answer on $URL/vt"
+[ "$("${CURL[@]}" -o /dev/null -w '%{http_code}' -X POST "$URL/api/auth/sign-up/email" 2>/dev/null)" = "403" ] && ok "public sign-up is closed (invite links only)" || problem "public sign-up is open"
+host="${URL#https://}"; port=443; case "$host" in *:*) port="${host##*:}"; host="${host%%:*}" ;; esac
+end=$(echo | openssl s_client -connect "127.0.0.1:$port" -servername "$host" 2>/dev/null | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)
+if [ -n "$end" ]; then
+  days=$(( ($(date -d "$end" +%s) - $(date +%s)) / 86400 ))
+  [ "$days" -ge "${VT_CHECK_MIN_CERT_DAYS:-7}" ] && ok "HTTPS certificate valid for $days more days" || problem "HTTPS certificate ends in $days days"
+else problem "no HTTPS certificate found"; fi
+newest=$(ls -1t "$BACKUPS"/vt-backup-*.tar 2>/dev/null | head -1 || true)
+if [ -n "$newest" ]; then
+  age=$(( ($(date +%s) - $(stat -c %Y "$newest")) / 3600 ))
+  [ "$age" -le 26 ] && ok "last backup $age hours ago ($(basename "$newest"))" || problem "last backup is $age hours old"
+else problem "no backup yet (run: sudo vt-backup)"; fi
+for f in smtp-password paperclip-api-key github-token; do
+  [ -s "$SECRETS/$f" ] && ok "secret $f is set" || problem "secret $f is missing (sudo vt-secret ${f/paperclip-api-key/...})"
+done
+free=$(df -P "${VT_ROOT:-/}" | awk 'NR==2{print 100-$5}')
+[ "$free" -ge 15 ] && ok "disk $free% free" || problem "disk only $free% free"
+echo; [ "$bad" -eq 0 ] && echo "All good." || { echo "$bad problem(s)."; exit 1; }

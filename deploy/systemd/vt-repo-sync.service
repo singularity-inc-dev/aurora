@@ -1,0 +1,12 @@
+[Unit]
+Description=Vision and Tom: bring the project's main branch up to date from GitHub
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=paperclip
+Group=paperclip
+UMask=0027
+Environment=HOME=@PCDATA@
+Environment=PATH=@OPT@/node/bin:/usr/bin:/bin
+ExecStart=@OPT@/app/deploy/bin/vt-repo-sync @PCDATA@/repos/project @BASE@

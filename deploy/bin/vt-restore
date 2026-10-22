@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# Put the server back to the state of one backup.
+#   sudo vt-restore                      lists the backups
+#   sudo vt-restore /var/backups/vision-and-tom/vt-backup-20261022T033000Z.tar
+# What it does: checks the backup's checksums, stops the services, moves the
+# current data aside (nothing is deleted), restores the database and the files,
+# starts everything again and checks that Paperclip answers.
+. "$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)/lib/common.sh"
+need_root
+load_conf
+if [ -z "${1:-}" ]; then
+  echo "Backups (newest first):"; ls -1t "$BACKUPS"/vt-backup-*.tar 2>/dev/null || echo "  none yet"
+  echo "Restore one with: sudo vt-restore <file>"; exit 0
+fi
+file="$(readlink -f "$1")"
+[ -f "$file" ] || die "no such backup: $1"
+work=$(mktemp -d "$BACKUPS/.restore-XXXXXX")
+trap 'rm -rf "$work"' EXIT
+tar -C "$work" -xf "$file" MANIFEST paperclip.dump files.tar.gz || die "this file is not a Vision and Tom backup"
+(cd "$work" && sed -n '/  /p' MANIFEST | sha256sum -c --quiet -) || die "the backup is damaged (checksums do not match); nothing was changed"
+say "Backup checked: $(sed -n 's/^created=//p' "$work/MANIFEST")"
+
+say "Stopping services"
+for s in vt-email.service paperclip.service; do svc stop "$s" || true; done
+
+stamp=$(date -u +%Y%m%dT%H%M%SZ)
+aside="$BACKUPS/before-restore-$stamp"
+say "Moving the current data aside to $aside"
+mkdir -p "$aside"
+[ -d "$PCDATA" ] && mv "$PCDATA" "$aside/paperclip"
+[ -d "$ETC" ] && cp -a "$ETC" "$aside/etc-vision-and-tom"
+if pg psql -q -d postgres -tc "SELECT 1 FROM pg_database WHERE datname='paperclip'" | grep -q 1; then
+  pg psql -v ON_ERROR_STOP=1 -q -d postgres -c "ALTER DATABASE paperclip RENAME TO paperclip_before_restore_$stamp"
+fi
+
+say "Restoring files"
+tar -C "${VT_ROOT:-/}" -xzf "$work/files.tar.gz"
+rehearsal || chown -R paperclip:paperclip "$PCDATA"
+
+say "Restoring the database"
+pg psql -q -d postgres -tc "SELECT 1 FROM pg_roles WHERE rolname='paperclip'" | grep -q 1 || die "database user 'paperclip' is missing: run install.sh first, then restore again"
+# The restored settings hold the database password; make the database user match it.
+DB_PASS=$(sed -n 's#^postgres://paperclip:\([^@]*\)@.*#\1#p' "$SECRETS/db-url")
+echo "ALTER ROLE paperclip LOGIN PASSWORD '$DB_PASS';" | pg psql -v ON_ERROR_STOP=1 -q -d postgres
+unset DB_PASS
+pg createdb -O paperclip paperclip
+pg pg_restore --no-owner --role=paperclip --exit-on-error --dbname=paperclip <"$work/paperclip.dump"
+
+say "Starting services"
+svc start paperclip.service
+wait_http "http://127.0.0.1:${PAPERCLIP_PORT:-3100}/api/health" 180 || die "Paperclip did not come back; the old data is in $aside"
+[ -n "$(sed -n 's/^VT_COMPANY_ID=\(.\+\)/\1/p' "$ETC/email-service.env")" ] && svc start vt-email.service
+say "Restored from $(basename "$file"). The data from before is kept in $aside (delete it once you are happy)."
