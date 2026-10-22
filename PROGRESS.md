@@ -2,7 +2,98 @@
 
 Updated after every phase. Newest phase first.
 
-## Milestone 4: morning email with signed links (done; M5 not started)
+## Milestone 5: server kit, invite links, real SMTP, Approve on GitHub (done; M6 not started)
+
+### Your M4 answers, built
+1. **24-hour links; anything undecided comes back.** Every morning's email lists the tasks from earlier emails that are still undecided, with fresh links. This also happens on a morning when no night ran.
+2. **No second step.** "Email account approval power" is recorded below as a known gap.
+3. **Approve publishes to GitHub.** It pushes the task branch, opens a pull request and squash-merges it. When branch protection blocks the merge, the pull request stays open: the confirmation page says "Waiting for review" and the next email lists it under "Waiting for review". The token that can push and merge lives only in the email service. It is never in Paperclip, never an environment variable, and never on a command line.
+
+### Checked live in the cloud session
+`scripts/integration-test.sh` runs M1 to M5 plus the deployment rehearsal: **216 checks, all passing from a cold start** (122 for M1 to M4, 31 for M5, 63 in the rehearsal).
+
+**M5 live part** (against the Paperclip test bed; GitHub is a local stand-in running real git and the same pull-request calls):
+- **Approve merges on GitHub.** GitHub got the task branch at exactly the approved commit, and `main` got one squashed commit. The pull request shows as merged, the event log says `accepted`, and the ticket is `done`. A second click did nothing.
+- **Branch protection.** The page said "Waiting for review" with GitHub's reason and the pull request. `main` was unchanged and the ticket was "in review". After a reviewer merged it on GitHub, the next check (within a minute here; every 10 minutes on the server) recorded `accepted`.
+- **Real SMTP.** The morning email went through a mail server that requires a password and STARTTLS (Mailpit with its own certificate). With a wrong password, the invite command said the email could not be sent and printed the link instead. The password never showed.
+- **The GitHub token, proven out of reach:**
+  - Paperclip refuses a token in the plugin settings (HTTP 400).
+  - It appears nowhere in Paperclip's database dump or data folder, and not in the environment of Paperclip or its plugin workers.
+  - It is not in the email service's own environment or log.
+  - Another system user cannot read the token file or the email service's process details.
+  - GitHub saw it on every request, so it really was used.
+
+**Deployment rehearsal** (`scripts/deploy-rehearsal.sh`, 63 checks). It runs the real `deploy/` scripts inside a folder:
+- **Install.**
+  - Node 24.22.1 and Caddy 2.11.7 were downloaded and matched their pinned checksums.
+  - Paperclip 2026.1012.0 and Claude Code 2.1.293 were installed from lockfiles.
+  - PostgreSQL 16 is the database.
+  - Paperclip runs in authenticated mode on 127.0.0.1 only and shows nothing without signing in.
+- **HTTPS through Caddy.** The certificate was verified, plain HTTP redirects to HTTPS, and public sign-up is refused (403). Paperclip and the email service can't be reached from outside directly.
+- **vt-setup.** It made the owner's account and made the owner admin. It created the company, the plugin with valid settings, the owner's own agent, the project clone, and the email service behind HTTPS.
+- **Invite link over HTTPS.**
+  - The invite was emailed through the STARTTLS server.
+  - Opening it created nothing.
+  - Submitting it created Dee's account (she signs in and sees the company), her agent (engineer, cannot create agents or skills, 30 USD monthly budget, passes the route audit) and her settings row.
+  - A **used** link was refused, both when opened and when submitted.
+  - An **expired** link (1-minute lifetime, after 65 seconds) was refused and made no account.
+  - A forged link was refused.
+- **Backup and restore.**
+  - The backup file is root-only, with the database, the files and checksums.
+  - Then the database was dropped and all of Paperclip's files deleted, and `vt-restore` brought it all back. The owner and Dee sign in, both settings rows are there, Dee's used invite is still refused, and a new invite is signed (so Paperclip's encrypted secrets survived).
+  - The old data was moved aside, not deleted.
+  - A damaged backup is refused before anything changes.
+- **Simulated reboot.** Everything was stopped, then started from the installed unit files. HTTPS and the data came back. The units restart on failure and start at boot, the backup timer catches up after downtime, and `systemd-analyze verify` found no errors.
+- `vt-check` (the owner's "is everything OK" command) says "All good."
+
+### Unit tests
+- Plugin: 184 tests. New ones cover:
+  - the GitHub publish path, including a changed branch, merged, waiting, closed and failed
+  - carry-over of undecided tasks into the next morning
+  - invite links: one-time, expired, forged, an Approve link used as an invite, and finishing only when the settings bind the new agent
+  - no place for a token in the settings
+- Email service: 33 tests. They run against the stand-in GitHub on real git repositories:
+  - squash merge
+  - waiting for review, then a reviewer merges
+  - reuse of an open pull request
+  - a changed branch, a branch on GitHub with other commits (never overwritten), a wrong token
+  - option-like branch names
+  - **the token never appears on any git command line** (checked with a wrapper that records every command line)
+  - the join page and the order of the join steps, failure halfway, secrets read from files
+
+### Not verified (only possible on a real server or with real accounts)
+- **A real server.** This machine has no systemd and runs everything as root. The unit files were used to start the services, but systemd itself, a real reboot and the separate system users were not exercised. In particular, these permissions are designed but untested:
+  - Paperclip reading the root-owned plugin folder
+  - the email service reading Paperclip's worktrees through group access
+- **Real Let's Encrypt certificates** (the rehearsal used Caddy's local certificate authority), a real email provider, and the real GitHub.
+- **"Comes back in tomorrow's email" end to end.** The live test can't move the calendar forward a day, so this was proven with unit tests (controlled clock). Live, the pull-request state and the email footer were checked.
+- **Agents connected to Claude** (DEPLOY.md step 12).
+
+### Known gaps
+- **Email account approval power** (your answer 2). Anyone who can read your email can use its Approve and Reject links. There is no second step.
+- **Agents share a system user with Paperclip.** A misbehaving agent could read Paperclip's database and its stored secrets. That includes the link signing key, so in principle it could forge an Approve link.
+  - It still can't read the GitHub push token or push or merge by itself.
+  - Branch protection with a required review (DEPLOY.md step 4) is the backstop: even a forged Approve only opens a pull request that waits for a human.
+  - The proper fix is running agents in Paperclip's "ssh" or "sandbox" environment.
+- **Failed joins use up the link.** If a join fails halfway (for example, an account with that email already exists), the link is used up. The page says to ask for a new one.
+- **Crash during an approval.** If the email service crashes between pushing to GitHub and reporting back, that task's approval stays "in progress". Its link says so, and the task is not offered again.
+
+### How to test on your laptop
+```bash
+cd aurora && git pull
+(cd plugin && pnpm install && pnpm test)          # 184 passed
+(cd email-service && pnpm install && pnpm test)   # 33 passed
+```
+The live M5 checks and the rehearsal need Linux and root (they are built for the cloud machine): `IT_ONLY=m5 scripts/integration-test.sh`. To put it on a real server, follow **DEPLOY.md**. The steps only you can do are marked 🔑.
+
+### Open questions for you
+1. **Isolating the agents.** Should agents run as a separate user or machine (Paperclip's "ssh" environment), so they can't read Paperclip's own data? This closes the forged-approval gap above. It would be its own step, not M6.
+2. **Server size.** The minimum (2 vCPU, 4 GB) is an estimate. Should I measure memory during a real night once you have a server?
+3. **Who may invite.** Only you, on the server (`vt-invite`). Do teammates need to invite people too?
+4. **Invite lifetime.** 48 hours. Shorter or longer?
+5. **Signing agents in to Claude.** API key or Claude subscription login? (DEPLOY.md step 12 is not done yet.)
+
+## Milestone 4: morning email with signed links (done)
 
 ### Checked against live Paperclip (2026.1012.0), Mailpit and the email service, in the cloud session
 `scripts/integration-test.sh` runs M1 to M4 live: 124 checks, all passing from a cold start (with `SLOW=1`). The M4 part plays one night for Ana (3 tasks) and Bo (1 task):

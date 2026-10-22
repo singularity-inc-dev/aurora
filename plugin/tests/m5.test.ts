@@ -93,13 +93,13 @@ describe("Approve in GitHub mode", () => {
     // The decision is held while GitHub works: a second click and the Reject link do nothing.
     expect((await t.api("link-execute", { token })).body.status).toBe("already-used");
     expect((await t.api("link-execute", { token: t.linkIn(email!.text, "Reject")!, reason: "no" })).body.status).toBe("refused");
-    expect(sh(t.worktrees.t1, "log", "--merges", "--oneline", "main").trim()).toBe("");
+    expect(sh(t.worktrees.t1!, "log", "--merges", "--oneline", "main").trim()).toBe("");
   });
 
   it("refuses to publish a branch that changed after the email", async () => {
     const t = await setup();
     const [email] = await t.pending();
-    commit(t.worktrees.t1, "late.txt");
+    commit(t.worktrees.t1!, "late.txt");
     const res = await t.api("link-execute", { token: t.linkIn(email!.text, "Approve")! });
     expect(res.body).toMatchObject({ ok: false, status: "refused" });
     expect(t.event("t1").decision_action_id).toBeNull();
@@ -215,7 +215,7 @@ describe("invite links", () => {
   async function invite(t: Awaited<ReturnType<typeof setup>>, email = "cy@example.com") {
     const res = await t.api("invite-create", { email, timezone: "Europe/Berlin" });
     expect(res.status).toBe(201);
-    return { ...res.body, token: (res.body.url as string).split("/join/")[1]! };
+    return { ...res.body, url: res.body.url as string, token: (res.body.url as string).split("/join/")[1]! };
   }
 
   it("one link: preview changes nothing, the first claim wins, a used link is refused", async () => {

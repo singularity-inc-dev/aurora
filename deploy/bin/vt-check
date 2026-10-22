@@ -29,9 +29,10 @@ if [ -n "$newest" ]; then
   age=$(( ($(date +%s) - $(stat -c %Y "$newest")) / 3600 ))
   [ "$age" -le 26 ] && ok "last backup $age hours ago ($(basename "$newest"))" || problem "last backup is $age hours old"
 else problem "no backup yet (run: sudo vt-backup)"; fi
-for f in smtp-password paperclip-api-key github-token; do
-  [ -s "$SECRETS/$f" ] && ok "secret $f is set" || problem "secret $f is missing (sudo vt-secret ${f/paperclip-api-key/...})"
+for f in smtp-password github-token; do
+  [ -s "$SECRETS/$f" ] && ok "secret $f is set" || problem "secret $f is missing (add it with: vt-secret $f)"
 done
+[ -s "$SECRETS/paperclip-api-key" ] && ok "the email service has its Paperclip key" || problem "the email service has no Paperclip key (run: vt-setup)"
 free=$(df -P "${VT_ROOT:-/}" | awk 'NR==2{print 100-$5}')
 [ "$free" -ge 15 ] && ok "disk $free% free" || problem "disk only $free% free"
 echo; [ "$bad" -eq 0 ] && echo "All good." || { echo "$bad problem(s)."; exit 1; }

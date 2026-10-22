@@ -162,6 +162,36 @@ The integration test starts Mailpit, a fake mail server that catches the emails 
 3. In `email-service/`, copy `.env.example` to `.env` and fill in `VT_COMPANY_ID` and your SMTP server. Then run `pnpm install && pnpm start`.
 4. The morning after a night, your email arrives. To try it safely first, run `mailpit` and keep `SMTP_PORT=1025`, then open http://127.0.0.1:8025 to read the emails.
 
+## How to test milestone 5
+
+Milestone 5 is the server kit (see **[DEPLOY.md](DEPLOY.md)**, the checklist for putting it on a real server), invite links, real SMTP, and Approve publishing to GitHub.
+
+**A. Automatic tests**
+
+```bash
+(cd plugin && pnpm install && pnpm test)          # 184 passed
+(cd email-service && pnpm install && pnpm test)   # 33 passed
+IT_ONLY=m5 scripts/integration-test.sh            # M5 live checks + deployment rehearsal, about 15 minutes
+scripts/deploy-rehearsal.sh                       # only the rehearsal (Linux, as root), about 8 minutes
+```
+
+The M5 live part plays one night with Approve in GitHub mode. GitHub is a local stand-in: real git, the same pull-request calls, nothing leaves the machine. It shows:
+
+- a pull request squash-merged, and one that waits for review under branch protection until a reviewer merges it
+- the morning email sent through a mail server that needs a password and STARTTLS
+- the GitHub token appearing nowhere in Paperclip, and unreadable for another system user
+
+The rehearsal runs the real `deploy/` scripts inside a folder instead of the real system. It shows:
+
+- HTTPS through Caddy
+- an invite link creating a new person; used, expired and forged invite links refused
+- a backup, a simulated disaster and the restore
+- a simulated reboot
+
+The rehearsal needs Linux and root (it starts a private PostgreSQL 16 as the `postgres` user); it is meant for the cloud machine.
+
+**B. On a real server:** follow [DEPLOY.md](DEPLOY.md).
+
 ## Cloud environment setup
 
 `scripts/cloud-setup.sh` installs Node 24 (via nvm) and pnpm 10.28.0. Paste it into the cloud environment's setup script setting so every new session starts with both.

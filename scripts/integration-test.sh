@@ -24,6 +24,9 @@ PLUGIN_KEY="vision-and-tom.night-agents"
 export PAPERCLIP_API_URL="$BASE"
 export PAPERCLIP_TELEMETRY_DISABLED=1
 export DO_NOT_TRACK=1
+# Never hand this machine's own GitHub credentials to anything under test
+# (the email service also refuses a token given this way).
+unset GITHUB_TOKEN GH_TOKEN
 
 mkdir -p "$DATA_DIR" "$LOG_DIR"
 
