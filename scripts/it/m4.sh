@@ -1,4 +1,6 @@
 # Milestone 4 live checks. Sourced by scripts/integration-test.sh (uses its helpers).
+# Agents here run as Paperclip's own user, so isolation is off ("isolation":{"required":false});
+# the isolation itself is proven in scripts/it/v1a.sh.
 # Morning briefing email (caught by Mailpit, nothing is really sent) and its
 # signed, expiring, one-time Approve / Reject links served by email-service/.
 
@@ -69,7 +71,7 @@ check "M4: store the link signing key as a Paperclip secret" "$API_STATUS" "201"
 M4_SID=$(echo "$API_BODY" | json 'd.id')
 
 m4_config() { # nightStartHour for both
-  api POST "/api/plugins/$PLUGIN_ID/config" "{\"companyId\":\"$M4_CID\",\"configJson\":{
+  api POST "/api/plugins/$PLUGIN_ID/config" "{\"companyId\":\"$M4_CID\",\"configJson\":{\"isolation\":{\"required\":false},
     \"links\":{\"baseUrl\":\"$M4_LINKS\",\"signingSecret\":{\"type\":\"secret_ref\",\"secretId\":\"$M4_SID\"},\"expiresMinutes\":$M4_EXPIRES_MINUTES},
     \"night\":{\"projectId\":\"$M4_PID\"},\"checks\":{\"testCommand\":\"test -f README.md\"},\"people\":[
     {\"email\":\"ana@example.com\",\"agentId\":\"$M4_A\",\"timezone\":\"$M4_TZ\",\"nightStartHour\":$1,\"nightBudgetCapCents\":1000},

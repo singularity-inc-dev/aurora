@@ -10,7 +10,7 @@ import { ensureTaskRow } from "./eventlog.js";
 import { NIGHT_TASK_ORIGIN, PLAN_ORIGIN } from "./ids.js";
 import { parseProposal, ProposalRefused } from "./proposal.js";
 import { taskWorkspaceSettings } from "./workspace.js";
-import { auditAgentRoutes } from "./routes.js";
+import { agentProblems } from "./isolation.js";
 import { TOOL_PROPOSE } from "./tools.js";
 
 export { ProposalRefused };
@@ -124,8 +124,8 @@ async function readApproval(ctx: PluginContext, run: NightRun): Promise<{ status
   return { status: found.status, outcome: result?.outcome ?? null, reason: result?.reason ?? null };
 }
 
-async function agentIsSafe(ctx: PluginContext, companyId: string, agentId: string): Promise<boolean> {
-  return auditAgentRoutes(await ctx.agents.get(agentId, companyId), companyId).length === 0;
+async function agentIsSafe(ctx: PluginContext, settings: PluginSettings, companyId: string, person: Person): Promise<boolean> {
+  return agentProblems(settings, person, await ctx.agents.get(person.agentId, companyId), companyId).length === 0;
 }
 
 async function comment(ctx: PluginContext, companyId: string, issueId: string | null, body: string): Promise<void> {
@@ -147,7 +147,7 @@ async function apply(
       return;
 
     case "open-plan": {
-      if (!(await agentIsSafe(ctx, companyId, person.agentId))) {
+      if (!(await agentIsSafe(ctx, settings, companyId, person))) {
         ctx.logger.warn("evening plan skipped: agent is not locked down", { companyId, owner: person.email });
         return;
       }
@@ -212,7 +212,7 @@ async function apply(
 
     case "advance": {
       if (!run) return;
-      await advance(ctx, companyId, person, run, d.close, d.then, now);
+      await advance(ctx, companyId, settings, person, run, d.close, d.then, now);
       return;
     }
   }
@@ -221,6 +221,7 @@ async function apply(
 async function advance(
   ctx: PluginContext,
   companyId: string,
+  settings: PluginSettings,
   person: Person,
   run: NightRun,
   close: StepClose | null,
@@ -247,7 +248,7 @@ async function advance(
   if ("start" in then) {
     const nextId = run.taskIds[then.start];
     if (!nextId) return;
-    if (!(await agentIsSafe(ctx, companyId, person.agentId))) {
+    if (!(await agentIsSafe(ctx, settings, companyId, person))) {
       await comment(ctx, companyId, run.planIssueId, "Night routine paused: the agent is no longer locked down (see route-audit).");
       return;
     }

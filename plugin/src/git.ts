@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { lstat, readFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { AddedLine } from "./secretscan.js";
@@ -87,7 +87,13 @@ export function textLines(content: string): string[] {
   return lines;
 }
 
+/**
+ * Text of an untracked file, or null. Symlinks are never followed: an agent could
+ * point one at a file only Paperclip's own user may read, and this code runs as that user.
+ */
 async function readTextOrNull(file: string): Promise<string | null> {
+  const st = await lstat(file).catch(() => null);
+  if (!st || !st.isFile()) return null;
   const buf = await readFile(file).catch(() => null);
   if (!buf || buf.includes(0)) return null;
   return buf.toString("utf8");

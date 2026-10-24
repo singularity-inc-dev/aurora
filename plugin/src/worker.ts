@@ -1,9 +1,10 @@
 import { definePlugin, runWorker, type PluginContext, type ToolResult } from "@paperclipai/plugin-sdk";
-import { runChecksGate, formatReport } from "./checks.js";
-import { findPersonByAgent, parseSettings, type PluginSettings } from "./config.js";
+import { formatReport, localRunner, refusingRunner, runChecksGate, type CommandRunner } from "./checks.js";
+import { sandboxRunner } from "./checksandbox.js";
+import { findPersonByAgent, parseSettings, sandboxLogin, type Person, type PluginSettings } from "./config.js";
 import { ensureTaskRow, getTaskRow, recordChecks, recordHandoff } from "./eventlog.js";
 import { handoffDescription, HandoffRefused, parseHandoffRequest, planHandoff } from "./handoff.js";
-import { auditAgentRoutes } from "./routes.js";
+import { agentProblems, auditSettingsIsolation } from "./isolation.js";
 import { HANDOFF_ORIGIN, NIGHT_TICK_JOB } from "./ids.js";
 import { listRuns } from "./nightstore.js";
 import { proposeTonight, ProposalRefused, tickAll } from "./nightrunner.js";
@@ -39,9 +40,17 @@ async function loadSettings(ctx: PluginContext, companyId: string): Promise<Plug
   return parsed.settings;
 }
 
-async function requireSafeAgent(ctx: PluginContext, agentId: string, companyId: string, who: string): Promise<void> {
-  const problems = auditAgentRoutes(await ctx.agents.get(agentId, companyId), companyId);
+async function requireSafeAgent(ctx: PluginContext, settings: PluginSettings, person: Person, companyId: string, who: string): Promise<void> {
+  const problems = agentProblems(settings, person, await ctx.agents.get(person.agentId, companyId), companyId);
   if (problems.length > 0) throw new Refused(`${who} agent is not locked down: ${problems.join("; ")}`);
+}
+
+/** Where test and lint commands run: as the owner's agent user, or (isolation off, test beds only) here. */
+async function checksRunner(ctx: PluginContext, settings: PluginSettings, owner: Person, companyId: string, cwd: string): Promise<CommandRunner> {
+  if (!settings.checks.testCommand && !settings.checks.lintCommand) return refusingRunner;
+  const login = sandboxLogin(settings, owner);
+  if (login) return sandboxRunner(cwd, login, await ctx.secrets.resolve(login.privateKey, { companyId }));
+  return settings.isolation.required ? refusingRunner : localRunner(cwd);
 }
 
 function refusal(err: unknown): ToolResult {
@@ -70,7 +79,7 @@ const plugin = definePlugin({
       };
     });
 
-    // Which bound agents still have a side door around the board.
+    // Which bound agents still have a side door around the board, or are not isolated.
     ctx.data.register("route-audit", async (params) => {
       const companyId = typeof params.companyId === "string" ? params.companyId : "";
       const parsed = parseSettings(await ctx.config.get(companyId));
@@ -79,10 +88,16 @@ const plugin = definePlugin({
         parsed.settings.people.map(async (p) => ({
           email: p.email,
           agentId: p.agentId,
-          problems: auditAgentRoutes(await ctx.agents.get(p.agentId, companyId), companyId),
+          problems: agentProblems(parsed.settings, p, await ctx.agents.get(p.agentId, companyId), companyId),
         })),
       );
-      return { ok: agents.every((a) => a.problems.length === 0), agents };
+      const settingsProblems = auditSettingsIsolation(parsed.settings);
+      return {
+        ok: settingsProblems.length === 0 && agents.every((a) => a.problems.length === 0),
+        isolationRequired: parsed.settings.isolation.required,
+        settingsProblems,
+        agents,
+      };
     });
 
     // One event-log row, scoped to the caller's company.
@@ -123,7 +138,7 @@ const plugin = definePlugin({
         const settings = await loadSettings(ctx, run.companyId);
         const person = findPersonByAgent(settings, run.agentId);
         if (!person) throw new Refused("calling agent is not bound to any person");
-        await requireSafeAgent(ctx, run.agentId, run.companyId, "your");
+        await requireSafeAgent(ctx, settings, person, run.companyId, "your");
         const result = await proposeTonight(ctx, settings, person, run, params);
         return {
           content: `Proposed ${result.taskIds.length} task(s). Waiting for ${person.email} to approve the plan.`,
@@ -141,8 +156,8 @@ const plugin = definePlugin({
         try {
           const settings = await loadSettings(ctx, run.companyId);
           const plan = planHandoff(settings, run.agentId, parseHandoffRequest(params));
-          await requireSafeAgent(ctx, plan.from.agentId, run.companyId, "your");
-          await requireSafeAgent(ctx, plan.to.agentId, run.companyId, "the teammate's");
+          await requireSafeAgent(ctx, settings, plan.from, run.companyId, "your");
+          await requireSafeAgent(ctx, settings, plan.to, run.companyId, "the teammate's");
           const actor = { actorAgentId: run.agentId, actorRunId: run.runId };
 
           let issueId: string;
@@ -201,7 +216,7 @@ const plugin = definePlugin({
           const settings = await loadSettings(ctx, run.companyId);
           const owner = findPersonByAgent(settings, run.agentId);
           if (!owner) throw new Refused("calling agent is not bound to any person");
-          await requireSafeAgent(ctx, run.agentId, run.companyId, "your");
+          await requireSafeAgent(ctx, settings, owner, run.companyId, "your");
 
           const issue = await ctx.issues.get(issueId, run.companyId);
           if (!issue) throw new Refused("ticket not found");
@@ -212,7 +227,7 @@ const plugin = definePlugin({
           if (!ws || ws.providerType !== "git_worktree" || !cwd) throw new Refused("ticket workspace is not a git worktree");
           if (!ws.baseRef) throw new Refused("ticket worktree has no base branch to compare with");
 
-          const report = await runChecksGate(cwd, ws.baseRef, settings.checks);
+          const report = await runChecksGate(cwd, ws.baseRef, settings.checks, await checksRunner(ctx, settings, owner, run.companyId, cwd));
           const body = formatReport(report);
           const documentKey = checksDocumentKey();
           await ctx.issues.documents.upsert({

@@ -1,4 +1,6 @@
 # Milestone 5 live checks. Sourced by scripts/integration-test.sh (uses its helpers).
+# Agents here run as Paperclip's own user, so isolation is off ("isolation":{"required":false});
+# the isolation itself is proven in scripts/it/v1a.sh.
 # - Approve in GitHub mode: push, pull request, squash-merge; branch protection
 #   leaves the pull request waiting for review; the sync picks up a reviewer's merge.
 #   GitHub is a local stand-in (email-service/tests/fake-github.ts): a real git
@@ -77,7 +79,7 @@ api POST "/api/companies/$M5_CID/secrets" "{\"name\":\"vt-link-signing\",\"key\"
 M5_SID=$(echo "$API_BODY" | json 'd.id')
 m5_config() { # nightStartHour [github json]
   local gh="${2:-}"; [ -n "$gh" ] || gh='{"repo":"acme/app"}'
-  api POST "/api/plugins/$PLUGIN_ID/config" "{\"companyId\":\"$M5_CID\",\"configJson\":{
+  api POST "/api/plugins/$PLUGIN_ID/config" "{\"companyId\":\"$M5_CID\",\"configJson\":{\"isolation\":{\"required\":false},
     \"links\":{\"baseUrl\":\"$M5_LINKS\",\"signingSecret\":{\"type\":\"secret_ref\",\"secretId\":\"$M5_SID\"}},
     \"github\":$gh,
     \"night\":{\"projectId\":\"$M5_PID\"},\"checks\":{\"testCommand\":\"test -f README.md\"},\"people\":[

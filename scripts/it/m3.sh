@@ -1,4 +1,6 @@
 # Milestone 3 live checks. Sourced by scripts/integration-test.sh (uses its helpers).
+# Agents here run as Paperclip's own user, so isolation is off ("isolation":{"required":false});
+# the isolation itself is proven in scripts/it/v1a.sh.
 # Evening proposal + one-tap approval, one night routine per person, night budget
 # cap, per-step time-outs and retries. SLOW=1 also waits out a real time-out.
 
@@ -27,7 +29,7 @@ m3_agent() {
 M3_A=$(m3_agent "Ana night agent"); M3_B=$(m3_agent "Bo night agent"); M3_C=$(m3_agent "Cy night agent")
 
 m3_config() { # nightStartHour for Ana, Bo, Cy
-  api POST "/api/plugins/$PLUGIN_ID/config" "{\"companyId\":\"$M3_CID\",\"configJson\":{\"night\":{\"projectId\":\"$M3_PID\",\"stepTimeoutMinutes\":5,\"maxRetries\":1},\"people\":[
+  api POST "/api/plugins/$PLUGIN_ID/config" "{\"companyId\":\"$M3_CID\",\"configJson\":{\"isolation\":{\"required\":false},\"night\":{\"projectId\":\"$M3_PID\",\"stepTimeoutMinutes\":5,\"maxRetries\":1},\"people\":[
     {\"email\":\"ana@example.com\",\"agentId\":\"$M3_A\",\"timezone\":\"$M3_TZ\",\"nightStartHour\":$1,\"nightBudgetCapCents\":300,\"maxTasksPerNight\":2},
     {\"email\":\"bo@example.com\",\"agentId\":\"$M3_B\",\"timezone\":\"$M3_TZ\",\"nightStartHour\":$2,\"nightBudgetCapCents\":300},
     {\"email\":\"cy@example.com\",\"agentId\":\"$M3_C\",\"timezone\":\"$M3_TZ\",\"nightStartHour\":$3,\"nightBudgetCapCents\":300}]}}"

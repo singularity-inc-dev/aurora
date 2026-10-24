@@ -1,4 +1,6 @@
 # Milestone 2 live checks. Sourced by scripts/integration-test.sh (uses its helpers).
+# Agents here run as Paperclip's own user, so isolation is off ("isolation":{"required":false});
+# the isolation itself is proven in scripts/it/v1a.sh.
 # Board-only hand-offs, one worktree + branch per task, checks gate on the ticket.
 
 m2_wait_for_workspace() { # issueId -> prints execution workspace id (or nothing)
@@ -45,7 +47,7 @@ M2_A=$(echo "$API_BODY" | json 'd.id')
 api POST "/api/companies/$M2_CID/agents" "${M2_AGENT},\"name\":\"Bo night agent\"}"
 M2_B=$(echo "$API_BODY" | json 'd.id')
 
-api POST "/api/plugins/$PLUGIN_ID/config" "{\"companyId\":\"$M2_CID\",\"configJson\":{\"checks\":{\"testCommand\":\"test -f README.md\",\"lintCommand\":\"true\",\"maxDiffLines\":50},\"people\":[{\"email\":\"ana@example.com\",\"agentId\":\"$M2_A\",\"timezone\":\"Europe/London\",\"nightStartHour\":22,\"nightBudgetCapCents\":500},{\"email\":\"bo@example.com\",\"agentId\":\"$M2_B\",\"timezone\":\"Europe/London\",\"nightStartHour\":22,\"nightBudgetCapCents\":500}]}}"
+api POST "/api/plugins/$PLUGIN_ID/config" "{\"companyId\":\"$M2_CID\",\"configJson\":{\"isolation\":{\"required\":false},\"checks\":{\"testCommand\":\"test -f README.md\",\"lintCommand\":\"true\",\"maxDiffLines\":50},\"people\":[{\"email\":\"ana@example.com\",\"agentId\":\"$M2_A\",\"timezone\":\"Europe/London\",\"nightStartHour\":22,\"nightBudgetCapCents\":500},{\"email\":\"bo@example.com\",\"agentId\":\"$M2_B\",\"timezone\":\"Europe/London\",\"nightStartHour\":22,\"nightBudgetCapCents\":500}]}}"
 check "M2: save plugin settings" "$API_STATUS" "200"
 
 echo "-- routes between agents"

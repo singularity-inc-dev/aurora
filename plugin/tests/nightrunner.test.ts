@@ -8,6 +8,7 @@ import { tickPerson } from "../src/nightrunner.js";
 import { TOOL_PROPOSE } from "../src/tools.js";
 import { NIGHT_TASK_ORIGIN, PLAN_ORIGIN } from "../src/ids.js";
 import { createFakeDb } from "./fakedb.js";
+import { isolatedAgentFields, isolatedPersonFields } from "./helpers.js";
 
 const CO = "co-1";
 // Ana's night starts at 22:00 UTC; the evening plan opens at 20:00.
@@ -16,8 +17,8 @@ const NIGHT = new Date("2026-10-21T22:05:00Z");
 const config = {
   night: { projectId: "proj-1", stepTimeoutMinutes: 60, maxRetries: 1 },
   people: [
-    { email: "ana@example.com", agentId: "agent-ana", timezone: "UTC", nightStartHour: 22, nightBudgetCapCents: 500, maxTasksPerNight: 2 },
-    { email: "bo@example.com", agentId: "agent-bo", timezone: "UTC", nightStartHour: 22, nightBudgetCapCents: 500 },
+    { email: "ana@example.com", agentId: "agent-ana", ...isolatedPersonFields("agent-ana"), timezone: "UTC", nightStartHour: 22, nightBudgetCapCents: 500, maxTasksPerNight: 2 },
+    { email: "bo@example.com", agentId: "agent-bo", ...isolatedPersonFields("agent-bo"), timezone: "UTC", nightStartHour: 22, nightBudgetCapCents: 500 },
   ],
 };
 const settings = (() => {
@@ -32,7 +33,7 @@ async function setup() {
   const h = createTestHarness({ manifest, capabilities, config });
   const db = createFakeDb();
   (h.ctx as { db: unknown }).db = db;
-  const agent = (id: string) => ({ id, companyId: CO, name: id, role: "engineer", status: "idle", permissions: { canCreateAgents: false, canCreateSkills: false } }) as unknown as Agent;
+  const agent = (id: string) => ({ ...isolatedAgentFields(id), id, companyId: CO, name: id, role: "engineer", status: "idle", permissions: { canCreateAgents: false, canCreateSkills: false } }) as unknown as Agent;
   h.seed({
     companies: [{ id: CO, name: "Co" } as unknown as Company],
     agents: [agent("agent-ana"), agent("agent-bo")],

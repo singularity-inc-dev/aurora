@@ -28,6 +28,18 @@ export interface CommandOutcome {
   output: string;
 }
 
+/** Runs one operator-configured check command (locally, or in the checks sandbox: checksandbox.ts). */
+export type CommandRunner = (command: string, timeoutSeconds: number) => Promise<CommandOutcome>;
+
+export const localRunner = (cwd: string): CommandRunner => (command, timeoutSeconds) => runCommand(command, cwd, timeoutSeconds);
+
+/** With isolation required and no sandbox, commands are refused rather than run as Paperclip's own user. */
+export const refusingRunner: CommandRunner = async () => ({
+  exitCode: null,
+  timedOut: false,
+  output: "not run: the checks sandbox is not configured (commands never run as Paperclip's own user)",
+});
+
 /**
  * Run an operator-configured command in the task worktree. The environment holds
  * only PATH/HOME/LANG and CI=1: no Paperclip tokens or other keys leak into it.
@@ -70,11 +82,14 @@ export function runCommand(command: string, cwd: string, timeoutSeconds: number)
 async function commandCheck(
   name: "tests" | "lint",
   command: string | null,
-  cwd: string,
+  runner: CommandRunner,
   timeoutSeconds: number,
 ): Promise<CheckResult> {
   if (!command) return { name, status: "skipped", summary: "no command configured" };
-  const outcome = await runCommand(command, cwd, timeoutSeconds);
+  const outcome = await runner(command, timeoutSeconds);
+  if (outcome.exitCode === null && !outcome.timedOut) {
+    return { name, status: "failed", summary: outcome.output.split("\n")[0] || "could not run", output: outcome.output };
+  }
   if (outcome.timedOut) {
     return { name, status: "failed", summary: `timed out after ${timeoutSeconds}s`, output: outcome.output };
   }
@@ -89,7 +104,12 @@ function describeFindings(findings: SecretFinding[]): string {
 }
 
 /** Run the whole gate: diff size, secret scan, tests, lint. Fails closed on errors. */
-export async function runChecksGate(cwd: string, baseRef: string, settings: ChecksSettings): Promise<ChecksReport> {
+export async function runChecksGate(
+  cwd: string,
+  baseRef: string,
+  settings: ChecksSettings,
+  runner: CommandRunner = localRunner(cwd),
+): Promise<ChecksReport> {
   const results: CheckResult[] = [];
   let base: string;
   let head: string | null = null;
@@ -120,8 +140,8 @@ export async function runChecksGate(cwd: string, baseRef: string, settings: Chec
       : { name: "secret-scan", status: "failed", summary: describeFindings(findings) },
   );
 
-  results.push(await commandCheck("tests", settings.testCommand, cwd, settings.timeoutSeconds));
-  results.push(await commandCheck("lint", settings.lintCommand, cwd, settings.timeoutSeconds));
+  results.push(await commandCheck("tests", settings.testCommand, runner, settings.timeoutSeconds));
+  results.push(await commandCheck("lint", settings.lintCommand, runner, settings.timeoutSeconds));
 
   return { passed: results.every((r) => r.status !== "failed"), headSha: head, baseRef, results };
 }

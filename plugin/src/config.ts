@@ -32,6 +32,15 @@ export interface PersonSecret {
 export interface Person {
   email: string;
   agentId: string;
+  /**
+   * The Paperclip environment (SSH, to this person's own system user) that this
+   * person's agent must run in. Set by the server tools (vt-setup, vt-invite).
+   */
+  agentEnvironmentId: string | null;
+  /** That environment's system user (where this person's checks run too). */
+  agentUser: string | null;
+  /** Key for running checks as agentUser; on the server its only command is vt-check-runner. */
+  checksKey: SecretRef | null;
   timezone: string;
   nightStartHour: number;
   maxTasksPerNight: number;
@@ -45,6 +54,34 @@ export interface ChecksSettings {
   lintCommand: string | null;
   maxDiffLines: number;
   timeoutSeconds: number;
+  /**
+   * Where test and lint commands run: as the task owner's own agent user over SSH
+   * (each person's agentUser and checksKey), never as Paperclip's own user.
+   */
+  sandbox: ChecksSandbox | null;
+}
+
+/** The SSH server of the agents' system users. */
+export interface ChecksSandbox {
+  host: string;
+  port: number;
+  /** known_hosts line(s) for the host; the host key is always checked. */
+  knownHosts: string;
+}
+
+/** Everything one checks run needs to log in as the owner's agent user. */
+export interface SandboxLogin extends ChecksSandbox {
+  username: string;
+  privateKey: SecretRef;
+}
+
+/**
+ * Agent isolation (spec gap 1). When required, an agent only works if it runs in
+ * its owner's own environment (its own system user over SSH) and test commands
+ * run in the checks sandbox, never as Paperclip's own user. Turn it off only in a test bed.
+ */
+export interface IsolationSettings {
+  required: boolean;
 }
 
 /** Night routine settings shared by everyone. */
@@ -104,6 +141,7 @@ export const DEFAULT_INVITES: InviteSettings = {
 
 export interface PluginSettings {
   people: Person[];
+  isolation: IsolationSettings;
   checks: ChecksSettings;
   night: NightSettings;
   links: LinkSettings | null;
@@ -120,6 +158,17 @@ export const instanceConfigSchema: JsonSchema = {
   type: "object",
   required: ["people"],
   properties: {
+    isolation: {
+      type: "object",
+      title: "Agent isolation",
+      properties: {
+        required: {
+          type: "boolean",
+          title: "Each agent must run as its own system user, and checks in the checks sandbox (turn off only in a test bed)",
+          default: true,
+        },
+      },
+    },
     github: {
       type: "object",
       title: "GitHub (Approve opens and merges a pull request)",
@@ -189,6 +238,15 @@ export const instanceConfigSchema: JsonSchema = {
           maximum: 3600,
           default: DEFAULT_CHECK_TIMEOUT_SECONDS,
         },
+        sandbox: {
+          type: "object",
+          title: "Checks sandbox: the agents' SSH server (checks run as the owner's own agent user; set by vt-setup)",
+          properties: {
+            host: { type: "string", title: "Host", default: "127.0.0.1" },
+            port: { type: "integer", title: "Port", minimum: 1, maximum: 65535, default: 22 },
+            knownHosts: { type: "string", title: "Host key (known_hosts line)" },
+          },
+        },
       },
     },
     people: {
@@ -202,6 +260,9 @@ export const instanceConfigSchema: JsonSchema = {
         properties: {
           email: { type: "string", title: "Email", format: "email", minLength: 3 },
           agentId: { type: "string", title: "Agent id", minLength: 1 },
+          agentEnvironmentId: { type: "string", title: "Agent environment id (this person's own system user; set by vt-setup or the invite)" },
+          agentUser: { type: "string", title: "That environment's system user" },
+          checksKey: { type: "object", title: "Key for running checks as that user", format: "secret-ref" },
           timezone: { type: "string", title: "Timezone (IANA, e.g. Europe/London)", minLength: 1 },
           nightStartHour: { type: "integer", title: "Night start hour (0-23)", minimum: 0, maximum: 23 },
           maxTasksPerNight: {
@@ -281,6 +342,8 @@ export function parseSettings(raw: unknown): ParseResult {
   const people: Person[] = [];
   const seenAgents = new Set<string>();
   const seenEmails = new Set<string>();
+  const seenEnvironments = new Set<string>();
+  const seenUsers = new Set<string>();
 
   raw.people.forEach((entry, i) => {
     const at = `people[${i}]`;
@@ -320,6 +383,31 @@ export function parseSettings(raw: unknown): ParseResult {
       errors.push(`${at}.nightBudgetCapCents: must be a whole number of cents, 0 or more`);
     }
 
+    let agentEnvironmentId: string | null = null;
+    if (entry.agentEnvironmentId !== undefined && entry.agentEnvironmentId !== null && entry.agentEnvironmentId !== "") {
+      if (typeof entry.agentEnvironmentId !== "string") errors.push(`${at}.agentEnvironmentId: must be text`);
+      else if (seenEnvironments.has(entry.agentEnvironmentId.trim())) errors.push(`${at}.agentEnvironmentId: already used by another person's agent`);
+      else {
+        agentEnvironmentId = entry.agentEnvironmentId.trim();
+        seenEnvironments.add(agentEnvironmentId);
+      }
+    }
+
+    let agentUser: string | null = null;
+    if (entry.agentUser !== undefined && entry.agentUser !== null && entry.agentUser !== "") {
+      if (typeof entry.agentUser !== "string" || !USER_RE.test(entry.agentUser.trim())) errors.push(`${at}.agentUser: must be a system user name`);
+      else if (seenUsers.has(entry.agentUser.trim())) errors.push(`${at}.agentUser: already used by another person's agent`);
+      else {
+        agentUser = entry.agentUser.trim();
+        seenUsers.add(agentUser);
+      }
+    }
+    let checksKey: SecretRef | null = null;
+    if (entry.checksKey !== undefined && entry.checksKey !== null) {
+      checksKey = parseSecretRef(entry.checksKey);
+      if (!checksKey) errors.push(`${at}.checksKey: must be a Paperclip secret reference`);
+    }
+
     const secrets: PersonSecret[] = [];
     const seenNames = new Set<string>();
     const rawSecrets = entry.secrets ?? [];
@@ -353,6 +441,9 @@ export function parseSettings(raw: unknown): ParseResult {
     people.push({
       email,
       agentId,
+      agentEnvironmentId,
+      agentUser,
+      checksKey,
       timezone,
       nightStartHour: nightStartHour as number,
       maxTasksPerNight: maxTasksPerNight as number,
@@ -361,13 +452,14 @@ export function parseSettings(raw: unknown): ParseResult {
     });
   });
 
+  const isolation = parseIsolation(raw.isolation, errors);
   const checks = parseChecks(raw.checks, errors);
   const night = parseNight(raw.night, errors);
   const links = parseLinks(raw.links, errors);
   const github = parseGithub(raw.github, errors);
   const invites = parseInvites(raw.invites, errors);
 
-  return errors.length > 0 ? { ok: false, errors } : { ok: true, settings: { people, checks, night, links, github, invites } };
+  return errors.length > 0 ? { ok: false, errors } : { ok: true, settings: { people, isolation, checks, night, links, github, invites } };
 }
 
 const REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
@@ -479,12 +571,49 @@ function parseNight(raw: unknown, errors: string[]): NightSettings {
   };
 }
 
+function parseIsolation(raw: unknown, errors: string[]): IsolationSettings {
+  if (raw === undefined || raw === null) return { required: true };
+  if (!isRecord(raw)) {
+    errors.push("isolation: must be an object");
+    return { required: true };
+  }
+  if (raw.required === undefined) return { required: true };
+  if (typeof raw.required !== "boolean") {
+    errors.push("isolation.required: must be true or false");
+    return { required: true };
+  }
+  return { required: raw.required };
+}
+
+// Values that end up as ssh arguments: never option-like, never with spaces.
+const HOST_RE = /^[A-Za-z0-9][A-Za-z0-9.:-]*$/;
+const USER_RE = /^[a-z_][a-z0-9_-]{0,31}$/;
+
+function parseSandbox(raw: unknown, errors: string[]): ChecksSandbox | null {
+  if (raw === undefined || raw === null) return null;
+  if (!isRecord(raw)) {
+    errors.push("checks.sandbox: must be an object");
+    return null;
+  }
+  const host = typeof raw.host === "string" && raw.host.trim() ? raw.host.trim() : "127.0.0.1";
+  const hostOk = HOST_RE.test(host);
+  if (!hostOk) errors.push("checks.sandbox.host: must be a host name or address");
+  const port = raw.port ?? 22;
+  const portOk = Number.isInteger(port) && (port as number) >= 1 && (port as number) <= 65535;
+  if (!portOk) errors.push("checks.sandbox.port: must be a whole number 1-65535");
+  const knownHosts = typeof raw.knownHosts === "string" ? raw.knownHosts.trim() : "";
+  const knownOk = knownHosts !== "" && !knownHosts.startsWith("-");
+  if (!knownOk) errors.push("checks.sandbox.knownHosts: needs the host's known_hosts line");
+  return hostOk && portOk && knownOk ? { host, port: port as number, knownHosts } : null;
+}
+
 function parseChecks(raw: unknown, errors: string[]): ChecksSettings {
   const checks: ChecksSettings = {
     testCommand: null,
     lintCommand: null,
     maxDiffLines: DEFAULT_MAX_DIFF_LINES,
     timeoutSeconds: DEFAULT_CHECK_TIMEOUT_SECONDS,
+    sandbox: null,
   };
   if (raw === undefined) return checks;
   if (!isRecord(raw)) {
@@ -508,12 +637,20 @@ function parseChecks(raw: unknown, errors: string[]): ChecksSettings {
       errors.push("checks.timeoutSeconds: must be a whole number 10-3600");
     } else checks.timeoutSeconds = t as number;
   }
+  checks.sandbox = parseSandbox(raw.sandbox, errors);
   return checks;
 }
 
 export function findPersonByEmail(settings: PluginSettings, email: string): Person | undefined {
   const wanted = email.trim().toLowerCase();
   return settings.people.find((p) => p.email === wanted);
+}
+
+/** How to run checks as this person's own agent user, or null when not set up. */
+export function sandboxLogin(settings: PluginSettings, person: Person): SandboxLogin | null {
+  const sb = settings.checks.sandbox;
+  if (!sb || !person.agentUser || !person.checksKey) return null;
+  return { ...sb, username: person.agentUser, privateKey: person.checksKey };
 }
 
 export function findPersonByAgent(settings: PluginSettings, agentId: string): Person | undefined {

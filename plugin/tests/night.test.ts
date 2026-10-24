@@ -6,6 +6,9 @@ import type { NightClock } from "../src/nightclock.js";
 const person: Person = {
   email: "ana@example.com",
   agentId: "agent-ana",
+  agentEnvironmentId: null,
+  agentUser: null,
+  checksKey: null,
   timezone: "UTC",
   nightStartHour: 22,
   maxTasksPerNight: 3,
