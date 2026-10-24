@@ -310,7 +310,7 @@ Ship a thin version 1 now to two to four teams you know, reusing the code on the
 | M5 Decision log and standing rules | The log is in version 1; standing rules after a third matching ruling | Event log built; standing rules not built |  |
 | Hosting | One instance per team (decision 17) | Server kit, invite links, backups and restore built and rehearsed; never run on a real server |  |
 
-The repo's own milestone numbers (M1 to M6 in its CLAUDE.md) follow an older night-only plan, so they don't match this table's.
+Since 24 October the repo's CLAUDE.md uses this table's milestone names; its "Built so far" section maps the older night-only plan (M1 to M6) onto them.
 
 ### Thin version 1 for the pilot
 
@@ -437,7 +437,7 @@ Twenty-seven gaps remain on 24 October: nine to settle this week, seven to build
 | 2 | Each owner's agent on that owner's own model account | Deploy step 12 signs every agent in with one Anthropic account; Anthropic requires each end user's own key or subscription, signed in through its own flow ([Anthropic](https://code.claude.com/docs/en/legal-and-compliance)) | This week |
 | 3 | One real end-to-end run | Real agents, a real server and real GitHub have never been used; every check so far ran against stand-ins | This week |
 | 4 | Accept Anthropic's Commercial Terms | Required for products that preinstall or run Claude Code, such as hosted sandboxes ([Anthropic](https://code.claude.com/docs/en/legal-and-compliance)) | This week |
-| 5 | Public repository | The repo is public and PROGRESS.md lists unfixed security gaps, while its CLAUDE.md calls it a private repo; fix the gaps first or make it private until then | This week |
+| 5 | Public repository | Resolved on 24 October: the repo is now private. Fix the gaps PROGRESS.md lists before making it public | This week |
 | 6 | A one-page pilot agreement | What you store from a team's code, who can see it, how it's deleted, and that nothing merges without its owner | This week |
 | 7 | Security review level for friendly teams | The Risks table asks for an outside review before any team connects, which doesn't fit nine days. Recommended: least-privilege tokens, required reviews and your own review for friendly pilots; an outside review before paying teams | This week |
 | 8 | A business-model hypothesis (decision 12) | YC asks how you'll make money; Claude Code usage can't be resold, so state a platform fee per team or seat and test it | This week |

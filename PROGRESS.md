@@ -2,6 +2,30 @@
 
 Updated after every phase. Newest phase first.
 
+## Thin version 1 for the pilot (in progress)
+
+Milestone names now follow the spec (see CLAUDE.md, "Milestones" and "Built so far").
+
+| Piece | What | Status |
+| --- | --- | --- |
+| Step 1 | Project files realigned with the spec; decision register and the M5 answers in CLAUDE.md | Done |
+| A | Agent isolation (spec gap 1) | Not started |
+| B | Each owner's agent on their own Claude subscription or API key (gap 2) | Not started |
+| C | Handover any time ("Hand over now") and night names renamed to handover | Not started |
+| D | Claims and the pre-handover check | Not started |
+| E | Merge replay at handback | Not started |
+| F | Numbers from the event log, CSV export | Not started |
+| G | Collision audit (M0) | Not started |
+
+### Recorded as later (not built in thin version 1)
+- Approvals as each owner's own GitHub review (spec gap 13). The email Approve stays as it is for the pilot.
+- Risk tiers in the inbox (needs you, review suggested, passed under your rules).
+- The scope and cost gauge and the 6-hour caution.
+- Master agents with sub-agents.
+- Slack, WhatsApp and iMessage.
+- Generated screens (and MCP Apps).
+- The cross-model judge for conflicts in meaning.
+
 ## Milestone 5: server kit, invite links, real SMTP, Approve on GitHub (done; M6 not started)
 
 ### Your M4 answers, built
