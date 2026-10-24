@@ -1,0 +1,8 @@
+{
+  "name": "vision-and-tom-paperclip-runtime",
+  "private": true,
+  "description": "Paperclip as it runs on the server. Install with pnpm install --frozen-lockfile --prod (exact versions from pnpm-lock.yaml).",
+  "dependencies": {
+    "paperclipai": "2026.1012.0"
+  }
+}

@@ -1,0 +1,23 @@
+# Vision and Tom server settings. Copy to /etc/vision-and-tom/install.conf and fill in.
+# No passwords or tokens here: those go in with `sudo vt-secret ...` (see DEPLOY.md).
+
+# The web address people use, without https:// (its DNS must point at this server).
+DOMAIN=team.example.com
+# Let's Encrypt sends certificate warnings here.
+ACME_EMAIL=you@example.com
+
+# Your email account's SMTP settings (from your email provider's help pages).
+SMTP_HOST=smtp.example.com
+# 587 = STARTTLS (most providers), 465 = TLS from the start.
+SMTP_PORT=587
+SMTP_USER=you@example.com
+# Who the morning emails come from (usually the same address as SMTP_USER).
+MAIL_FROM="Vision and Tom <you@example.com>"
+
+# The GitHub repository the agents work on, as owner/name.
+GITHUB_REPO=your-org/your-repo
+# Its main branch.
+GITHUB_BASE_BRANCH=main
+
+# Your team's company name in Paperclip.
+COMPANY_NAME="My team"

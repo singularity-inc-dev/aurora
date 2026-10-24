@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Daily backup (run by vt-backup.timer at 03:30, or by hand: sudo vt-backup).
+# One file per day in /var/backups/vision-and-tom, the newest 14 are kept:
+#   paperclip.dump   the whole database (pg_dump, consistent snapshot)
+#   files.tar.gz     Paperclip's files (settings, encryption key, attachments,
+#                    project repository and task worktrees) and /etc/vision-and-tom
+#   MANIFEST         versions and checksums, checked again before any restore
+# The backup contains secrets (it must, to restore). Only root can read it.
+. "$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)/lib/common.sh"
+need_root
+KEEP="${VT_BACKUP_KEEP:-14}"
+stamp=$(date -u +%Y%m%dT%H%M%SZ)
+work=$(mktemp -d "$BACKUPS/.work-XXXXXX")
+trap 'rm -rf "$work"' EXIT
+mkdir -p "$BACKUPS" && chmod 700 "$BACKUPS"
+
+pg pg_dump --format=custom --no-owner --no-privileges --dbname=paperclip >"$work/paperclip.dump"
+# Logs and Paperclip's own caches are left out; everything needed to come back is in.
+tar -C "${VT_ROOT:-/}" -czf "$work/files.tar.gz" \
+  --exclude="var/lib/paperclip/instances/default/logs" --exclude="var/lib/paperclip/.npm" --exclude="var/lib/paperclip/.cache" \
+  "var/lib/paperclip" "etc/vision-and-tom"
+{
+  echo "created=$stamp"
+  echo "paperclip=$PAPERCLIP_VERSION postgres=$POSTGRES_MAJOR node=$NODE_VERSION"
+  (cd "$work" && sha256sum paperclip.dump files.tar.gz)
+} >"$work/MANIFEST"
+out="$BACKUPS/vt-backup-$stamp.tar"
+(umask 077 && tar -C "$work" -cf "$out.partial" MANIFEST paperclip.dump files.tar.gz && mv "$out.partial" "$out")
+# Keep the newest $KEEP backups.
+ls -1t "$BACKUPS"/vt-backup-*.tar 2>/dev/null | tail -n +$((KEEP + 1)) | xargs -r rm -f
+echo "backup written: $out ($(du -h "$out" | cut -f1))"

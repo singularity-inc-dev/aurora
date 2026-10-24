@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Invite one person: makes a signed link that works once, emails it, and prints it.
+#   sudo vt-invite ana@example.com Europe/London
+. "$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)/lib/common.sh"
+need_root
+[ -n "${1:-}" ] || die "usage: sudo vt-invite <email> [timezone, e.g. Europe/London]"
+# Read the email service's settings (one KEY=value per line, as systemd reads them).
+while IFS= read -r line; do
+  case "$line" in '' | \#*) continue ;; *=*) export "${line%%=*}=${line#*=}" ;; esac
+done <"$ETC/email-service.env"
+[ -n "${VT_COMPANY_ID:-}" ] || die "run vt-setup first"
+export SMTP_PASS_FILE="$SECRETS/smtp-password" PAPERCLIP_API_KEY_FILE="$SECRETS/paperclip-api-key"
+unset GITHUB_TOKEN GITHUB_TOKEN_FILE
+cd "$APP/email-service" && exec "$NODE_BIN/node" src/invite.ts "$@"

@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# One-time setup after install.sh (safe to run again):
+#  - your Paperclip account, as instance admin, and your company
+#  - the plugin, its settings, and your own night agent
+#  - the project repository the agents work on (if you stored github-read-token)
+#  - starts the email service and the repository sync
+#   sudo /opt/vision-and-tom/app/deploy/bin/vt-setup
+. "$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)/lib/common.sh"
+need_root
+load_conf
+PC_URL="http://127.0.0.1:${PAPERCLIP_PORT:-3100}"
+wait_http "$PC_URL/api/health" 120 || die "Paperclip is not running (see: journalctl -u paperclip -n 50)"
+
+ask() { # var prompt [hidden]
+  local v=""
+  if [ -n "${!1:-}" ]; then return; fi
+  if [ "${3:-}" = hidden ]; then read -r -s -p "$2: " v; echo; else read -r -p "$2: " v; fi
+  printf -v "$1" '%s' "$v"
+}
+ask OWNER_NAME "Your name"
+ask OWNER_EMAIL "Your email (to sign in to Paperclip and get your morning emails)"
+ask OWNER_TIMEZONE "Your timezone, e.g. Europe/London"
+if [ -z "${OWNER_PASSWORD:-}" ]; then
+  ask OWNER_PASSWORD "Choose your Paperclip password (12+ characters)" hidden
+  ask OWNER_PASSWORD2 "Type it again" hidden
+  [ "$OWNER_PASSWORD" = "$OWNER_PASSWORD2" ] || die "the two passwords differ; nothing was changed"
+fi
+[ "${#OWNER_PASSWORD}" -ge 12 ] || die "the password must have at least 12 characters"
+
+# Paperclip's one-time invite that makes its first user the instance admin
+# (printed by "paperclipai auth bootstrap-ceo"; nothing when there is an admin already).
+BOOTSTRAP=$("$NODE_BIN/node" "$OPT/paperclip/node_modules/paperclipai/dist/index.js" auth bootstrap-ceo --data-dir "$PCDATA" --expires-hours 1 2>&1 |
+  sed 's/\x1b\[[0-9;]*m//g' | grep -o '/invite/[A-Za-z0-9_-]*' | tail -1 | sed 's#/invite/##' || true)
+
+say "Project repository"
+REPO_DIR="$PCDATA/repos/project"
+if [ ! -d "$REPO_DIR/.git" ] && [ -n "${GITHUB_REPO:-}" ]; then
+  CLONE_URL="${VT_PROJECT_CLONE_URL:-https://github.com/$GITHUB_REPO.git}"
+  if [ -s "$SECRETS/github-read-token" ] || [ -n "${VT_PROJECT_CLONE_URL:-}" ]; then
+    as_pc() { if rehearsal; then "$@"; else runuser -u paperclip -- "$@"; fi; }
+    hdr=""
+    [ -s "$SECRETS/github-read-token" ] && hdr="Authorization: Basic $(printf 'x-access-token:%s' "$(cat "$SECRETS/github-read-token")" | base64 -w0)"
+    as_pc git ${hdr:+-c "http.extraHeader=$hdr"} clone -q --branch "${GITHUB_BASE_BRANCH:-main}" "$CLONE_URL" "$REPO_DIR"
+    # Keep the read-only token with the clone so the agents and the sync can fetch.
+    [ -n "$hdr" ] && as_pc git -C "$REPO_DIR" config http.extraHeader "$hdr"
+    unset hdr
+    echo "  cloned $GITHUB_REPO into $REPO_DIR"
+  else
+    echo "  skipped: store a read-only token first (sudo vt-secret github-read-token), then run vt-setup again"
+  fi
+fi
+
+say "Paperclip: your account, company, plugin and settings"
+export OWNER_NAME OWNER_EMAIL OWNER_PASSWORD OWNER_TIMEZONE COMPANY_NAME BOOTSTRAP PUBLIC_URL PC_URL APP SECRETS REPO_DIR
+export GITHUB_REPO="${GITHUB_REPO:-}" VT_INVITE_DEFAULTS="${VT_INVITE_DEFAULTS:-}"
+# The password goes to the setup program on standard input, not on a command line.
+RESULT=$("$NODE_BIN/node" -e '
+  const e = process.env;
+  process.stdout.write(JSON.stringify({
+    owner: { name: e.OWNER_NAME, email: e.OWNER_EMAIL, password: e.OWNER_PASSWORD }, ownerTimezone: e.OWNER_TIMEZONE,
+    companyName: e.COMPANY_NAME, bootstrapToken: e.BOOTSTRAP || null, publicUrl: e.PUBLIC_URL, paperclipUrl: e.PC_URL,
+    pluginPath: e.APP + "/plugin", githubRepo: e.GITHUB_REPO || null, apiKeyFile: e.SECRETS + "/paperclip-api-key",
+    projectRepoPath: require("fs").existsSync(e.REPO_DIR + "/.git") ? e.REPO_DIR : null,
+    invites: e.VT_INVITE_DEFAULTS ? JSON.parse(e.VT_INVITE_DEFAULTS) : undefined,
+  }));' | "$NODE_BIN/node" "$KIT/bin/vt-setup.mjs")
+unset OWNER_PASSWORD OWNER_PASSWORD2
+COMPANY_ID=$(printf '%s' "$RESULT" | "$NODE_BIN/node" -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(0,"utf8")).companyId)')
+sed -i "s/^VT_COMPANY_ID=.*/VT_COMPANY_ID=$COMPANY_ID/" "$ETC/email-service.env"
+
+say "Starting the email service and the repository sync"
+missing=""
+for f in smtp-password github-token; do [ -s "$SECRETS/$f" ] || missing="$missing $f"; done
+if [ -n "$missing" ]; then
+  # systemd refuses to start a service whose secret file is missing; an empty one means "not set".
+  for f in $missing; do write_secret "$f" ""; done
+  echo "  note: not set yet:$missing (add with sudo vt-secret <name>; until then emails or GitHub publishing will not work)"
+fi
+if rehearsal; then svc enable vt-email.service; else
+  systemctl daemon-reload
+  systemctl enable --now vt-email.service
+  [ -d "$REPO_DIR/.git" ] && systemctl enable --now vt-repo-sync.timer
+fi
+wait_http "http://127.0.0.1:${EMAIL_PORT:-3299}/health" 60 || die "the email service did not start (see: journalctl -u vt-email -n 50)"
+say "Done. Open $PUBLIC_URL and sign in as $OWNER_EMAIL. Invite people with: sudo vt-invite <email> <timezone>"

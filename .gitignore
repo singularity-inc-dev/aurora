@@ -147,3 +147,11 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# Local Paperclip test bed (never commit)
+.paperclip-data/
+.vendor/
+.test-logs/
+
+# Email service state (git mirror) when run locally
+email-service/.state/

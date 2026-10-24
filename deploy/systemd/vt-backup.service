@@ -1,0 +1,8 @@
+[Unit]
+Description=Vision and Tom daily backup
+After=postgresql.service
+
+[Service]
+Type=oneshot
+ExecStart=@OPT@/app/deploy/bin/vt-backup
+Nice=10

@@ -1,0 +1,11 @@
+[Unit]
+Description=Vision and Tom daily backup at 03:30 (server time)
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+RandomizedDelaySec=10min
+# Runs after boot if the server was off at 03:30.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

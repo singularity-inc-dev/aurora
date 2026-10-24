@@ -1,0 +1,28 @@
+# Vision and Tom: one web address, HTTPS certificates from Let's Encrypt (automatic).
+# Values come from /etc/vision-and-tom/caddy.env.
+{
+	email {$VT_ACME_EMAIL}
+	http_port {$VT_HTTP_PORT:80}
+	https_port {$VT_HTTPS_PORT:443}
+	{$VT_CADDY_EXTRA}
+}
+
+{$VT_DOMAIN} {
+	encode gzip
+	header Strict-Transport-Security "max-age=31536000"
+
+	# In this exact order (route keeps it):
+	route {
+		# Accounts are created only through invite links: the email service signs new
+		# people up on the server itself, never through this public address.
+		respond /api/auth/sign-up* "Sign-up is by invite only." 403
+
+		# Approve / Reject / invite pages (the email service).
+		handle_path /vt/* {
+			reverse_proxy 127.0.0.1:{$VT_EMAIL_PORT:3299}
+		}
+
+		# Everything else is Paperclip.
+		reverse_proxy 127.0.0.1:{$VT_PAPERCLIP_PORT:3100}
+	}
+}
