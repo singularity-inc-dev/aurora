@@ -54,9 +54,9 @@ export interface InviteCheck {
 }
 
 export interface InviteDefaults {
-  nightStartHour: number;
-  nightBudgetCapCents: number;
-  maxTasksPerNight: number;
+  handoverStartHour: number;
+  handoverBudgetCapCents: number;
+  maxTasksPerHandover: number;
   agentAdapterType: string;
   agentAdapterConfig: Record<string, unknown>;
   agentMonthlyBudgetCents: number;
@@ -65,6 +65,15 @@ export interface InviteDefaults {
 export type InviteClaim =
   | { ok: true; status: "claimed"; plan: { inviteId: string; email: string; timezone: string; defaults: InviteDefaults; agent: AgentBinding | null } }
   | { ok: false; status: "invalid" | "expired" | "already-used" | "refused"; message: string };
+
+export interface HandoverStatus {
+  ok: boolean;
+  message?: string;
+  email?: string;
+  timezone?: string;
+  handoverStartHour?: number;
+  handovers?: Array<{ handoverKey: string; kind: "scheduled" | "now"; status: string; stopReason: string | null }>;
+}
 
 /** What the service needs from the plugin. Kept as an interface so tests can fake it. */
 export interface PluginApi {
@@ -78,6 +87,9 @@ export interface PluginApi {
   createInvite(email: string, timezone: string | null, agent?: AgentBinding | null): Promise<{ ok: boolean; message?: string; url?: string; email?: string; expiresAt?: string }>;
   previewInvite(token: string): Promise<InviteCheck>;
   claimInvite(token: string, timezone: string | null): Promise<InviteClaim>;
+  /** Hand over now (only ever called for the owner signed in to Paperclip). */
+  handoverStatus(email: string): Promise<HandoverStatus>;
+  startHandover(email: string): Promise<{ ok: boolean; message?: string; handoverKey?: string }>;
   finishInvite(inviteId: string, result: { ok: true; agentId: string; userId: string } | { ok: false; message: string }): Promise<{ ok: boolean; message: string }>;
 }
 
@@ -129,6 +141,8 @@ export function paperclipApi(cfg: ServiceConfig, fetchImpl: typeof fetch = fetch
     previewInvite: (token) => call<InviteCheck>("POST", "/invites/preview", { token }),
     claimInvite: (token, timezone) => call<InviteClaim>("POST", "/invites/claim", { token, ...(timezone ? { timezone } : {}) }),
     finishInvite: (inviteId, result) => call("POST", "/invites/finish", { inviteId, ...result }),
+    handoverStatus: (email) => call<HandoverStatus>("GET", `/handovers/status?${company}&email=${encodeURIComponent(email)}`, undefined, [404]),
+    startHandover: (email) => call("POST", "/handovers/start", { email }, [404, 409]),
   };
 }
 
@@ -197,6 +211,25 @@ export function boardApi(cfg: ServiceConfig, fetchImpl: typeof fetch = fetch): B
     async savePluginConfig(config) {
       const id = await resolvePluginId();
       await req("POST", `/api/plugins/${id}/config`, { companyId: cfg.companyId, configJson: config });
+    },
+  };
+}
+
+/** Who is signed in to Paperclip in this browser (its session cookie), or null. */
+export interface SessionApi {
+  whoIs(cookie: string): Promise<{ email: string } | null>;
+}
+
+export function sessionApi(cfg: ServiceConfig, fetchImpl: typeof fetch = fetch): SessionApi {
+  const origin = new URL(cfg.paperclipPublicUrl).origin;
+  return {
+    async whoIs(cookie) {
+      if (!cookie) return null;
+      // The browser's own Paperclip sign-in, checked by Paperclip itself; the cookie is never stored.
+      const res = await fetchImpl(`${cfg.paperclipUrl}/api/auth/get-session`, { headers: { cookie, origin } });
+      if (!res.ok) return null;
+      const body = (await res.json().catch(() => null)) as { user?: { email?: unknown } } | null;
+      return typeof body?.user?.email === "string" ? { email: body.user.email.toLowerCase() } : null;
     },
   };
 }

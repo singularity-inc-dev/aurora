@@ -4,9 +4,9 @@ import type { Agent, Company, Issue, PluginAccessMember } from "@paperclipai/plu
 import manifest from "../src/manifest.js";
 import plugin from "../src/worker.js";
 import { parseSettings } from "../src/config.js";
-import { tickPerson } from "../src/nightrunner.js";
+import { startHandoverNow, tickPerson } from "../src/handoverrunner.js";
 import { TOOL_PROPOSE } from "../src/tools.js";
-import { NIGHT_TASK_ORIGIN, PLAN_ORIGIN } from "../src/ids.js";
+import { HANDOVER_TASK_ORIGIN, PLAN_ORIGIN } from "../src/ids.js";
 import { createFakeDb } from "./fakedb.js";
 import { isolatedAgentFields, isolatedPersonFields } from "./helpers.js";
 
@@ -17,8 +17,8 @@ const NIGHT = new Date("2026-10-21T22:05:00Z");
 const config = {
   night: { projectId: "proj-1", stepTimeoutMinutes: 60, maxRetries: 1 },
   people: [
-    { email: "ana@example.com", agentId: "agent-ana", ...isolatedPersonFields("agent-ana"), timezone: "UTC", nightStartHour: 22, nightBudgetCapCents: 500, maxTasksPerNight: 2 },
-    { email: "bo@example.com", agentId: "agent-bo", ...isolatedPersonFields("agent-bo"), timezone: "UTC", nightStartHour: 22, nightBudgetCapCents: 500 },
+    { email: "ana@example.com", agentId: "agent-ana", ...isolatedPersonFields("agent-ana"), timezone: "UTC", handoverStartHour: 22, handoverBudgetCapCents: 500, maxTasksPerHandover: 2 },
+    { email: "bo@example.com", agentId: "agent-bo", ...isolatedPersonFields("agent-bo"), timezone: "UTC", handoverStartHour: 22, handoverBudgetCapCents: 500 },
   ],
 };
 const settings = (() => {
@@ -41,7 +41,7 @@ async function setup() {
   });
   await plugin.definition.setup(h.ctx);
   const tick = (now: Date) => tickPerson(h.ctx, CO, settings, ana, now);
-  const runRow = () => db.tables.night_runs.find((r) => r.owner === ana.email)!;
+  const runRow = () => db.tables.handover_runs.find((r) => r.owner === ana.email)!;
   const event = (taskId: string) => db.tables.task_events.find((r) => r.task_id === taskId)!;
   const run = { agentId: "agent-ana", runId: "run-1", companyId: CO, projectId: "proj-1" };
   return { h, db, tick, runRow, event, run };
@@ -70,7 +70,7 @@ describe("evening proposal", () => {
     expect((await t.tick(new Date("2026-10-21T12:00:00Z"))).kind).toBe("none");
     expect((await t.tick(EVENING)).kind).toBe("open-plan");
     await t.tick(new Date(EVENING.getTime() + 5 * 60_000));
-    expect(t.db.tables.night_runs).toHaveLength(1);
+    expect(t.db.tables.handover_runs).toHaveLength(1);
     const plans = (await t.h.ctx.issues.list({ companyId: CO })).filter((i) => i.originKind === PLAN_ORIGIN);
     expect(plans).toHaveLength(1);
     expect(plans[0]).toMatchObject({ assigneeAgentId: "agent-ana", status: "todo" });
@@ -80,7 +80,7 @@ describe("evening proposal", () => {
     const t = await proposedNight();
     for (const id of t.tasks) {
       const issue = await t.h.ctx.issues.get(id, CO);
-      expect(issue).toMatchObject({ status: "backlog", assigneeAgentId: "agent-ana", originKind: NIGHT_TASK_ORIGIN, projectId: "proj-1" });
+      expect(issue).toMatchObject({ status: "backlog", assigneeAgentId: "agent-ana", originKind: HANDOVER_TASK_ORIGIN, projectId: "proj-1" });
       expect(issue?.executionWorkspaceSettings).toMatchObject({ workspaceStrategy: { type: "git_worktree" } });
       expect(t.event(id).proposed_at).toBeTruthy();
     }
@@ -100,11 +100,11 @@ describe("evening proposal", () => {
   it("refuses when no plan is open, or a second proposal for the same night", async () => {
     const t = await setup();
     expect((await t.h.executeTool<{ error?: string }>(TOOL_PROPOSE, { tasks: [{ title: "a" }] }, t.run)).error).toBe(
-      "no evening plan is open for you right now",
+      "no handover plan is open for you right now",
     );
     const p = await proposedNight();
     expect((await p.h.executeTool<{ error?: string }>(TOOL_PROPOSE, { tasks: [{ title: "again" }] }, p.run)).error).toBe(
-      "no evening plan is open for you right now",
+      "no handover plan is open for you right now",
     );
   });
 
@@ -207,5 +207,39 @@ describe("time-outs and retries", () => {
     expect(t.event(t.tasks[0]!).outcome).toBe("failed");
     expect((await t.h.ctx.issues.get(t.tasks[0]!, CO))?.status).toBe("blocked");
     expect((await t.h.ctx.issues.get(t.tasks[1]!, CO))?.status).toBe("todo");
+  });
+});
+
+describe("Hand over now", () => {
+  // 14:05 UTC: far from Ana's scheduled handover at 22:00.
+  const AFTERNOON = new Date("2026-10-21T14:05:00Z");
+
+  it("starts a handover at once: plan, approval, then work right away", async () => {
+    const t = await setup();
+    const started = await startHandoverNow(t.h.ctx, CO, settings, ana, AFTERNOON);
+    expect(started).toMatchObject({ ok: true, handoverKey: "2026-10-21T14:05" });
+    expect(t.runRow()).toMatchObject({ kind: "now", handover_key: "2026-10-21T14:05", status: "proposing" });
+    const planId = (started as { planIssueId: string }).planIssueId;
+    expect((await t.h.ctx.issues.get(planId, CO))?.title).toContain("handover now");
+
+    const res = await t.h.executeTool<{ error?: string; data: { taskIds: string[] } }>(TOOL_PROPOSE, { tasks: [{ title: "Fix login" }] }, t.run);
+    expect(res.error).toBeUndefined();
+    await approve({ ...t, plan: planId, tasks: res.data.taskIds });
+    const soon = new Date(AFTERNOON.getTime() + 2 * 60_000);
+    expect((await t.tick(soon)).kind).toBe("approve");
+    expect((await t.tick(soon)).kind).toBe("advance");
+    expect((await t.h.ctx.issues.get(res.data.taskIds[0]!, CO))?.status).toBe("todo");
+  });
+
+  it("only one handover at a time", async () => {
+    const t = await setup();
+    expect((await startHandoverNow(t.h.ctx, CO, settings, ana, AFTERNOON)).ok).toBe(true);
+    expect(await startHandoverNow(t.h.ctx, CO, settings, ana, new Date(AFTERNOON.getTime() + 60_000))).toEqual({ ok: false, message: "a handover is already in progress (proposing)" });
+  });
+
+  it("refuses an agent that is not locked down", async () => {
+    const t = await setup();
+    const loose = { ...ana, agentEnvironmentId: "someone-elses" };
+    expect(await startHandoverNow(t.h.ctx, CO, settings, loose, AFTERNOON)).toMatchObject({ ok: false, message: expect.stringContaining("not locked down") });
   });
 });

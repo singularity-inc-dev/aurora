@@ -1,13 +1,13 @@
 import { definePlugin, runWorker, type PluginContext, type ToolResult } from "@paperclipai/plugin-sdk";
 import { formatReport, localRunner, refusingRunner, runChecksGate, type CommandRunner } from "./checks.js";
 import { sandboxRunner } from "./checksandbox.js";
-import { findPersonByAgent, parseSettings, sandboxLogin, type Person, type PluginSettings } from "./config.js";
+import { findPersonByAgent, findPersonByEmail, parseSettings, sandboxLogin, type Person, type PluginSettings } from "./config.js";
 import { ensureTaskRow, getTaskRow, recordChecks, recordHandoff } from "./eventlog.js";
 import { handoffDescription, HandoffRefused, parseHandoffRequest, planHandoff } from "./handoff.js";
 import { agentProblems, auditSettingsIsolation } from "./isolation.js";
-import { HANDOFF_ORIGIN, NIGHT_TICK_JOB } from "./ids.js";
-import { listRuns } from "./nightstore.js";
-import { proposeTonight, ProposalRefused, tickAll } from "./nightrunner.js";
+import { HANDOFF_ORIGIN, HANDOVER_TICK_JOB } from "./ids.js";
+import { listRuns } from "./handoverstore.js";
+import { proposeHandover, ProposalRefused, startHandoverNow, tickAll } from "./handoverrunner.js";
 import { startTicker, type Ticker } from "./ticker.js";
 import { renderBriefing } from "./briefing.js";
 import { getAction, getBriefingById, listPendingBriefings, markBriefingSent } from "./briefstore.js";
@@ -71,9 +71,9 @@ const plugin = definePlugin({
           email: p.email,
           agentId: p.agentId,
           timezone: p.timezone,
-          nightStartHour: p.nightStartHour,
-          maxTasksPerNight: p.maxTasksPerNight,
-          nightBudgetCapCents: p.nightBudgetCapCents,
+          handoverStartHour: p.handoverStartHour,
+          maxTasksPerHandover: p.maxTasksPerHandover,
+          handoverBudgetCapCents: p.handoverBudgetCapCents,
           keyNames: p.secrets.map((s) => ({ name: s.name, access: s.access })),
         })),
       };
@@ -95,6 +95,8 @@ const plugin = definePlugin({
       return {
         ok: settingsProblems.length === 0 && agents.every((a) => a.problems.length === 0),
         isolationRequired: parsed.settings.isolation.required,
+        // Old night-only setting names still stored (they work; vt-setup rewrites them).
+        legacyNames: parsed.settings.legacyNames,
         settingsProblems,
         agents,
       };
@@ -109,13 +111,16 @@ const plugin = definePlugin({
       return row && row.company_id === companyId ? row : null;
     });
 
-    // Tonight's routines for a company: what each person's night is doing.
-    ctx.data.register("night-status", async (params) => {
+    // Each person's handovers (newest first): scheduled or "now", and where each one is.
+    ctx.data.register("handover-status", async (params) => {
       const companyId = typeof params.companyId === "string" ? params.companyId : "";
       if (!companyId) return [];
       return (await listRuns(ctx.db, companyId, 50)).map((r) => ({
         owner: r.owner,
-        nightDate: r.nightDate,
+        handoverKey: r.handoverKey,
+        kind: r.kind,
+        startsAt: r.startsAt,
+        endsAt: r.endsAt,
         status: r.status,
         planIssueId: r.planIssueId,
         taskIds: r.taskIds,
@@ -125,13 +130,13 @@ const plugin = definePlugin({
       }));
     });
 
-    // One tick drives every person's night routine (see night.ts for the rules).
+    // One tick drives every person's handovers (see handover.ts for the rules).
     // The scheduled job only kicks the ticker; see ticker.ts for why.
     pluginContext = ctx;
     ticker?.stop();
-    const nightTicker = startTicker(() => tickAll(ctx, new Date()));
-    ticker = nightTicker;
-    ctx.jobs.register(NIGHT_TICK_JOB, () => nightTicker.kick());
+    const handoverTicker = startTicker(() => tickAll(ctx, new Date()));
+    ticker = handoverTicker;
+    ctx.jobs.register(HANDOVER_TICK_JOB, () => handoverTicker.kick());
 
     ctx.tools.register(TOOL_PROPOSE, PROPOSE_TOOL, async (params, run) => {
       try {
@@ -139,7 +144,7 @@ const plugin = definePlugin({
         const person = findPersonByAgent(settings, run.agentId);
         if (!person) throw new Refused("calling agent is not bound to any person");
         await requireSafeAgent(ctx, settings, person, run.companyId, "your");
-        const result = await proposeTonight(ctx, settings, person, run, params);
+        const result = await proposeHandover(ctx, settings, person, run, params);
         return {
           content: `Proposed ${result.taskIds.length} task(s). Waiting for ${person.email} to approve the plan.`,
           data: result,
@@ -320,6 +325,23 @@ const plugin = definePlugin({
         };
       case "pr-update":
         return { status: 200, body: await recordPullRequestUpdate(ctx, input.companyId, body) };
+      case "handover-start": {
+        // Hand over now. The email service calls this only for the owner signed in to Paperclip.
+        const person = typeof body.email === "string" ? findPersonByEmail(settings, body.email) : undefined;
+        if (!person) return { status: 404, body: { ok: false, message: "you are not on the team" } };
+        const started = await startHandoverNow(ctx, input.companyId, settings, person, now);
+        return { status: started.ok ? 201 : 409, body: started };
+      }
+      case "handover-status": {
+        const email = typeof input.query?.email === "string" ? input.query.email : "";
+        const person = findPersonByEmail(settings, email);
+        if (!person) return { status: 404, body: { ok: false, message: "you are not on the team" } };
+        const runs = (await listRuns(ctx.db, input.companyId, 50)).filter((r) => r.owner === person.email).slice(0, 5);
+        return {
+          status: 200,
+          body: { ok: true, email: person.email, timezone: person.timezone, handoverStartHour: person.handoverStartHour, handovers: runs.map((r) => ({ handoverKey: r.handoverKey, kind: r.kind, status: r.status, stopReason: r.stopReason })) },
+        };
+      }
       case "invite-create": {
         const created = await createInvite(ctx, settings, input.companyId, body, now);
         return { status: created.ok ? 201 : 409, body: created };

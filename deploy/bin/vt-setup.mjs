@@ -7,6 +7,7 @@
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { ensureAgentEnvironment, isolatedAdapterConfig, parseAgentLogin } from "../../email-service/src/agentenv.ts";
+import { migrateLegacySettings } from "../../plugin/src/config.ts";
 
 const input = JSON.parse(readFileSync(0, "utf8"));
 // The owner's agent's own system user and fresh keys, made by vt-setup as root (deploy/lib/agents.sh).
@@ -92,7 +93,10 @@ for (let i = 0; i < 60; i++) {
 await call("PATCH", "/api/instance/settings/experimental", { enableIsolatedWorkspaces: true }, board);
 
 // 7. Plugin settings: links, GitHub, the project, invites, and the owner as the first person.
-const current = (await call("GET", `/api/plugins/${pluginId}/config?companyId=${cid}`, undefined, board)).data?.configJson ?? {};
+// Settings saved under the old night-only names move to the new handover names.
+const migrated = migrateLegacySettings((await call("GET", `/api/plugins/${pluginId}/config?companyId=${cid}`, undefined, board)).data?.configJson ?? {});
+if (migrated.legacyNames.length > 0) log(`settings moved to the new handover names (${migrated.legacyNames.length} renamed)`);
+const current = migrated.config;
 let signingSecret = current.links?.signingSecret;
 if (!signingSecret) {
   const s = (await call("POST", `/api/companies/${cid}/secrets`, { name: "vt-link-signing", key: `vt-link-signing-${randomBytes(3).toString("hex")}`, value: randomBytes(32).toString("hex") }, board)).data;
@@ -100,7 +104,7 @@ if (!signingSecret) {
   log("link signing key created (kept inside Paperclip)");
 }
 const invites = { ...(current.invites ?? {}), ...(input.invites ?? {}) };
-let projectId = current.night?.projectId;
+let projectId = current.handover?.projectId;
 if (!projectId && input.projectRepoPath) {
   const p = (await call("POST", `/api/companies/${cid}/projects`, {
     name: input.githubRepo ? input.githubRepo.split("/")[1] : "project",
@@ -138,9 +142,9 @@ if (!ownerRow) {
     agentId: agent.id,
     ...(binding ?? {}),
     timezone: input.ownerTimezone || invites.defaultTimezone || "UTC",
-    nightStartHour: invites.nightStartHour ?? 22,
-    maxTasksPerNight: invites.maxTasksPerNight ?? 3,
-    nightBudgetCapCents: invites.nightBudgetCapCents ?? 300,
+    handoverStartHour: invites.handoverStartHour ?? 22,
+    maxTasksPerHandover: invites.maxTasksPerHandover ?? 3,
+    handoverBudgetCapCents: invites.handoverBudgetCapCents ?? 300,
     secrets: [],
   });
   log("your agent created (cannot create agents or skills)");
@@ -149,7 +153,7 @@ const config = {
   ...current,
   links: { ...(current.links ?? {}), baseUrl: `${input.publicUrl}/vt`, signingSecret },
   ...(input.githubRepo ? { github: { repo: input.githubRepo } } : {}),
-  night: { ...(current.night ?? {}), ...(projectId ? { projectId } : {}) },
+  handover: { ...(current.handover ?? {}), ...(projectId ? { projectId } : {}) },
   // Checks run as each owner's own agent user, over the same SSH server.
   ...(agentLogin ? { checks: { ...(current.checks ?? {}), sandbox: { host: agentLogin.host, port: agentLogin.port, knownHosts: agentLogin.knownHosts } } } : {}),
   invites,

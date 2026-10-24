@@ -8,7 +8,7 @@ import { auditModelAccess } from "../src/modelaccess.js";
 
 const ref = (secretId: string) => ({ type: "secret_ref", secretId });
 function settingsWith(people: Array<Record<string, unknown>>): PluginSettings {
-  const r = parseSettings({ people: people.map((p, i) => ({ email: `p${i}@example.com`, agentId: `a${i}`, timezone: "UTC", nightStartHour: 22, nightBudgetCapCents: 1, ...p })) });
+  const r = parseSettings({ people: people.map((p, i) => ({ email: `p${i}@example.com`, agentId: `a${i}`, timezone: "UTC", handoverStartHour: 22, handoverBudgetCapCents: 1, ...p })) });
   if (!r.ok) throw new Error(r.errors.join("; "));
   return r.settings;
 }
@@ -57,7 +57,7 @@ describe("auditModelAccess", () => {
 
 describe("parseSettings: model access", () => {
   it("api-key needs the person's own key", () => {
-    const r = parseSettings({ people: [{ email: "a@example.com", agentId: "a", timezone: "UTC", nightStartHour: 1, nightBudgetCapCents: 1, modelAccess: "api-key" }] });
+    const r = parseSettings({ people: [{ email: "a@example.com", agentId: "a", timezone: "UTC", handoverStartHour: 1, handoverBudgetCapCents: 1, modelAccess: "api-key" }] });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.errors[0]).toContain("needs the person's own key named anthropic-api-key");
   });
@@ -66,8 +66,8 @@ describe("parseSettings: model access", () => {
     const shared = [{ name: "anthropic-api-key", secret: ref("same") }];
     const r = parseSettings({
       people: [
-        { email: "a@example.com", agentId: "a", timezone: "UTC", nightStartHour: 1, nightBudgetCapCents: 1, modelAccess: "api-key", secrets: shared },
-        { email: "b@example.com", agentId: "b", timezone: "UTC", nightStartHour: 1, nightBudgetCapCents: 1, modelAccess: "api-key", secrets: shared },
+        { email: "a@example.com", agentId: "a", timezone: "UTC", handoverStartHour: 1, handoverBudgetCapCents: 1, modelAccess: "api-key", secrets: shared },
+        { email: "b@example.com", agentId: "b", timezone: "UTC", handoverStartHour: 1, handoverBudgetCapCents: 1, modelAccess: "api-key", secrets: shared },
       ],
     });
     expect(r.ok).toBe(false);

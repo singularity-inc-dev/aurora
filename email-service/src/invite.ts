@@ -27,13 +27,13 @@ if (!created.ok || !created.url) {
 console.log(`Invite for ${created.email}, valid until ${created.expiresAt} (works once):`);
 console.log(created.url);
 if (process.env.VT_INVITE_NO_EMAIL === "1") process.exit(0);
-const text = `Hello,\n\nYou are invited to join your team's Vision and Tom workspace. Open this link to create your account and your personal night agent (it works once and expires ${created.expiresAt?.replace("T", " ").slice(0, 16)} UTC):\n\n${created.url}\n`;
+const text = `Hello,\n\nYou are invited to join your team's Vision and Tom workspace. Open this link to create your account and your personal agent (it works once and expires ${created.expiresAt?.replace("T", " ").slice(0, 16)} UTC):\n\n${created.url}\n`;
 try {
   await smtpSender(cfg)({
     to: created.email!,
     subject: "Your invite to Vision and Tom",
     text,
-    html: `<p>Hello,</p><p>You are invited to join your team's Vision and Tom workspace. This link creates your account and your personal night agent. It works once.</p><p><a href="${esc(created.url)}">Join</a></p>`,
+    html: `<p>Hello,</p><p>You are invited to join your team's Vision and Tom workspace. This link creates your account and your personal agent. It works once.</p><p><a href="${esc(created.url)}">Join</a></p>`,
   });
   console.log(`Emailed to ${created.email}.`);
 } catch (err) {

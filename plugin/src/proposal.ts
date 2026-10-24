@@ -1,4 +1,4 @@
-import { MAX_TASKS_PER_NIGHT, type Person } from "./config.js";
+import { MAX_TASKS_PER_HANDOVER, type Person } from "./config.js";
 import { MAX_DESCRIPTION_LENGTH, MAX_TITLE_LENGTH } from "./handoff.js";
 
 export type ProposedTask = { issueId: string } | { title: string; description: string };
@@ -14,7 +14,7 @@ export class ProposalRefused extends Error {
 export function parseProposal(params: unknown, person: Person): ProposedTask[] {
   const raw = (params as { tasks?: unknown } | null)?.tasks;
   if (!Array.isArray(raw) || raw.length === 0) throw new ProposalRefused("propose at least one task");
-  const limit = Math.min(person.maxTasksPerNight, MAX_TASKS_PER_NIGHT);
+  const limit = Math.min(person.maxTasksPerHandover, MAX_TASKS_PER_HANDOVER);
   if (raw.length > limit) throw new ProposalRefused(`propose at most ${limit} tasks`);
 
   const seen = new Set<string>();

@@ -27,7 +27,7 @@ describe("classify", () => {
 
   it.each([
     [{ outcome: "failed" }, "failed", "timed out"],
-    [{ outcome: "blocked" }, "blocked", "stopped by the night routine"],
+    [{ outcome: "blocked" }, "blocked", "stopped by the handover"],
     [{ startedAt: null }, "blocked", "not started"],
     [{ issueStatus: "in_progress" }, "blocked", "in_progress"],
     [{ worktree: null }, "blocked", "no worktree"],
@@ -50,7 +50,7 @@ describe("renderBriefing", () => {
     id: "b1",
     companyId: "co",
     owner: "ana@example.com",
-    nightDate: "2026-10-21",
+    handoverKey: "2026-10-21",
     status: "pending",
     notes: [],
     items: [
@@ -62,7 +62,7 @@ describe("renderBriefing", () => {
   const email = renderBriefing(b, { baseUrl: "http://mail.test", signingSecret: { type: "secret_ref", secretId: "x" }, expiresMinutes: 60 }, secret, exp);
 
   it("has Ready, Blocked and Failed sections with counts in the subject", () => {
-    expect(email.subject).toBe("Your night of 2026-10-21: 1 ready, 1 blocked, 1 failed");
+    expect(email.subject).toBe("Your handover of 2026-10-21: 1 ready, 1 blocked, 1 failed");
     expect(email.text).toMatch(/READY \(1\)[\s\S]*BLOCKED \(1\)[\s\S]*FAILED \(1\)/);
     expect(email.to).toBe("ana@example.com");
   });

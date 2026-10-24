@@ -11,7 +11,7 @@ Milestone names now follow the spec (see CLAUDE.md, "Milestones" and "Built so f
 | Step 1 | Project files realigned with the spec; decision register and the M5 answers in CLAUDE.md | Done |
 | A | Agent isolation (spec gap 1) | Done, live-tested |
 | B | Each owner's agent on their own Claude subscription or API key (gap 2) | Done, live-tested with stand-ins |
-| C | Handover any time ("Hand over now") and night names renamed to handover | Not started |
+| C | Handover any time ("Hand over now") and night names renamed to handover | Done; v1c, M2 and M3 live-tested, full live run being repeated |
 | D | Claims and the pre-handover check | Not started |
 | E | Merge replay at handback | Not started |
 | F | Numbers from the event log, CSV export | Not started |
@@ -43,6 +43,17 @@ Each person's agent runs as a system user of its own (`vt-a-...`), which Papercl
 **Unit-tested:** a scan of every Aurora source file shows no code reads, copies or logs Claude login files (only `vt-check` tests that Paperclip's own user has none, without opening it).
 
 **Not verified:** a real Claude subscription sign-in and a real API key.
+
+### C. Handover any time (done)
+- **Hand over now.** While signed in to Paperclip, open `https://YOUR-DOMAIN/vt/handover` and tap the button. Your agent plans at once; work starts as soon as you approve the plan, and the handback email comes when it is done. The scheduled handover stays as it was. Only one handover per person runs at a time.
+- **Names.** "Night" is now "handover" everywhere you see it: settings (`handoverStartHour`, `maxTasksPerHandover`, `handoverBudgetCapCents`, the `handover` box), the agent's tool (`propose_handover`), tickets and emails ("Your handover of ..."). The database tables were renamed by a migration.
+- **Safe migration.** Settings saved under the old names keep working; `vt-setup` (run it again on the server) rewrites them to the new names, and the route audit lists any old names left.
+
+**Checked live** (`scripts/it/v1c.sh`, 12 checks, with the scheduled hour 12 hours away): old names accepted and listed, gone after the migration; Hand over now opens the plan at once; a second one is refused; someone not on the team is refused; after approval the task starts right away; finished when its task is done. The older live tests still post the old setting names, so every run also proves they work. Rehearsal: the page refuses without sign-in and from another site, and starts the signed-in owner's handover over HTTPS.
+
+**Found by the live tests:** a scheduled handover first kept the window it was given when its plan opened, so moving your start hour after that had no effect. It now follows your current schedule for that day (a Hand over now keeps its own window). Unit test added.
+
+**Unit tests:** plugin 301, email service 38.
 
 ### Recorded as later (not built in thin version 1)
 - Approvals as each owner's own GitHub review (spec gap 13). The email Approve stays as it is for the pilot.

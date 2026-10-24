@@ -10,7 +10,7 @@ This is a checklist. Do the steps in order and tick each box.
 
 - Paperclip, where everyone signs in with a password.
 - The Vision and Tom plugin.
-- The morning emails, with Approve and Reject links. Approve opens a pull request on GitHub and merges it.
+- The handback emails, with Approve and Reject links. Approve opens a pull request on GitHub and merges it.
 - Invite links for new teammates.
 - A backup every night, and everything starting again by itself after a restart.
 
@@ -50,7 +50,7 @@ Your web address is then `team.example.com`. It can take from a few minutes to a
 
 ### ☐ 3. 🔑 Get your email account's sending settings
 
-The morning emails and invites are sent from your own email account, through what is called "SMTP". Look up four things in your email provider's help pages (search for "SMTP settings"):
+The handback emails and invites are sent from your own email account, through what is called "SMTP". Look up four things in your email provider's help pages (search for "SMTP settings"):
 
 - **SMTP server**, for example `smtp.gmail.com` or `smtp.fastmail.com`
 - **Port**: use `587` if offered, otherwise `465`
@@ -265,6 +265,16 @@ Ana gets an email with a link. The command also prints the link, so you can send
 - Then connect her agent to her own Claude account (step 12, for Ana).
 - A used or expired link shows "Invite already used" or "Invite expired" and creates nothing. Just run `vt-invite` again.
 
+### Hand over now
+
+Each person's agent works at their scheduled handover hour (set in the plugin settings). To start one at any other time, the person opens this page **while signed in to Paperclip**:
+
+```
+https://YOUR-DOMAIN/vt/handover
+```
+
+and taps **Hand over now**. Their agent plans up to three tasks right away. Nothing runs until they approve the plan in Paperclip, and nothing shared changes until they approve each result in the handback email. Only one handover per person runs at a time, and the page only ever acts for the person who is signed in.
+
 ### During the first real handover: measure memory
 
 The server sizes in step 1 are estimates. During your first real handover, while the agents work, log in (step 5) and type:
@@ -337,7 +347,7 @@ Run `vt-check` afterwards. Delete the `before-restore-...` folder only once you'
 | Caddy (HTTPS, certificates from Let's Encrypt) | user `caddy` | from the internet, ports 80 and 443 |
 | Paperclip | user `paperclip` | only through Caddy (it listens on 127.0.0.1:3100) |
 | Each person's agent | its own user `vt-a-...`, not in the `paperclip` group | Paperclip logs in to it over SSH on 127.0.0.1 only; the owner's own key may only start Claude Code's sign-in (step 12) |
-| Email service (morning emails, Approve/Reject/invite pages at `/vt/...`) | user `vt-mail` | only through Caddy (127.0.0.1:3299) |
+| Email service (handback emails; Approve/Reject, invite and Hand over now pages at `/vt/...`) | user `vt-mail` | only through Caddy (127.0.0.1:3299) |
 | PostgreSQL 16 | user `postgres` | only on the server |
 
 - **Sign-up through the web address is closed.** New accounts are only made by invite links.

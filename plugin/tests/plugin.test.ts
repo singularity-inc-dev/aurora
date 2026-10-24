@@ -14,8 +14,8 @@ const person = (email: string, agentId: string) => ({
   agentId,
   ...isolatedPersonFields(agentId),
   timezone: "Europe/London",
-  nightStartHour: 22,
-  nightBudgetCapCents: 500,
+  handoverStartHour: 22,
+  handoverBudgetCapCents: 500,
   secrets: [{ name: "github", secret: { type: "secret_ref", secretId: `sec-${agentId}` } }],
 });
 const config = { people: [person("ana@example.com", "agent-ana"), person("bo@example.com", "agent-bo")] };
@@ -54,7 +54,7 @@ describe("people and route audit", () => {
     const h = await setup();
     const data = await h.getData<{ ok: boolean; people: Array<Record<string, unknown>> }>("people", { companyId: CO });
     expect(data.ok).toBe(true);
-    expect(data.people[0]).toMatchObject({ email: "ana@example.com", maxTasksPerNight: 3 });
+    expect(data.people[0]).toMatchObject({ email: "ana@example.com", maxTasksPerHandover: 3 });
     expect(JSON.stringify(data)).not.toContain("sec-agent-ana");
   });
 

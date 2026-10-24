@@ -102,7 +102,7 @@ for _ in $(seq 1 20); do curl -s -m 1 "$M5_LINKS/health" >/dev/null 2>&1 && brea
 check "M5: email service is up" "$(curl -s "$M5_LINKS/health")" "ok"
 
 api GET "/api/plugins/$PLUGIN_ID/jobs"
-M5_JOB=$(echo "$API_BODY" | json 'd.find(j=>j.jobKey==="night-tick").id')
+M5_JOB=$(echo "$API_BODY" | json 'd.find(j=>j.jobKey==="handover-tick").id')
 m5_tick() {
   api POST "/api/plugins/$PLUGIN_ID/jobs/$M5_JOB/trigger" '{}'
   local run; run=$(echo "$API_BODY" | json 'd.runId')
@@ -112,7 +112,7 @@ m5_tick() {
     sleep 1
   done
 }
-m5_night() { api POST "/api/plugins/$PLUGIN_ID/data/night-status" "{\"companyId\":\"$M5_CID\",\"params\":{}}"; echo "$API_BODY" | json "(d.data[0]||{}).$1"; }
+m5_night() { api POST "/api/plugins/$PLUGIN_ID/data/handover-status" "{\"companyId\":\"$M5_CID\",\"params\":{}}"; echo "$API_BODY" | json "(d.data[0]||{}).$1"; }
 m5_issue() { api GET "/api/issues/$1"; echo "$API_BODY" | json "d.$2"; }
 m5_event() { api POST "/api/plugins/$PLUGIN_ID/data/task-event" "{\"companyId\":\"$M5_CID\",\"params\":{\"taskId\":\"$1\"}}"; echo "$API_BODY" | json "d.data.$2"; }
 m5_run() {
@@ -148,7 +148,7 @@ m5_work() { # taskId file
 
 echo "-- a night for Cy with two tasks"
 m5_tick
-m5_tool propose_tonight '{"tasks":[{"title":"Add greeting"},{"title":"Add farewell"}]}'
+m5_tool propose_handover '{"tasks":[{"title":"Add greeting"},{"title":"Add farewell"}]}'
 M5_T1=$(echo "$API_BODY" | json 'd.result.data.taskIds[0]'); M5_T2=$(echo "$API_BODY" | json 'd.result.data.taskIds[1]')
 M5_PLAN=$(m5_night planIssueId)
 api GET "/api/issues/$M5_PLAN/interactions"
@@ -169,7 +169,7 @@ M5_MAIL=$(curl -s "$M5_MP_API/message/$(curl -s "$M5_MP_API/messages" | json 'd.
 M5_APPROVE1=$(echo "$M5_MAIL" | grep '^  Approve: ' | sed -n 1p | sed 's/^  Approve: //')
 M5_APPROVE2=$(echo "$M5_MAIL" | grep '^  Approve: ' | sed -n 2p | sed 's/^  Approve: //')
 check "M5: two Approve links" "$([ -n "$M5_APPROVE1" ] && [ -n "$M5_APPROVE2" ] && echo yes)" "yes"
-check "M5: the email says undecided tasks come back with fresh links" "$(echo "$M5_MAIL" | grep -c "comes back in the next morning's email with fresh links")" "1"
+check "M5: the email says undecided tasks come back with fresh links" "$(echo "$M5_MAIL" | grep -c "comes back in your next handback email with fresh links")" "1"
 m5_post() { curl -s -X POST -H 'content-type: application/x-www-form-urlencoded' --data "${2:-}" "$1"; }
 
 echo "-- Approve pushes the branch, opens a pull request and squash-merges it"

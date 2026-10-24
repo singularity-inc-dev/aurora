@@ -4,7 +4,7 @@ import type { Agent, Company, Issue, PluginApiRequestInput, PluginExecutionWorks
 import manifest from "../src/manifest.js";
 import plugin from "../src/worker.js";
 import { parseSettings } from "../src/config.js";
-import { previousDate, tickPerson } from "../src/nightrunner.js";
+import { previousDate, tickPerson } from "../src/handoverrunner.js";
 import { baseBranchName } from "../src/links.js";
 import { FORBIDDEN_CAPABILITIES } from "../src/routes.js";
 import { createFakeDb } from "./fakedb.js";
@@ -17,7 +17,7 @@ const baseConfig = {
   links: { baseUrl: "http://mail.test", signingSecret: { type: "secret_ref", secretId: "sig" }, expiresMinutes: 60 },
   github: { repo: "acme/app" },
   invites: { expiresMinutes: 30, agentAdapterType: "process", agentAdapterConfig: { command: "pwd" } },
-  people: [{ email: "ana@example.com", agentId: "agent-ana", timezone: "UTC", nightStartHour: 22, nightBudgetCapCents: 500 }],
+  people: [{ email: "ana@example.com", agentId: "agent-ana", timezone: "UTC", handoverStartHour: 22, handoverBudgetCapCents: 500 }],
 };
 
 function settingsOf(config: unknown) {
@@ -63,7 +63,7 @@ async function setup(config: Record<string, unknown> = baseConfig) {
     });
     db.tables.task_events.push({ task_id: id, company_id: CO, owner: "ana@example.com", agent: "agent-ana", task_kind: "task", started_at: "2026-10-21T22:05:00Z", checks_result: "passed", checks_head: heads[id], outcome: null, decision_action_id: null });
   }
-  db.tables.night_runs.push({ company_id: CO, owner: "ana@example.com", agent_id: "agent-ana", night_date: "2026-10-21", status: "finished", task_ids: JSON.stringify(["t1", "t2"]), current_index: 1, current_attempt: 1 });
+  db.tables.handover_runs.push({ company_id: CO, owner: "ana@example.com", agent_id: "agent-ana", handover_key: "2026-10-21", status: "finished", task_ids: JSON.stringify(["t1", "t2"]), current_index: 1, current_attempt: 1 });
   const tick = (now: Date) => tickPerson(h.ctx, CO, settingsOf(current), settingsOf(current).people[0]!, now);
   await tick(MORNING);
 
@@ -133,7 +133,7 @@ describe("Approve in GitHub mode", () => {
     vi.setSystemTime(NEXT_MORNING);
     await t.tick(NEXT_MORNING);
     const [next] = await t.pending();
-    expect(next!.subject).toBe("Your night of 2026-10-22: 1 ready, 0 blocked, 0 failed, 1 waiting for review");
+    expect(next!.subject).toBe("Your handover of 2026-10-22: 1 ready, 0 blocked, 0 failed, 1 waiting for review");
     expect(next!.text).toContain("WAITING FOR REVIEW (1)");
     expect(next!.text).toContain("Pull request: https://github.com/acme/app/pull/8");
     expect(next!.text.match(/^ {2}Approve: /gm)).toHaveLength(1); // only t2
@@ -233,7 +233,7 @@ describe("invite links", () => {
     const [a, b] = await Promise.all([t.api("invite-claim", { token: inv.token }), t.api("invite-claim", { token: inv.token })]);
     expect([a.body.status, b.body.status].sort()).toEqual(["already-used", "claimed"]);
     const plan = (a.body.status === "claimed" ? a : b).body.plan;
-    expect(plan).toMatchObject({ email: "cy@example.com", timezone: "Europe/Berlin", defaults: { agentAdapterType: "process", nightBudgetCapCents: 300, maxTasksPerNight: 3 }, agent: agentFor("cy@example.com") });
+    expect(plan).toMatchObject({ email: "cy@example.com", timezone: "Europe/Berlin", defaults: { agentAdapterType: "process", handoverBudgetCapCents: 300, maxTasksPerHandover: 3 }, agent: agentFor("cy@example.com") });
     expect((await t.api("invite-preview", { token: inv.token })).body.status).toBe("already-used");
   });
 
@@ -247,7 +247,7 @@ describe("invite links", () => {
     const plan2 = (await t.api("invite-claim", { token: inv2.token })).body.plan;
     const inv3 = await invite(t, "dee@example.com");
     const plan3 = (await t.api("invite-claim", { token: inv3.token })).body.plan;
-    const dee = { email: "dee@example.com", agentId: "agent-dee", timezone: "UTC", nightStartHour: 22, nightBudgetCapCents: 300 };
+    const dee = { email: "dee@example.com", agentId: "agent-dee", timezone: "UTC", handoverStartHour: 22, handoverBudgetCapCents: 300 };
     // Bound to the agent but not to the agent's own user: not a join.
     t.setConfig({ ...baseConfig, people: [...baseConfig.people, dee] });
     expect((await t.api("invite-finish", { inviteId: plan2.inviteId, ok: true, agentId: "agent-dee", userId: "u1" })).body.ok).toBe(false);

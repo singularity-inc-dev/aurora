@@ -5,7 +5,7 @@ import type { Agent, Company, Issue, PluginApiRequestInput, PluginExecutionWorks
 import manifest from "../src/manifest.js";
 import plugin from "../src/worker.js";
 import { parseSettings } from "../src/config.js";
-import { tickPerson } from "../src/nightrunner.js";
+import { tickPerson } from "../src/handoverrunner.js";
 import { executeLink } from "../src/links.js";
 import { signLink, peekClaims, verifyLink } from "../src/tokens.js";
 import { createFakeDb } from "./fakedb.js";
@@ -23,8 +23,8 @@ afterEach(() => vi.useRealTimers());
 const config = {
   links: { baseUrl: "http://mail.test", signingSecret: { type: "secret_ref", secretId: "sig" }, expiresMinutes: 60 },
   people: [
-    { email: "ana@example.com", agentId: "agent-ana", timezone: "UTC", nightStartHour: 22, nightBudgetCapCents: 500 },
-    { email: "bo@example.com", agentId: "agent-bo", timezone: "UTC", nightStartHour: 22, nightBudgetCapCents: 500 },
+    { email: "ana@example.com", agentId: "agent-ana", timezone: "UTC", handoverStartHour: 22, handoverBudgetCapCents: 500 },
+    { email: "bo@example.com", agentId: "agent-bo", timezone: "UTC", handoverStartHour: 22, handoverBudgetCapCents: 500 },
   ],
 };
 const settings = (() => {
@@ -64,7 +64,7 @@ async function setup() {
   task("t2", "ana@example.com", "agent-ana");
   task("t3", "bo@example.com", "agent-bo");
   const night = (owner: string, agentId: string, taskIds: string[]) =>
-    db.tables.night_runs.push({ company_id: CO, owner, agent_id: agentId, night_date: "2026-10-21", status: "finished", task_ids: JSON.stringify(taskIds), current_index: taskIds.length - 1, current_attempt: 1 });
+    db.tables.handover_runs.push({ company_id: CO, owner, agent_id: agentId, handover_key: "2026-10-21", status: "finished", task_ids: JSON.stringify(taskIds), current_index: taskIds.length - 1, current_attempt: 1 });
   night("ana@example.com", "agent-ana", ["t1", "t2"]);
   night("bo@example.com", "agent-bo", ["t3"]);
 

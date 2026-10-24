@@ -1,15 +1,15 @@
 import type { JsonSchema } from "@paperclipai/plugin-sdk";
 
-export const DEFAULT_MAX_TASKS_PER_NIGHT = 3;
+export const DEFAULT_MAX_TASKS_PER_HANDOVER = 3;
 export const MAX_PEOPLE = 10;
 export const DEFAULT_MAX_DIFF_LINES = 400;
 export const DEFAULT_CHECK_TIMEOUT_SECONDS = 600;
-/** Hard upper bound on tasks per agent per night (evening proposal of up to 3). */
-export const MAX_TASKS_PER_NIGHT = 3;
-export const DEFAULT_NIGHT: NightSettings = {
+/** Hard upper bound on tasks per agent per handover (a plan of up to 3). */
+export const MAX_TASKS_PER_HANDOVER = 3;
+export const DEFAULT_HANDOVER: HandoverSettings = {
   projectId: null,
   proposalLeadHours: 2,
-  nightLengthHours: 8,
+  handoverLengthHours: 8,
   stepTimeoutMinutes: 60,
   maxRetries: 1,
 };
@@ -51,9 +51,9 @@ export interface Person {
    */
   modelAccess: ModelAccess | null;
   timezone: string;
-  nightStartHour: number;
-  maxTasksPerNight: number;
-  nightBudgetCapCents: number;
+  handoverStartHour: number;
+  maxTasksPerHandover: number;
+  handoverBudgetCapCents: number;
   secrets: PersonSecret[];
 }
 
@@ -93,13 +93,13 @@ export interface IsolationSettings {
   required: boolean;
 }
 
-/** Night routine settings shared by everyone. */
-export interface NightSettings {
-  /** Project (with the repo) that night tasks are created in. */
+/** Handover settings shared by everyone. */
+export interface HandoverSettings {
+  /** Project (with the repo) that handover tasks are created in. */
   projectId: string | null;
-  /** How many hours before a person's night start the evening plan opens. */
+  /** How many hours before a person's scheduled handover the plan opens. */
   proposalLeadHours: number;
-  nightLengthHours: number;
+  handoverLengthHours: number;
   /** Time limit for one task (step) before it is retried or failed. */
   stepTimeoutMinutes: number;
   maxRetries: number;
@@ -129,9 +129,9 @@ export interface GithubSettings {
 export interface InviteSettings {
   expiresMinutes: number;
   defaultTimezone: string;
-  nightStartHour: number;
-  nightBudgetCapCents: number;
-  maxTasksPerNight: number;
+  handoverStartHour: number;
+  handoverBudgetCapCents: number;
+  maxTasksPerHandover: number;
   agentAdapterType: string;
   agentAdapterConfig: Record<string, unknown>;
   agentMonthlyBudgetCents: number;
@@ -140,9 +140,9 @@ export interface InviteSettings {
 export const DEFAULT_INVITES: InviteSettings = {
   expiresMinutes: 48 * 60,
   defaultTimezone: "UTC",
-  nightStartHour: 22,
-  nightBudgetCapCents: 300,
-  maxTasksPerNight: DEFAULT_MAX_TASKS_PER_NIGHT,
+  handoverStartHour: 22,
+  handoverBudgetCapCents: 300,
+  maxTasksPerHandover: DEFAULT_MAX_TASKS_PER_HANDOVER,
   agentAdapterType: "claude_local",
   agentAdapterConfig: {},
   agentMonthlyBudgetCents: 3000,
@@ -152,7 +152,9 @@ export interface PluginSettings {
   people: Person[];
   isolation: IsolationSettings;
   checks: ChecksSettings;
-  night: NightSettings;
+  handover: HandoverSettings;
+  /** Old ("night") setting names still in the stored settings; vt-setup rewrites them. */
+  legacyNames: string[];
   links: LinkSettings | null;
   github: GithubSettings | null;
   invites: InviteSettings;
@@ -193,9 +195,9 @@ export const instanceConfigSchema: JsonSchema = {
       properties: {
         expiresMinutes: { type: "integer", title: "Invite links expire after (minutes)", minimum: 1, maximum: 10080, default: DEFAULT_INVITES.expiresMinutes },
         defaultTimezone: { type: "string", title: "Default timezone", default: DEFAULT_INVITES.defaultTimezone },
-        nightStartHour: { type: "integer", title: "Night start hour", minimum: 0, maximum: 23, default: DEFAULT_INVITES.nightStartHour },
-        nightBudgetCapCents: { type: "integer", title: "Night budget cap (US cents)", minimum: 0, default: DEFAULT_INVITES.nightBudgetCapCents },
-        maxTasksPerNight: { type: "integer", title: "Max tasks per night", minimum: 1, maximum: MAX_TASKS_PER_NIGHT, default: DEFAULT_INVITES.maxTasksPerNight },
+        handoverStartHour: { type: "integer", title: "Scheduled handover hour", minimum: 0, maximum: 23, default: DEFAULT_INVITES.handoverStartHour },
+        handoverBudgetCapCents: { type: "integer", title: "Budget cap per handover (US cents)", minimum: 0, default: DEFAULT_INVITES.handoverBudgetCapCents },
+        maxTasksPerHandover: { type: "integer", title: "Max tasks per handover", minimum: 1, maximum: MAX_TASKS_PER_HANDOVER, default: DEFAULT_INVITES.maxTasksPerHandover },
         agentAdapterType: { type: "string", title: "Agent adapter", default: DEFAULT_INVITES.agentAdapterType },
         agentAdapterConfig: { type: "object", title: "Agent adapter settings" },
         agentMonthlyBudgetCents: { type: "integer", title: "Agent monthly budget in Paperclip (US cents)", minimum: 0, default: DEFAULT_INVITES.agentMonthlyBudgetCents },
@@ -216,13 +218,13 @@ export const instanceConfigSchema: JsonSchema = {
         },
       },
     },
-    night: {
+    handover: {
       type: "object",
-      title: "Night routine",
+      title: "Handovers",
       properties: {
-        projectId: { type: "string", title: "Project for night tasks (its repo gets the worktrees)" },
-        proposalLeadHours: { type: "integer", title: "Evening plan opens this many hours before night start", minimum: 1, maximum: 12, default: 2 },
-        nightLengthHours: { type: "integer", title: "Night length (hours)", minimum: 1, maximum: 16, default: 8 },
+        projectId: { type: "string", title: "Project for handover tasks (its repo gets the worktrees)" },
+        proposalLeadHours: { type: "integer", title: "The plan for a scheduled handover opens this many hours before it", minimum: 1, maximum: 12, default: 2 },
+        handoverLengthHours: { type: "integer", title: "How long a handover may run (hours)", minimum: 1, maximum: 16, default: 8 },
         stepTimeoutMinutes: { type: "integer", title: "Time limit per task (minutes)", minimum: 5, maximum: 480, default: 60 },
         maxRetries: { type: "integer", title: "Retries after a time-out", minimum: 0, maximum: 3, default: 1 },
       },
@@ -265,7 +267,7 @@ export const instanceConfigSchema: JsonSchema = {
       maxItems: MAX_PEOPLE,
       items: {
         type: "object",
-        required: ["email", "agentId", "timezone", "nightStartHour", "nightBudgetCapCents"],
+        required: ["email", "agentId", "timezone"],
         properties: {
           email: { type: "string", title: "Email", format: "email", minLength: 3 },
           agentId: { type: "string", title: "Agent id", minLength: 1 },
@@ -278,17 +280,17 @@ export const instanceConfigSchema: JsonSchema = {
             enum: ["subscription", "api-key"],
           },
           timezone: { type: "string", title: "Timezone (IANA, e.g. Europe/London)", minLength: 1 },
-          nightStartHour: { type: "integer", title: "Night start hour (0-23)", minimum: 0, maximum: 23 },
-          maxTasksPerNight: {
+          handoverStartHour: { type: "integer", title: "Scheduled handover hour (0-23); Hand over now works any time", minimum: 0, maximum: 23 },
+          maxTasksPerHandover: {
             type: "integer",
-            title: "Max tasks per night",
+            title: "Max tasks per handover",
             minimum: 1,
-            maximum: MAX_TASKS_PER_NIGHT,
-            default: DEFAULT_MAX_TASKS_PER_NIGHT,
+            maximum: MAX_TASKS_PER_HANDOVER,
+            default: DEFAULT_MAX_TASKS_PER_HANDOVER,
           },
-          nightBudgetCapCents: {
+          handoverBudgetCapCents: {
             type: "integer",
-            title: "Night budget cap (US cents)",
+            title: "Budget cap per handover (US cents)",
             minimum: 0,
           },
           secrets: {
@@ -314,6 +316,47 @@ export const instanceConfigSchema: JsonSchema = {
     },
   },
 };
+
+/** Old names (the night-only plan) and the new ones. Old settings keep working. */
+const LEGACY_PERSON_KEYS: Record<string, string> = {
+  nightStartHour: "handoverStartHour",
+  maxTasksPerNight: "maxTasksPerHandover",
+  nightBudgetCapCents: "handoverBudgetCapCents",
+};
+const LEGACY_HANDOVER_KEYS: Record<string, string> = { nightLengthHours: "handoverLengthHours" };
+
+function renameKeys(obj: Record<string, unknown>, map: Record<string, string>, at: string, found: string[]): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...obj };
+  for (const [old, now] of Object.entries(map)) {
+    if (!(old in out)) continue;
+    found.push(`${at}${old}`);
+    if (!(now in out)) out[now] = out[old];
+    delete out[old];
+  }
+  return out;
+}
+
+/**
+ * Settings saved under the old night-only names, rewritten to the new ones (a copy;
+ * the new name wins when both are set). parseSettings applies it, so old settings
+ * keep working; vt-setup saves the result, so the stored settings move over too.
+ */
+export function migrateLegacySettings(stored: unknown): { config: unknown; legacyNames: string[] } {
+  if (!isRecord(stored)) return { config: stored, legacyNames: [] };
+  const found: string[] = [];
+  const config: Record<string, unknown> = { ...stored };
+  if ("night" in config) {
+    found.push("night");
+    if (!("handover" in config)) config.handover = config.night;
+    delete config.night;
+  }
+  if (isRecord(config.handover)) config.handover = renameKeys(config.handover, LEGACY_HANDOVER_KEYS, "handover.", found);
+  if (isRecord(config.invites)) config.invites = renameKeys(config.invites, LEGACY_PERSON_KEYS, "invites.", found);
+  if (Array.isArray(config.people)) {
+    config.people = config.people.map((p, i) => (isRecord(p) ? renameKeys(p, LEGACY_PERSON_KEYS, `people[${i}].`, found) : p));
+  }
+  return { config, legacyNames: found };
+}
 
 export type ParseResult = { ok: true; settings: PluginSettings } | { ok: false; errors: string[] };
 
@@ -346,7 +389,8 @@ function parseSecretRef(value: unknown): SecretRef | null {
  * Validate raw config and apply defaults. Error messages name fields only and
  * never echo values, so a misplaced secret can't leak into logs or the UI.
  */
-export function parseSettings(raw: unknown): ParseResult {
+export function parseSettings(stored: unknown): ParseResult {
+  const { config: raw, legacyNames } = migrateLegacySettings(stored);
   const errors: string[] = [];
   if (!isRecord(raw) || !Array.isArray(raw.people)) {
     return { ok: false, errors: ["people: must be a list"] };
@@ -378,23 +422,23 @@ export function parseSettings(raw: unknown): ParseResult {
     const timezone = typeof entry.timezone === "string" ? entry.timezone : "";
     if (!timezone || !isValidTimezone(timezone)) errors.push(`${at}.timezone: must be an IANA timezone`);
 
-    const nightStartHour = entry.nightStartHour;
-    if (!Number.isInteger(nightStartHour) || (nightStartHour as number) < 0 || (nightStartHour as number) > 23) {
-      errors.push(`${at}.nightStartHour: must be a whole number 0-23`);
+    const handoverStartHour = entry.handoverStartHour;
+    if (!Number.isInteger(handoverStartHour) || (handoverStartHour as number) < 0 || (handoverStartHour as number) > 23) {
+      errors.push(`${at}.handoverStartHour: must be a whole number 0-23`);
     }
 
-    const maxTasksPerNight = entry.maxTasksPerNight ?? DEFAULT_MAX_TASKS_PER_NIGHT;
+    const maxTasksPerHandover = entry.maxTasksPerHandover ?? DEFAULT_MAX_TASKS_PER_HANDOVER;
     if (
-      !Number.isInteger(maxTasksPerNight) ||
-      (maxTasksPerNight as number) < 1 ||
-      (maxTasksPerNight as number) > MAX_TASKS_PER_NIGHT
+      !Number.isInteger(maxTasksPerHandover) ||
+      (maxTasksPerHandover as number) < 1 ||
+      (maxTasksPerHandover as number) > MAX_TASKS_PER_HANDOVER
     ) {
-      errors.push(`${at}.maxTasksPerNight: must be a whole number 1-${MAX_TASKS_PER_NIGHT}`);
+      errors.push(`${at}.maxTasksPerHandover: must be a whole number 1-${MAX_TASKS_PER_HANDOVER}`);
     }
 
-    const nightBudgetCapCents = entry.nightBudgetCapCents;
-    if (!Number.isInteger(nightBudgetCapCents) || (nightBudgetCapCents as number) < 0) {
-      errors.push(`${at}.nightBudgetCapCents: must be a whole number of cents, 0 or more`);
+    const handoverBudgetCapCents = entry.handoverBudgetCapCents;
+    if (!Number.isInteger(handoverBudgetCapCents) || (handoverBudgetCapCents as number) < 0) {
+      errors.push(`${at}.handoverBudgetCapCents: must be a whole number of cents, 0 or more`);
     }
 
     let agentEnvironmentId: string | null = null;
@@ -466,9 +510,9 @@ export function parseSettings(raw: unknown): ParseResult {
       checksKey,
       modelAccess,
       timezone,
-      nightStartHour: nightStartHour as number,
-      maxTasksPerNight: maxTasksPerNight as number,
-      nightBudgetCapCents: nightBudgetCapCents as number,
+      handoverStartHour: handoverStartHour as number,
+      maxTasksPerHandover: maxTasksPerHandover as number,
+      handoverBudgetCapCents: handoverBudgetCapCents as number,
       secrets,
     });
   });
@@ -485,12 +529,12 @@ export function parseSettings(raw: unknown): ParseResult {
 
   const isolation = parseIsolation(raw.isolation, errors);
   const checks = parseChecks(raw.checks, errors);
-  const night = parseNight(raw.night, errors);
+  const handover = parseHandover(raw.handover, errors);
   const links = parseLinks(raw.links, errors);
   const github = parseGithub(raw.github, errors);
   const invites = parseInvites(raw.invites, errors);
 
-  return errors.length > 0 ? { ok: false, errors } : { ok: true, settings: { people, isolation, checks, night, links, github, invites } };
+  return errors.length > 0 ? { ok: false, errors } : { ok: true, settings: { people, isolation, checks, handover, links, github, invites, legacyNames } };
 }
 
 const REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
@@ -527,9 +571,9 @@ function parseInvites(raw: unknown, errors: string[]): InviteSettings {
     else (inv as unknown as Record<string, unknown>)[key] = v;
   };
   int("expiresMinutes", 1, 10080);
-  int("nightStartHour", 0, 23);
-  int("nightBudgetCapCents", 0, Number.MAX_SAFE_INTEGER);
-  int("maxTasksPerNight", 1, MAX_TASKS_PER_NIGHT);
+  int("handoverStartHour", 0, 23);
+  int("handoverBudgetCapCents", 0, Number.MAX_SAFE_INTEGER);
+  int("maxTasksPerHandover", 1, MAX_TASKS_PER_HANDOVER);
   int("agentMonthlyBudgetCents", 0, Number.MAX_SAFE_INTEGER);
   if (raw.defaultTimezone !== undefined) {
     if (typeof raw.defaultTimezone !== "string" || !isValidTimezone(raw.defaultTimezone)) errors.push("invites.defaultTimezone: must be an IANA timezone");
@@ -576,29 +620,29 @@ function intInRange(raw: Record<string, unknown>, key: string, min: number, max:
   const value = raw[key];
   if (value === undefined) return fallback;
   if (!Number.isInteger(value) || (value as number) < min || (value as number) > max) {
-    errors.push(`night.${key}: must be a whole number ${min}-${max}`);
+    errors.push(`handover.${key}: must be a whole number ${min}-${max}`);
     return fallback;
   }
   return value as number;
 }
 
-function parseNight(raw: unknown, errors: string[]): NightSettings {
-  if (raw === undefined) return { ...DEFAULT_NIGHT };
+function parseHandover(raw: unknown, errors: string[]): HandoverSettings {
+  if (raw === undefined) return { ...DEFAULT_HANDOVER };
   if (!isRecord(raw)) {
-    errors.push("night: must be an object");
-    return { ...DEFAULT_NIGHT };
+    errors.push("handover: must be an object");
+    return { ...DEFAULT_HANDOVER };
   }
   let projectId: string | null = null;
   if (raw.projectId !== undefined && raw.projectId !== null && raw.projectId !== "") {
-    if (typeof raw.projectId !== "string") errors.push("night.projectId: must be text");
+    if (typeof raw.projectId !== "string") errors.push("handover.projectId: must be text");
     else projectId = raw.projectId.trim();
   }
   return {
     projectId,
-    proposalLeadHours: intInRange(raw, "proposalLeadHours", 1, 12, errors, DEFAULT_NIGHT.proposalLeadHours),
-    nightLengthHours: intInRange(raw, "nightLengthHours", 1, 16, errors, DEFAULT_NIGHT.nightLengthHours),
-    stepTimeoutMinutes: intInRange(raw, "stepTimeoutMinutes", 5, 480, errors, DEFAULT_NIGHT.stepTimeoutMinutes),
-    maxRetries: intInRange(raw, "maxRetries", 0, 3, errors, DEFAULT_NIGHT.maxRetries),
+    proposalLeadHours: intInRange(raw, "proposalLeadHours", 1, 12, errors, DEFAULT_HANDOVER.proposalLeadHours),
+    handoverLengthHours: intInRange(raw, "handoverLengthHours", 1, 16, errors, DEFAULT_HANDOVER.handoverLengthHours),
+    stepTimeoutMinutes: intInRange(raw, "stepTimeoutMinutes", 5, 480, errors, DEFAULT_HANDOVER.stepTimeoutMinutes),
+    maxRetries: intInRange(raw, "maxRetries", 0, 3, errors, DEFAULT_HANDOVER.maxRetries),
   };
 }
 

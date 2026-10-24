@@ -198,6 +198,13 @@ as_agent() { runuser -u vt-agent-ana -- "$@" >/dev/null 2>&1 && echo allowed || 
 check "the agent's user cannot read Paperclip's config, data folder, database password or the backups" "$(as_agent cat "$VT_ROOT/var/lib/paperclip/instances/default/config.json")/$(as_agent ls "$VT_ROOT/var/lib/paperclip")/$(as_agent cat "$SECRETS/db-url")/$(as_agent ls "$VT_ROOT/var/backups/vision-and-tom")" "refused/refused/refused/refused"
 check "the agent's user cannot log in to the database (no password, or Paperclip's embedded default)" "$(as_agent env PGCONNECT_TIMEOUT=5 /usr/lib/postgresql/16/bin/psql -w -h 127.0.0.1 -p "$PG_PORT" -U paperclip -d paperclip -tAc 'select 1')/$(as_agent env PGPASSWORD=paperclip PGCONNECT_TIMEOUT=5 /usr/lib/postgresql/16/bin/psql -w -h 127.0.0.1 -p "$PG_PORT" -U paperclip -d paperclip -tAc 'select 1')" "refused/refused"
 
+echo "-- Hand over now: the owner's own page, behind their Paperclip sign-in"
+check "without signing in, the page asks to sign in first" "$("${HTTPS[@]}" -o /dev/null -w '%{http_code}' "$URL/vt/handover")" "401"
+check "signed in, the owner sees their schedule and the button" "$("${HTTPS[@]}" -H "cookie: $OWNER_COOKIE" "$URL/vt/handover" | grep -c 'Hand over now</button>')" "1"
+check "a form sent from another site is refused" "$("${HTTPS[@]}" -o /dev/null -w '%{http_code}' -X POST -H "cookie: $OWNER_COOKIE" -H "origin: https://evil.example" "$URL/vt/handover")" "403"
+check "the button starts the owner's handover now" "$("${HTTPS[@]}" -X POST -H "cookie: $OWNER_COOKIE" -H "origin: $URL" "$URL/vt/handover" | grep -c 'Started.')" "1"
+check "the plugin shows it: a Hand over now, planning" "$(board -X POST "$PC/api/plugins/$PLUGIN_ID/data/handover-status" -d "{\"companyId\":\"$CID\",\"params\":{}}" | json "(d.data.find(r=>r.owner==='owner@example.com')||{}).kind+' '+(d.data.find(r=>r.owner==='owner@example.com')||{}).status")" "now proposing"
+
 echo "== 7. Invite link: a new person joins through one link"
 INVITE_OUT=$(bash "$KIT_BIN/vt-invite" dee@example.com Europe/Paris 2>&1)
 LINK=$(echo "$INVITE_OUT" | grep -o "$URL/vt/join/[^ ]*" | head -1)
@@ -213,7 +220,7 @@ DEE_COOKIE=$(signin dee@example.com "$DEE_PW")
 check "Dee's Paperclip account works and is in the company" "$("${HTTPS[@]}" -H "cookie: $DEE_COOKIE" "$URL/api/companies" | json '(Array.isArray(d)?d:d.items).map(c=>c.name).join(",")')" "Rehearsal team"
 DEE_AGENT=$(people | json 'd.data.people.find(p=>p.email==="dee@example.com").agentId')
 check "Dee's row is in the plugin settings, bound to one new agent" "$([ -n "$DEE_AGENT" ] && echo yes)/$(people | json 'd.data.people.find(p=>p.email==="dee@example.com").timezone')" "yes/Europe/Paris"
-check "Dee's agent has safe defaults (no agent or skill creation, budget set)" "$(board "$PC/api/agents/$DEE_AGENT" | json '[d.name,d.permissions.canCreateAgents,d.permissions.canCreateSkills,d.role,d.budgetMonthlyCents].join("/")')" "Dee Doe's night agent/false/false/engineer/3000"
+check "Dee's agent has safe defaults (no agent or skill creation, budget set)" "$(board "$PC/api/agents/$DEE_AGENT" | json '[d.name,d.permissions.canCreateAgents,d.permissions.canCreateSkills,d.role,d.budgetMonthlyCents].join("/")')" "Dee Doe's agent/false/false/engineer/3000"
 echo "-- Dee chooses her own API key: she stores it in Paperclip herself, the admin only points her agent at it"
 DEE_KEY="sk-ant-standin-$(rand 12)"
 "${HTTPS[@]}" -o /dev/null -X POST -H "cookie: $DEE_COOKIE" -H "origin: $URL" -H 'content-type: application/json' -d "{\"name\":\"Dee's Anthropic key\",\"key\":\"anthropic-api-key-dee\",\"value\":\"$DEE_KEY\"}" "$URL/api/companies/$CID/secrets"

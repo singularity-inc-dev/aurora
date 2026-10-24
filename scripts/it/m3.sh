@@ -38,7 +38,7 @@ m3_config $M3_EVENING $M3_EVENING $M3_EVENING
 check "M3: save settings (evening plan window for everyone)" "$API_STATUS" "200"
 
 api GET "/api/plugins/$PLUGIN_ID/jobs"
-M3_JOB=$(echo "$API_BODY" | json 'd.find(j=>j.jobKey==="night-tick").id')
+M3_JOB=$(echo "$API_BODY" | json 'd.find(j=>j.jobKey==="handover-tick").id')
 m3_tick() { # trigger the night job and wait for its run to finish
   api POST "/api/plugins/$PLUGIN_ID/jobs/$M3_JOB/trigger" '{}'
   local run; run=$(echo "$API_BODY" | json 'd.runId')
@@ -50,7 +50,7 @@ m3_tick() { # trigger the night job and wait for its run to finish
   done
 }
 m3_night() { # owner -> field of their newest night run
-  api POST "/api/plugins/$PLUGIN_ID/data/night-status" "{\"companyId\":\"$M3_CID\",\"params\":{}}"
+  api POST "/api/plugins/$PLUGIN_ID/data/handover-status" "{\"companyId\":\"$M3_CID\",\"params\":{}}"
   echo "$API_BODY" | json "(d.data.find(r=>r.owner==='$1')||{}).$2"
 }
 m3_event() { api POST "/api/plugins/$PLUGIN_ID/data/task-event" "{\"companyId\":\"$M3_CID\",\"params\":{\"taskId\":\"$1\"}}"; echo "$API_BODY" | json "d.data.$2"; }
@@ -65,7 +65,7 @@ m3_run_of() { # wait until the agent has a run, print its newest run id
   echo "$id"
 }
 m3_propose() { # agentId runId tasksJson
-  api POST /api/plugins/tools/execute "{\"tool\":\"$PLUGIN_KEY:propose_tonight\",\"parameters\":{\"tasks\":$3},\"runContext\":{\"agentId\":\"$1\",\"runId\":\"$2\",\"companyId\":\"$M3_CID\",\"projectId\":\"$M3_PID\"}}"
+  api POST /api/plugins/tools/execute "{\"tool\":\"$PLUGIN_KEY:propose_handover\",\"parameters\":{\"tasks\":$3},\"runContext\":{\"agentId\":\"$1\",\"runId\":\"$2\",\"companyId\":\"$M3_CID\",\"projectId\":\"$M3_PID\"}}"
 }
 
 echo "-- evening proposal"
@@ -76,7 +76,7 @@ M3_PLAN=$(m3_night ana@example.com planIssueId)
 check "plan ticket is assigned to Ana's agent" "$(m3_issue "$M3_PLAN" assigneeAgentId)" "$M3_A"
 m3_tick
 api GET "/api/companies/$M3_CID/issues"
-check "still one plan per person after another tick" "$(echo "$API_BODY" | json "(Array.isArray(d)?d:d.items).filter(i=>i.originKind==='plugin:$PLUGIN_KEY:evening-plan'&&i.assigneeAgentId==='$M3_A').length")" "1"
+check "still one plan per person after another tick" "$(echo "$API_BODY" | json "(Array.isArray(d)?d:d.items).filter(i=>i.originKind==='plugin:$PLUGIN_KEY:handover-plan'&&i.assigneeAgentId==='$M3_A').length")" "1"
 
 M3_RUN_A=$(m3_run_of "$M3_A")
 check "Paperclip woke Ana's agent for the plan ticket" "$([ -n "$M3_RUN_A" ] && echo yes || echo no)" "yes"

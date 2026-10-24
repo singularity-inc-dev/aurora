@@ -40,12 +40,14 @@ function plugin(over: Partial<PluginApi> = {}): PluginApi & { calls: string[] } 
           inviteId: "inv-1",
           email: "cy@example.com",
           timezone: "Europe/Berlin",
-          defaults: { nightStartHour: 22, nightBudgetCapCents: 300, maxTasksPerNight: 3, agentAdapterType: "claude_local", agentAdapterConfig: { model: "x" }, agentMonthlyBudgetCents: 3000 },
+          defaults: { handoverStartHour: 22, handoverBudgetCapCents: 300, maxTasksPerHandover: 3, agentAdapterType: "claude_local", agentAdapterConfig: { model: "x" }, agentMonthlyBudgetCents: 3000 },
           // made by vt-invite: the new agent's own system user and environment
           agent: { agentEnvironmentId: "env-cy", agentUser: "vt-a-cy", checksKey: { type: "secret_ref", secretId: "ck-cy" } },
         },
       };
     },
+    handoverStatus: async (email) => ({ ok: true, email, timezone: "UTC", handoverStartHour: 22, handovers: [] }),
+    startHandover: async (email) => (calls.push(`start:${email}`), { ok: true, handoverKey: "2026-10-24T14:05" }),
     finishInvite: async (_id, r) => {
       calls.push(`finish:${r.ok ? "ok" : r.message}`);
       return { ok: true, message: "joined" };
@@ -152,7 +154,7 @@ describe("invite page and join", () => {
     expect(html).toContain("<h1>You&#39;re in</h1>");
     expect(html).toContain('href="https://team.example.com"');
     // The agent runs in its own environment (its own system user), with Claude's CLI engine.
-    expect(pc.log).toEqual(["paperclip-invite", "signup:cy@example.com:Cy Ng", "accept:s=1:pc-invite", `agent:Cy Ng's night agent:claude_local:3000:env-cy:{"model":"x","engine":"cli"}`, "saved"]);
+    expect(pc.log).toEqual(["paperclip-invite", "signup:cy@example.com:Cy Ng", "accept:s=1:pc-invite", `agent:Cy Ng's agent:claude_local:3000:env-cy:{"model":"x","engine":"cli"}`, "saved"]);
     expect((pc.config().people as unknown[])[1]).toEqual({
       email: "cy@example.com",
       agentId: "agent-cy",
@@ -160,9 +162,9 @@ describe("invite page and join", () => {
       agentUser: "vt-a-cy",
       checksKey: { type: "secret_ref", secretId: "ck-cy" },
       timezone: "Europe/Berlin",
-      nightStartHour: 22,
-      maxTasksPerNight: 3,
-      nightBudgetCapCents: 300,
+      handoverStartHour: 22,
+      maxTasksPerHandover: 3,
+      handoverBudgetCapCents: 300,
       secrets: [],
     });
     expect(api.calls).toEqual(["claim", "finish:ok"]);
@@ -242,5 +244,34 @@ describe("secrets come from files", () => {
 
   it("a missing secret file names the setting, not the value", () => {
     expect(() => loadConfig({ VT_COMPANY_ID: "c", SMTP_PASS_FILE: "/nonexistent/x" })).toThrow("cannot read the file named by SMTP_PASS_FILE");
+  });
+});
+
+describe("Hand over now page", () => {
+  const SITE = "https://team.example.com";
+  const session = { whoIs: async (cookie: string) => (cookie.includes("ana-session") ? { email: "ana@example.com" } : null) };
+
+  it("is only for the person signed in to Paperclip", async () => {
+    const api = plugin();
+    const base = await start(api, { session, signInUrl: SITE });
+    const anon = await fetch(`${base}/handover`);
+    expect(anon.status).toBe(401);
+    expect(await anon.text()).toContain("sign in to Paperclip");
+    const page = await (await fetch(`${base}/handover`, { headers: { cookie: "s=ana-session" } })).text();
+    expect(page).toContain("Signed in as <strong>ana@example.com</strong>");
+    expect(page).toContain("Hand over now</button>");
+    expect(api.calls).toEqual([]);
+  });
+
+  it("starts the signed-in owner's handover, and only from this site's own page", async () => {
+    const api = plugin();
+    const base = await start(api, { session, signInUrl: SITE });
+    const elsewhere = await fetch(`${base}/handover`, { method: "POST", headers: { cookie: "s=ana-session", origin: "https://evil.example" } });
+    expect(elsewhere.status).toBe(403);
+    expect(api.calls).toEqual([]);
+    const res = await fetch(`${base}/handover`, { method: "POST", headers: { cookie: "s=ana-session", origin: SITE } });
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain("Started.");
+    expect(api.calls).toEqual(["start:ana@example.com"]);
   });
 });

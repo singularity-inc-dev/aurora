@@ -176,7 +176,7 @@ export async function executeLink(
         branch: action.branch,
         baseBranch: baseBranchName(action.baseRef),
         expectedHead: action.expectedHead,
-        title: `${name}: ${issue?.title ?? "night task"}`,
+        title: `${name}: ${issue?.title ?? "handover task"}`,
         body: `Approved by ${claims.o} from the Vision and Tom morning email.\n\nTask ${name}, branch ${action.branch} at ${action.expectedHead}.`,
       },
     };

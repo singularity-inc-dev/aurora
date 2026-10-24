@@ -3,7 +3,7 @@ import type { LinkSettings, Person } from "./config.js";
 import { getTaskRow } from "./eventlog.js";
 import { getPullRequest, insertAction, insertBriefing, newId, type Briefing, type BriefingItem, type Category } from "./briefstore.js";
 import { isClean, revParse, shortStat } from "./merge.js";
-import type { NightRun } from "./night.js";
+import type { HandoverRun } from "./handover.js";
 import { actionsIn } from "./tiers.js";
 import { signLink, type LinkKind } from "./tokens.js";
 
@@ -41,8 +41,8 @@ export function classify(f: TaskFacts): Classified {
   const checks = f.checksResult ? `checks ${f.checksResult}${f.checksHead ? ` on ${f.checksHead.slice(0, 7)}` : ""}` : "checks not run";
   const no = (category: Category, reason: string): Classified => ({ category, checks, reason, approvable: false });
   if (f.outcome === "failed") return no("failed", "timed out after its retries");
-  if (f.outcome === "blocked") return no("blocked", "stopped by the night routine");
-  if (!f.startedAt) return no("blocked", "not started tonight");
+  if (f.outcome === "blocked") return no("blocked", "stopped by the handover");
+  if (!f.startedAt) return no("blocked", "not started in this handover");
   if (f.issueStatus && !["done", "in_review"].includes(f.issueStatus)) return no("blocked", `agent left it ${f.issueStatus}`);
   if (!f.worktree || !f.branchHead) return no("blocked", "no worktree for this task");
   if (!f.clean) return no("blocked", "uncommitted changes in the worktree");
@@ -81,7 +81,7 @@ async function gatherFacts(ctx: PluginContext, companyId: string, taskId: string
 }
 
 /**
- * Build and store the morning briefing for one person and one night. Safe to
+ * Build and store the handback email for one person and one handover. Safe to
  * call twice. Tasks from earlier emails that are still undecided come back with
  * fresh links; tasks whose pull request waits for review are listed without links.
  */
@@ -90,8 +90,8 @@ export async function createBriefing(
   person: Person,
   links: LinkSettings,
   companyId: string,
-  nightDate: string,
-  run: NightRun | null,
+  handoverKey: string,
+  run: HandoverRun | null,
   carriedTaskIds: string[],
   now: Date,
 ): Promise<Briefing | null> {
@@ -99,12 +99,12 @@ export async function createBriefing(
   const expiresAt = new Date(now.getTime() + links.expiresMinutes * 60_000);
   const items: BriefingItem[] = [];
   const actions: Array<Parameters<typeof insertAction>[1]> = [];
-  const tonight = run?.taskIds ?? [];
-  const taskIds = [...tonight, ...carriedTaskIds.filter((id) => !tonight.includes(id))];
+  const thisOne = run?.taskIds ?? [];
+  const taskIds = [...thisOne, ...carriedTaskIds.filter((id) => !thisOne.includes(id))];
   for (const taskId of taskIds) {
     const f = await gatherFacts(ctx, companyId, taskId);
     if (f.outcome === "accepted" || f.outcome === "rejected") continue;
-    const carried = !tonight.includes(taskId);
+    const carried = !thisOne.includes(taskId);
     if (f.decisionActionId) {
       // Approved already: either waiting for review on GitHub, or still being processed.
       const pr = await getPullRequest(ctx.db, taskId);
@@ -157,11 +157,16 @@ export async function createBriefing(
     });
   }
   if (!run && items.length === 0) return null;
-  const notes = run?.status === "budget_stopped" ? ["Your agent hit tonight's budget cap and was paused. Resume it in Paperclip when you are ready."] : [];
-  const briefing = { id: briefingId, companyId, owner: person.email, nightDate, items, notes };
+  const notes = run?.status === "budget_stopped" ? ["Your agent hit this handover's budget cap and was paused. Resume it in Paperclip when you are ready."] : [];
+  const briefing = { id: briefingId, companyId, owner: person.email, handoverKey, items, notes };
   if (!(await insertBriefing(ctx.db, briefing))) return null;
   for (const a of actions) await insertAction(ctx.db, a);
   return { ...briefing, status: "pending" };
+}
+
+/** "2026-10-24" (a scheduled handover) or "2026-10-24 14:05 UTC" (Hand over now). */
+export function describeKey(key: string): string {
+  return key.length > 10 ? `${key.replace("T", " ")} UTC` : key;
 }
 
 export interface RenderedEmail {
@@ -187,10 +192,10 @@ export function renderBriefing(b: Briefing, links: LinkSettings, secret: string,
     `${links.baseUrl}/l/${signLink({ v: 1, a: actionId, c: b.companyId, o: b.owner, t: item.taskId, k: kind, e: exp }, secret)}`;
   const count = (c: Category) => b.items.filter((i) => i.category === c).length;
   const waiting = count("waiting");
-  const subject = `Your night of ${b.nightDate}: ${count("ready")} ready, ${count("blocked")} blocked, ${count("failed")} failed${waiting ? `, ${waiting} waiting for review` : ""}`;
+  const subject = `Your handover of ${describeKey(b.handoverKey)}: ${count("ready")} ready, ${count("blocked")} blocked, ${count("failed")} failed${waiting ? `, ${waiting} waiting for review` : ""}`;
 
-  const text: string[] = [`Good morning. Here is what your agent did on the night of ${b.nightDate}.`, ""];
-  const html: string[] = [`<p>Good morning. Here is what your agent did on the night of ${esc(b.nightDate)}.</p>`];
+  const text: string[] = [`Here is what your agent did in your handover of ${describeKey(b.handoverKey)}.`, ""];
+  const html: string[] = [`<p>Here is what your agent did in your handover of ${esc(describeKey(b.handoverKey))}.</p>`];
   for (const note of b.notes) {
     text.push(`Note: ${note}`, "");
     html.push(`<p><strong>Note:</strong> ${esc(note)}</p>`);
@@ -229,7 +234,7 @@ export function renderBriefing(b: Briefing, links: LinkSettings, secret: string,
     html.push("</ul>");
   }
   const footer = [
-    `Links expire ${expiresAt.toISOString().replace("T", " ").slice(0, 16)} UTC and work once. Approve merges only if the branch is unchanged since this email. Anything you have not decided comes back in the next morning's email with fresh links.`,
+    `Links expire ${expiresAt.toISOString().replace("T", " ").slice(0, 16)} UTC and work once. Approve merges only if the branch is unchanged since this email. Anything you have not decided comes back in your next handback email with fresh links.`,
     `Happens automatically: ${actionsIn("automatic").join(", ")}. Needs your tap: ${actionsIn("needs-tap").join(", ")}. Never: ${actionsIn("never").join(", ")}.`,
   ];
   text.push(...footer);

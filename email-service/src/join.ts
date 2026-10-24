@@ -51,7 +51,7 @@ export async function join(plugin: PluginApi, board: BoardApi, person: PersonApi
     await person.acceptInvite(session.cookie, paperclipInvite);
     step = "creating your agent";
     const agentId = await board.createAgent({
-      name: `${form.name}'s night agent`.slice(0, 120),
+      name: `${form.name}'s agent`.slice(0, 120),
       adapterType: defaults.agentAdapterType,
       // In its own environment: the system user vt-invite made for this person (agent isolation).
       adapterConfig: agent ? isolatedAdapterConfig(defaults.agentAdapterType, defaults.agentAdapterConfig) : defaults.agentAdapterConfig,
@@ -72,9 +72,9 @@ export async function join(plugin: PluginApi, board: BoardApi, person: PersonApi
             agentId,
             ...(agent ? { agentEnvironmentId: agent.agentEnvironmentId, agentUser: agent.agentUser, checksKey: agent.checksKey } : {}),
             timezone,
-            nightStartHour: defaults.nightStartHour,
-            maxTasksPerNight: defaults.maxTasksPerNight,
-            nightBudgetCapCents: defaults.nightBudgetCapCents,
+            handoverStartHour: defaults.handoverStartHour,
+            maxTasksPerHandover: defaults.maxTasksPerHandover,
+            handoverBudgetCapCents: defaults.handoverBudgetCapCents,
             secrets: [],
           },
         ],
@@ -82,7 +82,7 @@ export async function join(plugin: PluginApi, board: BoardApi, person: PersonApi
     });
     const done = await plugin.finishInvite(inviteId, { ok: true, agentId, userId: session.userId });
     if (!done.ok) throw new PaperclipError(500, done.message);
-    return { ok: true, status: "joined", message: `Welcome! Your account (${email}) and your night agent are ready.`, email };
+    return { ok: true, status: "joined", message: `Welcome! Your account (${email}) and your agent are ready.`, email };
   } catch (err) {
     const reason = err instanceof PaperclipError ? err.message : "unexpected error";
     await plugin.finishInvite(inviteId, { ok: false, message: `failed while ${step}: ${reason}` }).catch(() => undefined);

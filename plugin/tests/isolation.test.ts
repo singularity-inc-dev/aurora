@@ -7,8 +7,8 @@ import { agentProblems, auditIsolation, auditSettingsIsolation, ENVIRONMENT_ADAP
 function settingsWith(raw: Record<string, unknown> = {}): PluginSettings {
   const r = parseSettings({
     people: [
-      { email: "ana@example.com", agentId: "a1", agentEnvironmentId: "env-a", modelAccess: "subscription", timezone: "UTC", nightStartHour: 22, nightBudgetCapCents: 100 },
-      { email: "bo@example.com", agentId: "b1", agentEnvironmentId: "env-b", modelAccess: "subscription", timezone: "UTC", nightStartHour: 22, nightBudgetCapCents: 100 },
+      { email: "ana@example.com", agentId: "a1", agentEnvironmentId: "env-a", modelAccess: "subscription", timezone: "UTC", handoverStartHour: 22, handoverBudgetCapCents: 100 },
+      { email: "bo@example.com", agentId: "b1", agentEnvironmentId: "env-b", modelAccess: "subscription", timezone: "UTC", handoverStartHour: 22, handoverBudgetCapCents: 100 },
     ],
     ...raw,
   });
@@ -54,7 +54,7 @@ describe("auditIsolation", () => {
   });
 
   it("refuses a person without an environment of their own", () => {
-    const r = parseSettings({ people: [{ email: "c@example.com", agentId: "c1", timezone: "UTC", nightStartHour: 1, nightBudgetCapCents: 1 }] });
+    const r = parseSettings({ people: [{ email: "c@example.com", agentId: "c1", timezone: "UTC", handoverStartHour: 1, handoverBudgetCapCents: 1 }] });
     if (!r.ok) throw new Error();
     expect(auditIsolation(r.settings, r.settings.people[0]!, agent({ id: "c1" })).join()).toContain("no environment of their own");
   });
@@ -88,8 +88,8 @@ describe("parseSettings: isolation fields", () => {
   it("never lets two people share an environment or a system user", () => {
     const r = parseSettings({
       people: [
-        { email: "ana@example.com", agentId: "a1", agentEnvironmentId: "env-a", agentUser: "vt-a-1", timezone: "UTC", nightStartHour: 22, nightBudgetCapCents: 100 },
-        { email: "bo@example.com", agentId: "b1", agentEnvironmentId: "env-a", agentUser: "vt-a-1", timezone: "UTC", nightStartHour: 22, nightBudgetCapCents: 100 },
+        { email: "ana@example.com", agentId: "a1", agentEnvironmentId: "env-a", agentUser: "vt-a-1", timezone: "UTC", handoverStartHour: 22, handoverBudgetCapCents: 100 },
+        { email: "bo@example.com", agentId: "b1", agentEnvironmentId: "env-a", agentUser: "vt-a-1", timezone: "UTC", handoverStartHour: 22, handoverBudgetCapCents: 100 },
       ],
     });
     expect(r.ok).toBe(false);
@@ -109,7 +109,7 @@ describe("parseSettings: isolation fields", () => {
   });
 
   it("refuses a system user name that could be read as an option", () => {
-    const r = parseSettings({ people: [{ email: "ana@example.com", agentId: "a1", agentUser: "-oX", timezone: "UTC", nightStartHour: 22, nightBudgetCapCents: 1 }] });
+    const r = parseSettings({ people: [{ email: "ana@example.com", agentId: "a1", agentUser: "-oX", timezone: "UTC", handoverStartHour: 22, handoverBudgetCapCents: 1 }] });
     expect(r.ok).toBe(false);
   });
 });
