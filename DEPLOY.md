@@ -79,6 +79,15 @@ Then protect the main branch. In the repository your agents work on: **Settings 
 - If you want a second person to look at every change: **Require approvals: 1.** Then Approve in the email opens the pull request and it waits for that review. The email and the confirmation page say "waiting for review".
 - **Do not allow bypassing the above settings.** This matters: without it, your own token could skip the rules.
 
+Then say who owns which part. Add a file called `CODEOWNERS` at the top of the repository (or in `.github/`) with one line per area: the folder, then its owner, by email or GitHub login. For example:
+
+```
+/src/ui/    ana@example.com
+/src/api/   @bo-github-login
+```
+
+Commit it to `main`. Before every handover, Vision and Tom reads this committed file (never an agent's unsaved copy). A task that reaches into another person's area goes to that person's agent instead. If you name people by GitHub login, also enter each person's login as "GitHub login" in the plugin settings (step 10), so the two can be matched.
+
 ---
 
 ## Part B: on the server
@@ -275,6 +284,16 @@ https://YOUR-DOMAIN/vt/handover
 
 and taps **Hand over now**. Their agent plans up to three tasks right away. Nothing runs until they approve the plan in Paperclip, and nothing shared changes until they approve each result in the handback email. Only one handover per person runs at a time, and the page only ever acts for the person who is signed in.
 
+### Before each handover: the pre-handover check
+
+When an agent proposes its tasks, each task has to list the files and folders it may change (its "claims"). Vision and Tom compares them with everyone's areas in `CODEOWNERS` (step 4) and with the files other people's open tasks have already claimed:
+
+- A task inside your own area, or in files nobody owns, stays in your plan.
+- A task that reaches into someone else's area, or into files someone else's task claimed first, does not run in your handover. It becomes a waiting ticket for that person's agent, and they decide about it in one of their own plans. Plans already proposed are never changed.
+- Your plan in Paperclip shows what was moved, as at most three questions. If something looks wrong, choose "Not this time" and say why.
+
+A task's claim ends when you decide it in the handback email, or when its plan expires without approval.
+
 ### During the first real handover: measure memory
 
 The server sizes in step 1 are estimates. During your first real handover, while the agents work, log in (step 5) and type:
@@ -361,6 +380,9 @@ All versions are listed in `deploy/versions.env` and in the lockfiles next to it
 
 - **What an agent can still do.** It can use Paperclip's API as itself (with the run token Paperclip gives it), read and change its own working copy, and run its owner's own checks. Checks run as the agent's own user, so an agent could interfere with its own checks; Hardy's separate, locked sandbox for checks comes in a later milestone (M4). Your branch protection (step 4) stays the backstop for anything it merges.
 - **Never run real agents on Paperclip's built-in database** (the laptop "quickstart" setup): its password is a fixed, well-known one. This server uses PostgreSQL with a random password.
+- **Two plans at the very same moment.** If two people's agents propose overlapping tasks within the same second or so, both can pass the pre-handover check. The merge replay at handback (coming next) is the backstop.
+- **Updating a server that is already running** is not scripted yet. A version that needs new Paperclip permissions (0.8.0 needs read-only access to the project's folder) has to be reinstalled in Paperclip; uninstalling without `--force` keeps its settings. Until this is scripted, install fresh with this version.
+- **CODEOWNERS teams.** Entries like `@org/team` are not matched to people; name people by email or login.
 - **Email account approval power.** Anyone who can read your email can use its links. There is no second step before Approve or Reject applies (your decision, M4).
 - **Not tested for real:**
   - a real server and a real reboot (rehearsed in a folder on the build machine instead)

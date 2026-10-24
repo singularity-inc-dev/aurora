@@ -4,7 +4,7 @@
  * scripts/integration-test.sh.
  */
 type Row = Record<string, unknown>;
-type TableName = "task_events" | "handover_runs" | "briefings" | "link_actions" | "invites" | "pull_requests";
+type TableName = "task_events" | "handover_runs" | "briefings" | "link_actions" | "invites" | "pull_requests" | "overlaps";
 
 export interface FakeDb {
   namespace: string;
@@ -21,6 +21,7 @@ const KEYS: Record<TableName, string[]> = {
   link_actions: ["id"],
   invites: ["id"],
   pull_requests: ["task_id"],
+  overlaps: ["id"],
 };
 const DEFAULTS: Record<TableName, Row> = {
   task_events: {},
@@ -29,6 +30,7 @@ const DEFAULTS: Record<TableName, Row> = {
   link_actions: { state: "new" },
   invites: { state: "new" },
   pull_requests: { state: "waiting" },
+  overlaps: {},
 };
 
 function tableOf(sql: string): TableName {
@@ -74,7 +76,7 @@ function applySet(row: Row, set: string, params: unknown[]): void {
 }
 
 export function createFakeDb(namespace = "ns"): FakeDb {
-  const tables: Record<TableName, Row[]> = { task_events: [], handover_runs: [], briefings: [], link_actions: [], invites: [], pull_requests: [] };
+  const tables: Record<TableName, Row[]> = { task_events: [], handover_runs: [], briefings: [], link_actions: [], invites: [], pull_requests: [], overlaps: [] };
   const costs: FakeDb["costs"] = [];
   return {
     namespace,
@@ -91,6 +93,7 @@ export function createFakeDb(namespace = "ns"): FakeDb {
       const where = sql.split(/\bWHERE\b/)[1]?.split(/\bORDER BY\b|\bLIMIT\b/)[0] ?? "";
       let rows = tables[tableOf(sql)].filter((r) => matches(r, where, params));
       if (/ORDER BY created_at DESC/.test(sql)) rows = rows.reverse(); // rows are kept in insertion order
+      else if (/ORDER BY created_at\b/.test(sql)) rows = [...rows];
       else if (/ORDER BY handover_key DESC/.test(sql)) rows = rows.sort((a, b) => String(b.handover_key).localeCompare(String(a.handover_key)));
       else if (/ORDER BY handover_key/.test(sql)) rows = rows.sort((a, b) => String(a.handover_key).localeCompare(String(b.handover_key)));
       const limit = /LIMIT (\d+)/.exec(sql);

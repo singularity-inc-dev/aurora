@@ -148,7 +148,7 @@ m5_work() { # taskId file
 
 echo "-- a night for Cy with two tasks"
 m5_tick
-m5_tool propose_handover '{"tasks":[{"title":"Add greeting"},{"title":"Add farewell"}]}'
+m5_tool propose_handover '{"tasks":[{"title":"Add greeting","claims":["greeting.txt"]},{"title":"Add farewell","claims":["farewell.txt"]}]}'
 M5_T1=$(echo "$API_BODY" | json 'd.result.data.taskIds[0]'); M5_T2=$(echo "$API_BODY" | json 'd.result.data.taskIds[1]')
 M5_PLAN=$(m5_night planIssueId)
 api GET "/api/issues/$M5_PLAN/interactions"

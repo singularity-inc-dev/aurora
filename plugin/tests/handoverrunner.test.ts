@@ -1,12 +1,16 @@
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { createTestHarness } from "@paperclipai/plugin-sdk/testing";
-import type { Agent, Company, Issue, PluginAccessMember } from "@paperclipai/plugin-sdk";
+import type { Agent, Company, Issue, PluginAccessMember, Project } from "@paperclipai/plugin-sdk";
 import manifest from "../src/manifest.js";
 import plugin from "../src/worker.js";
 import { parseSettings } from "../src/config.js";
 import { startHandoverNow, tickPerson } from "../src/handoverrunner.js";
 import { TOOL_PROPOSE } from "../src/tools.js";
-import { HANDOVER_TASK_ORIGIN, PLAN_ORIGIN } from "../src/ids.js";
+import { HANDOFF_ORIGIN, HANDOVER_TASK_ORIGIN, PLAN_ORIGIN } from "../src/ids.js";
 import { createFakeDb } from "./fakedb.js";
 import { isolatedAgentFields, isolatedPersonFields } from "./helpers.js";
 
@@ -18,7 +22,7 @@ const config = {
   night: { projectId: "proj-1", stepTimeoutMinutes: 60, maxRetries: 1 },
   people: [
     { email: "ana@example.com", agentId: "agent-ana", ...isolatedPersonFields("agent-ana"), timezone: "UTC", handoverStartHour: 22, handoverBudgetCapCents: 500, maxTasksPerHandover: 2 },
-    { email: "bo@example.com", agentId: "agent-bo", ...isolatedPersonFields("agent-bo"), timezone: "UTC", handoverStartHour: 22, handoverBudgetCapCents: 500 },
+    { email: "bo@example.com", agentId: "agent-bo", ...isolatedPersonFields("agent-bo"), githubLogin: "bo-dev", timezone: "UTC", handoverStartHour: 22, handoverBudgetCapCents: 500 },
   ],
 };
 const settings = (() => {
@@ -52,7 +56,7 @@ async function proposedNight() {
   await t.tick(EVENING);
   const res = await t.h.executeTool<{ error?: string; data: { planIssueId: string; taskIds: string[] } }>(
     TOOL_PROPOSE,
-    { tasks: [{ title: "Fix login" }, { title: "Write docs", description: "README section" }] },
+    { tasks: [{ title: "Fix login", claims: ["src/"] }, { title: "Write docs", description: "README section", claims: ["src/"] }] },
     t.run,
   );
   expect(res.error).toBeUndefined();
@@ -93,17 +97,17 @@ describe("evening proposal", () => {
   it("refuses more tasks than the person's limit (and never more than 3)", async () => {
     const t = await setup();
     await t.tick(EVENING);
-    const res = await t.h.executeTool<{ error?: string }>(TOOL_PROPOSE, { tasks: [{ title: "a" }, { title: "b" }, { title: "c" }] }, t.run);
+    const res = await t.h.executeTool<{ error?: string }>(TOOL_PROPOSE, { tasks: [{ title: "a", claims: ["src/"] }, { title: "b", claims: ["src/"] }, { title: "c", claims: ["src/"] }] }, t.run);
     expect(res.error).toBe("propose at most 2 tasks");
   });
 
   it("refuses when no plan is open, or a second proposal for the same night", async () => {
     const t = await setup();
-    expect((await t.h.executeTool<{ error?: string }>(TOOL_PROPOSE, { tasks: [{ title: "a" }] }, t.run)).error).toBe(
+    expect((await t.h.executeTool<{ error?: string }>(TOOL_PROPOSE, { tasks: [{ title: "a", claims: ["src/"] }] }, t.run)).error).toBe(
       "no handover plan is open for you right now",
     );
     const p = await proposedNight();
-    expect((await p.h.executeTool<{ error?: string }>(TOOL_PROPOSE, { tasks: [{ title: "again" }] }, p.run)).error).toBe(
+    expect((await p.h.executeTool<{ error?: string }>(TOOL_PROPOSE, { tasks: [{ title: "again", claims: ["src/"] }] }, p.run)).error).toBe(
       "no handover plan is open for you right now",
     );
   });
@@ -117,10 +121,10 @@ describe("evening proposal", () => {
       ],
     });
     await t.tick(EVENING);
-    expect((await t.h.executeTool<{ error?: string }>(TOOL_PROPOSE, { tasks: [{ issueId: "bos" }] }, t.run)).error).toBe(
+    expect((await t.h.executeTool<{ error?: string }>(TOOL_PROPOSE, { tasks: [{ issueId: "bos", claims: ["src/"] }] }, t.run)).error).toBe(
       "you can only propose tickets assigned to you",
     );
-    const ok = await t.h.executeTool<{ error?: string; data: { taskIds: string[] } }>(TOOL_PROPOSE, { tasks: [{ issueId: "mine" }] }, t.run);
+    const ok = await t.h.executeTool<{ error?: string; data: { taskIds: string[] } }>(TOOL_PROPOSE, { tasks: [{ issueId: "mine", claims: ["src/"] }] }, t.run);
     expect(ok.data.taskIds).toEqual(["mine"]);
   });
 });
@@ -217,12 +221,12 @@ describe("Hand over now", () => {
   it("starts a handover at once: plan, approval, then work right away", async () => {
     const t = await setup();
     const started = await startHandoverNow(t.h.ctx, CO, settings, ana, AFTERNOON);
-    expect(started).toMatchObject({ ok: true, handoverKey: "2026-10-21T14:05" });
-    expect(t.runRow()).toMatchObject({ kind: "now", handover_key: "2026-10-21T14:05", status: "proposing" });
+    expect(started).toMatchObject({ ok: true, handoverKey: "2026-10-21T14:05:00" });
+    expect(t.runRow()).toMatchObject({ kind: "now", handover_key: "2026-10-21T14:05:00", status: "proposing" });
     const planId = (started as { planIssueId: string }).planIssueId;
     expect((await t.h.ctx.issues.get(planId, CO))?.title).toContain("handover now");
 
-    const res = await t.h.executeTool<{ error?: string; data: { taskIds: string[] } }>(TOOL_PROPOSE, { tasks: [{ title: "Fix login" }] }, t.run);
+    const res = await t.h.executeTool<{ error?: string; data: { taskIds: string[] } }>(TOOL_PROPOSE, { tasks: [{ title: "Fix login", claims: ["src/"] }] }, t.run);
     expect(res.error).toBeUndefined();
     await approve({ ...t, plan: planId, tasks: res.data.taskIds });
     const soon = new Date(AFTERNOON.getTime() + 2 * 60_000);
@@ -241,5 +245,100 @@ describe("Hand over now", () => {
     const t = await setup();
     const loose = { ...ana, agentEnvironmentId: "someone-elses" };
     expect(await startHandoverNow(t.h.ctx, CO, settings, loose, AFTERNOON)).toMatchObject({ ok: false, message: expect.stringContaining("not locked down") });
+  });
+});
+
+/** A real repository with a CODEOWNERS file: Ana owns src/ui, Bo owns src/api. */
+function repoWithOwners(): string {
+  const dir = mkdtempSync(path.join(tmpdir(), "vt-owners-"));
+  const g = (...args: string[]) => execFileSync("git", args, { cwd: dir, stdio: "pipe" });
+  g("init", "-q", "-b", "main");
+  g("config", "user.email", "t@example.com");
+  g("config", "user.name", "t");
+  mkdirSync(path.join(dir, "src/api"), { recursive: true });
+  writeFileSync(path.join(dir, "src/api/search.ts"), "x\n");
+  writeFileSync(path.join(dir, "CODEOWNERS"), "/src/ui/  ana@example.com\n/src/api/  @bo-dev\n");
+  g("add", ".");
+  g("commit", "-qm", "init");
+  return dir;
+}
+
+describe("claims and the pre-handover check", () => {
+  type Proposed = { error?: string; content?: string; data: { planIssueId: string; taskIds: string[]; moved: Array<{ title: string; ticketId: string; keeper: string }>; questions: string[] } };
+  const workspace = (dir: string) =>
+    ({ id: "ws-1", projectId: "proj-1", name: "repo", path: dir, repoUrl: null, repoRef: null, defaultRef: "main", isPrimary: true, createdAt: "", updatedAt: "" });
+  const bo = settings.people[1]!;
+  const boRun = { agentId: "agent-bo", runId: "run-2", companyId: CO, projectId: "proj-1" };
+
+  it("refuses a task that does not say which files it may change", async () => {
+    const t = await setup();
+    await t.tick(EVENING);
+    const res = await t.h.executeTool<{ error?: string }>(TOOL_PROPOSE, { tasks: [{ title: "Fix login" }] }, t.run);
+    expect(res.error).toMatch(/^task 1: list the files and folders it may change \(claims\)/);
+    expect((await t.h.executeTool<{ error?: string }>(TOOL_PROPOSE, { tasks: [{ title: "x", claims: ["../etc"] }] }, t.run)).error).toMatch(/must be a path inside the repository/);
+  });
+
+  it("a task in another owner's area goes to that owner's agent, and the owner is asked", async () => {
+    const t = await setup();
+    t.h.seed({ projects: [{ id: "proj-1", companyId: CO, name: "App" } as unknown as Project], projectWorkspaces: [workspace(repoWithOwners())] });
+    await t.tick(EVENING);
+    const res = await t.h.executeTool<Proposed>(
+      TOOL_PROPOSE,
+      { tasks: [{ title: "Search box", claims: ["src/ui/search.tsx"] }, { title: "Search API", claims: ["src/api/search.ts"] }] },
+      t.run,
+    );
+    expect(res.error).toBeUndefined();
+    expect(res.data.taskIds).toHaveLength(1);
+    expect(res.data.moved).toMatchObject([{ title: "Search API", keeper: "bo@example.com" }]);
+    expect(res.content).toContain("went to their agent");
+
+    const ticket = await t.h.ctx.issues.get(res.data.moved[0]!.ticketId, CO);
+    expect(ticket).toMatchObject({ assigneeAgentId: "agent-bo", status: "backlog", originKind: HANDOFF_ORIGIN });
+    expect(ticket?.description).toContain("is in bo@example.com's area (CODEOWNERS line 2)");
+    expect(t.event(ticket!.id)).toMatchObject({ handed_off_to: "bo@example.com" });
+    expect(t.db.tables.overlaps).toMatchObject([{ owner: "ana@example.com", keeper: "bo@example.com", kind: "area", claim: "src/api/search.ts", ticket_id: ticket!.id }]);
+
+    const kept = res.data.taskIds[0]!;
+    expect(JSON.parse(String(t.event(kept).claims))).toEqual(["src/ui/search.tsx"]);
+    expect(t.runRow().task_ids).toBe(JSON.stringify([kept]));
+    const [interaction] = await t.h.ctx.issues.listInteractions(res.data.planIssueId, CO);
+    const details = (interaction as unknown as { payload: { detailsMarkdown: string } }).payload.detailsMarkdown;
+    expect(details).toContain("claims `src/ui/search.tsx`");
+    expect(details).toContain("**Pre-handover check: one question**");
+    expect(details).toContain('1. "Search API": `src/api/search.ts` is in bo@example.com\'s area');
+  });
+
+  it("a later claim on the same files goes to the owner who claimed them first", async () => {
+    const t = await setup();
+    await tickPerson(t.h.ctx, CO, settings, bo, EVENING);
+    const first = await t.h.executeTool<Proposed>(TOOL_PROPOSE, { tasks: [{ title: "Rewrite docs", claims: ["docs/"] }] }, boRun);
+    expect(first.data.taskIds).toHaveLength(1);
+    await t.tick(EVENING);
+    const later = await t.h.executeTool<Proposed>(TOOL_PROPOSE, { tasks: [{ title: "Fix a typo", claims: ["docs/guide.md"] }] }, t.run);
+    expect(later.data.taskIds).toEqual([]);
+    expect(later.data.moved).toMatchObject([{ keeper: "bo@example.com" }]);
+    expect(later.data.questions[0]).toContain('overlaps `docs`, claimed by bo@example.com\'s task "Rewrite docs"');
+    expect(t.db.tables.overlaps).toMatchObject([{ kind: "claim", claim: "docs/guide.md" }]);
+  });
+
+  it("claims end when the task is decided or its plan expires", async () => {
+    const t = await setup();
+    await tickPerson(t.h.ctx, CO, settings, bo, EVENING);
+    const first = await t.h.executeTool<Proposed>(TOOL_PROPOSE, { tasks: [{ title: "Rewrite docs", claims: ["docs/"] }] }, boRun);
+    // Nobody approves Bo's plan; it expires when Bo's handover ends.
+    await tickPerson(t.h.ctx, CO, settings, bo, new Date("2026-10-22T06:30:00Z"));
+    expect(t.db.tables.task_events.find((r) => r.task_id === first.data.taskIds[0])?.claims_released_at).toBeTruthy();
+    await t.tick(new Date("2026-10-22T20:30:00Z"));
+    const later = await t.h.executeTool<Proposed>(TOOL_PROPOSE, { tasks: [{ title: "Fix a typo", claims: ["docs/guide.md"] }] }, t.run);
+    expect(later.data.moved).toEqual([]);
+  });
+
+  it("never passes on a guess: an unreadable repository refuses the proposal", async () => {
+    const t = await setup();
+    t.h.seed({ projects: [{ id: "proj-1", companyId: CO, name: "App" } as unknown as Project], projectWorkspaces: [workspace(path.join(tmpdir(), "vt-no-such-repo"))] });
+    await t.tick(EVENING);
+    const res = await t.h.executeTool<{ error?: string }>(TOOL_PROPOSE, { tasks: [{ title: "x", claims: ["src/"] }] }, t.run);
+    expect(res.error).toBe("the project's repository could not be read for the pre-handover check");
+    expect(await t.h.ctx.issues.list({ companyId: CO, assigneeAgentId: "agent-ana", status: "backlog" })).toEqual([]);
   });
 });

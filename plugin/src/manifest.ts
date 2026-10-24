@@ -6,7 +6,7 @@ import { HANDOFF_TOOL, PROPOSE_TOOL, RUN_CHECKS_TOOL } from "./tools.js";
 const manifest: PaperclipPluginManifestV1 = {
   id: PLUGIN_ID,
   apiVersion: 1,
-  version: "0.7.0",
+  version: "0.8.0",
   displayName: "Vision and Tom",
   description:
     "One personal agent per teammate, working at each handover (scheduled or Hand over now). Agents use only their owner's keys, hand off via board tickets, and change nothing shared until the owner approves.",
@@ -22,6 +22,9 @@ const manifest: PaperclipPluginManifestV1 = {
     "issue.comments.create",
     "issue.documents.write",
     "execution.workspaces.read",
+    // Read-only: the project's repository folder, for CODEOWNERS in the pre-handover check.
+    "projects.read",
+    "project.workspaces.read",
     "agent.tools.register",
     "database.namespace.migrate",
     "database.namespace.read",

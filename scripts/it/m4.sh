@@ -141,10 +141,10 @@ m4_work() { # taskId agentId file -> the "agent" commits a change and runs the c
 
 echo "-- a night's work for Ana (3 tasks) and Bo (1 task)"
 m4_tick
-m4_tool propose_handover "$M4_A" '{"tasks":[{"title":"Add greeting"},{"title":"Add farewell"},{"title":"Refactor everything"}]}'
+m4_tool propose_handover "$M4_A" '{"tasks":[{"title":"Add greeting","claims":["greeting.txt"]},{"title":"Add farewell","claims":["farewell.txt"]},{"title":"Refactor everything","claims":["src/"]}]}'
 [ -n "${IT_DEBUG:-}" ] && echo "    debug propose: $(echo "$API_BODY" | head -c 300) | night: $(m4_night ana@example.com status)"
 M4_T1=$(echo "$API_BODY" | json 'd.result.data.taskIds[0]'); M4_T2=$(echo "$API_BODY" | json 'd.result.data.taskIds[1]'); M4_T3=$(echo "$API_BODY" | json 'd.result.data.taskIds[2]')
-m4_tool propose_handover "$M4_B" '{"tasks":[{"title":"Add a changelog"}]}'
+m4_tool propose_handover "$M4_B" '{"tasks":[{"title":"Add a changelog","claims":["CHANGELOG.md"]}]}'
 M4_TB=$(echo "$API_BODY" | json 'd.result.data.taskIds[0]')
 m4_approve_plan ana@example.com; m4_approve_plan bo@example.com
 m4_tick

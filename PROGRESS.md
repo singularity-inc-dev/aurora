@@ -11,8 +11,8 @@ Milestone names now follow the spec (see CLAUDE.md, "Milestones" and "Built so f
 | Step 1 | Project files realigned with the spec; decision register and the M5 answers in CLAUDE.md | Done |
 | A | Agent isolation (spec gap 1) | Done, live-tested |
 | B | Each owner's agent on their own Claude subscription or API key (gap 2) | Done, live-tested with stand-ins |
-| C | Handover any time ("Hand over now") and night names renamed to handover | Done; v1c, M2 and M3 live-tested, full live run being repeated |
-| D | Claims and the pre-handover check | Not started |
+| C | Handover any time ("Hand over now") and night names renamed to handover | Done, live-tested (full run: 284 passed, 0 failed) |
+| D | Claims and the pre-handover check | Done; v1d live-tested, full live run in progress |
 | E | Merge replay at handback | Not started |
 | F | Numbers from the event log, CSV export | Not started |
 | G | Collision audit (M0) | Not started |
@@ -54,6 +54,21 @@ Each person's agent runs as a system user of its own (`vt-a-...`), which Papercl
 **Found by the live tests:** a scheduled handover first kept the window it was given when its plan opened, so moving your start hour after that had no effect. It now follows your current schedule for that day (a Hand over now keeps its own window). Unit test added.
 
 **Unit tests:** plugin 301, email service 38.
+
+### D. Claims and the pre-handover check (done)
+- **Claims.** Every task an agent proposes lists the files and folders it may change (`claims`, for example `src/ui/`, `README.md`, `src/**/*.css`). A task without claims, or with a path that leaves the repository (`..`), is refused.
+- **Owner areas** come from the repository's committed `CODEOWNERS` (GitHub's places and rules: `.github/`, the top folder, `docs/`; the last matching line wins). People are matched by email or by the new optional setting `githubLogin`. Vision and Tom reads the file at the project's main branch, never the working folder an agent might have changed. If the repository cannot be read, the proposal is refused (the check never passes on a guess).
+- **The check.** A task that reaches into another person's area, or into files another person's open task claimed first, is not run. It becomes a waiting ticket for that person's agent (like a hand-off): the area owner keeps the files first, otherwise the earlier claim. Plans already proposed are never changed. When the repository has the file, a file is known to be a file; otherwise a path counts as a possible folder too, so the check errs towards "overlap".
+- **At most three questions.** The plan the owner approves lists the kept tasks with their claims, then at most three questions about what was moved (past three, the rest are folded into the third), then notes such as "no CODEOWNERS file".
+- **Recorded for F.** Each overlap is a row in the new `overlaps` table; each kept task's claims are stored with it and end when it is decided or its plan expires.
+- **Hand over now keys** now include seconds, so a new Hand over now right after one finishes is not refused (found by the live test).
+- Paperclip permissions added: `projects.read`, `project.workspaces.read` (read-only). Plugin version 0.8.0.
+
+**Checked live** (`scripts/it/v1d.sh`, 13 checks, real Paperclip and a real repository): a task without claims is refused; Bo claims `docs/`; Ana proposes one task in her area, one in Bo's area (`@bo-v1d` in CODEOWNERS) and one on Bo's claimed files. Only the first stays; the other two are waiting tickets for Bo's agent, which name the CODEOWNERS line from the committed file (an uncommitted edit giving everything to Bo was ignored). Ana's plan asks exactly two questions and shows the kept task's claims.
+
+**Unit tests:** plugin 340 (claims matching, CODEOWNERS reading, the check, the questions, the runner with a real git repository), email service 38.
+
+**Known gaps:** two proposals at the very same moment can both pass (the merge replay in E is the backstop); CODEOWNERS team entries (`@org/team`) are not matched to people; "fixes the order" (dependencies between work orders) waits for work orders with dependencies.
 
 ### Recorded as later (not built in thin version 1)
 - Approvals as each owner's own GitHub review (spec gap 13). The email Approve stays as it is for the pilot.

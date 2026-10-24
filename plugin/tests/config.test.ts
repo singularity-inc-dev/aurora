@@ -136,3 +136,19 @@ describe("settings saved under the old night-only names", () => {
     expect(migrateLegacySettings(config).legacyNames).toEqual([]);
   });
 });
+
+describe("githubLogin (piece D: CODEOWNERS names people by login or email)", () => {
+  const bo = (o: Record<string, unknown> = {}) => person({ email: "bo@example.com", agentId: "agent-bo", secrets: [], ...o });
+
+  it("is optional, and a leading @ is dropped", () => {
+    const r = parseSettings({ people: [person({ githubLogin: "@Ana-Dev" }), bo()] });
+    expect(r.ok && r.settings.people.map((p) => p.githubLogin)).toEqual(["Ana-Dev", null]);
+  });
+
+  it("refuses something that is not a GitHub login, or one used twice", () => {
+    const bad = parseSettings({ people: [person({ githubLogin: "ana dev" })] });
+    expect(!bad.ok && bad.errors).toEqual(["people[0].githubLogin: must be a GitHub login"]);
+    const twice = parseSettings({ people: [person({ githubLogin: "ana" }), bo({ githubLogin: "ANA" })] });
+    expect(!twice.ok && twice.errors).toEqual(["people[1].githubLogin: already used by another person"]);
+  });
+});

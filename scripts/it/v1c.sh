@@ -57,7 +57,7 @@ check "v1c: only people on the team can start one" "$API_STATUS" "404"
 echo "-- the plan is proposed and approved; work starts right away"
 api GET "/api/companies/$V1A_CID/heartbeat-runs"
 V1C_RUN=$(echo "$API_BODY" | json "(Array.isArray(d)?d:d.items).filter(r=>r.agentId==='$V1A_A').map(r=>r.id)[0] || ''")
-api POST /api/plugins/tools/execute "{\"tool\":\"$PLUGIN_KEY:propose_handover\",\"parameters\":{\"tasks\":[{\"title\":\"Add a greeting\"}]},\"runContext\":{\"agentId\":\"$V1A_A\",\"runId\":\"$V1C_RUN\",\"companyId\":\"$V1A_CID\",\"projectId\":\"$V1A_PID\"}}"
+api POST /api/plugins/tools/execute "{\"tool\":\"$PLUGIN_KEY:propose_handover\",\"parameters\":{\"tasks\":[{\"title\":\"Add a greeting\",\"claims\":[\"greeting.txt\"]}]},\"runContext\":{\"agentId\":\"$V1A_A\",\"runId\":\"$V1C_RUN\",\"companyId\":\"$V1A_CID\",\"projectId\":\"$V1A_PID\"}}"
 V1C_TASK=$(echo "$API_BODY" | json 'd.result.data.taskIds[0]')
 check "v1c: the agent proposes through propose_handover" "$([ -n "$V1C_TASK" ] && echo yes || echo no)" "yes"
 api GET "/api/issues/$V1C_PLAN/interactions"

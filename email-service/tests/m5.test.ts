@@ -47,7 +47,7 @@ function plugin(over: Partial<PluginApi> = {}): PluginApi & { calls: string[] } 
       };
     },
     handoverStatus: async (email) => ({ ok: true, email, timezone: "UTC", handoverStartHour: 22, handovers: [] }),
-    startHandover: async (email) => (calls.push(`start:${email}`), { ok: true, handoverKey: "2026-10-24T14:05" }),
+    startHandover: async (email) => (calls.push(`start:${email}`), { ok: true, handoverKey: "2026-10-24T14:05:00" }),
     finishInvite: async (_id, r) => {
       calls.push(`finish:${r.ok ? "ok" : r.message}`);
       return { ok: true, message: "joined" };

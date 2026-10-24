@@ -146,7 +146,9 @@ const plugin = definePlugin({
         await requireSafeAgent(ctx, settings, person, run.companyId, "your");
         const result = await proposeHandover(ctx, settings, person, run, params);
         return {
-          content: `Proposed ${result.taskIds.length} task(s). Waiting for ${person.email} to approve the plan.`,
+          content:
+            `Proposed ${result.taskIds.length} task(s). Waiting for ${person.email} to approve the plan.` +
+            result.moved.map((m) => `\n"${m.title}" reaches into ${m.keeper}'s files, so it went to their agent (${m.ticketId}) and is not yours to do in this handover.`).join(""),
           data: result,
         };
       } catch (err) {

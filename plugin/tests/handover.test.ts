@@ -168,7 +168,7 @@ describe("Hand over now (a handover with its own window)", () => {
   const start = new Date("2026-10-24T14:05:00Z");
   const end = new Date("2026-10-24T22:05:00Z");
   const now = (o: Partial<HandoverRun> = {}) =>
-    run({ kind: "now", handoverKey: "2026-10-24T14:05", startsAt: start, endsAt: end, status: "proposing", planIssueId: null, taskIds: [], currentIndex: -1, ...o });
+    run({ kind: "now", handoverKey: "2026-10-24T14:05:00", startsAt: start, endsAt: end, status: "proposing", planIssueId: null, taskIds: [], currentIndex: -1, ...o });
   const daytime = clock("day", "2026-10-24");
   const at = (iso: string) => new Date(iso);
 

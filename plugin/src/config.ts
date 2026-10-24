@@ -50,6 +50,8 @@ export interface Person {
    * (a secret named MODEL_KEY_NAME in their own keys). Never one shared account.
    */
   modelAccess: ModelAccess | null;
+  /** GitHub login, so CODEOWNERS entries like "@login" name this person (piece D). Emails match too. */
+  githubLogin?: string | null;
   timezone: string;
   handoverStartHour: number;
   maxTasksPerHandover: number;
@@ -279,6 +281,7 @@ export const instanceConfigSchema: JsonSchema = {
             title: "Claude access: the owner's own subscription (signed in on their agent) or their own API key (key named anthropic-api-key)",
             enum: ["subscription", "api-key"],
           },
+          githubLogin: { type: "string", title: "GitHub login (to match CODEOWNERS entries like @login)", pattern: "^@?[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$" },
           timezone: { type: "string", title: "Timezone (IANA, e.g. Europe/London)", minLength: 1 },
           handoverStartHour: { type: "integer", title: "Scheduled handover hour (0-23); Hand over now works any time", minimum: 0, maximum: 23 },
           maxTasksPerHandover: {
@@ -402,6 +405,7 @@ export function parseSettings(stored: unknown): ParseResult {
   const seenEmails = new Set<string>();
   const seenEnvironments = new Set<string>();
   const seenUsers = new Set<string>();
+  const seenLogins = new Set<string>();
 
   raw.people.forEach((entry, i) => {
     const at = `people[${i}]`;
@@ -439,6 +443,17 @@ export function parseSettings(stored: unknown): ParseResult {
     const handoverBudgetCapCents = entry.handoverBudgetCapCents;
     if (!Number.isInteger(handoverBudgetCapCents) || (handoverBudgetCapCents as number) < 0) {
       errors.push(`${at}.handoverBudgetCapCents: must be a whole number of cents, 0 or more`);
+    }
+
+    let githubLogin: string | null = null;
+    if (entry.githubLogin !== undefined && entry.githubLogin !== null && entry.githubLogin !== "") {
+      const login = typeof entry.githubLogin === "string" ? entry.githubLogin.trim().replace(/^@/, "") : "";
+      if (!GITHUB_LOGIN_RE.test(login)) errors.push(`${at}.githubLogin: must be a GitHub login`);
+      else if (seenLogins.has(login.toLowerCase())) errors.push(`${at}.githubLogin: already used by another person`);
+      else {
+        githubLogin = login;
+        seenLogins.add(login.toLowerCase());
+      }
     }
 
     let agentEnvironmentId: string | null = null;
@@ -509,6 +524,7 @@ export function parseSettings(stored: unknown): ParseResult {
       agentUser,
       checksKey,
       modelAccess,
+      githubLogin,
       timezone,
       handoverStartHour: handoverStartHour as number,
       maxTasksPerHandover: maxTasksPerHandover as number,
@@ -663,6 +679,7 @@ function parseIsolation(raw: unknown, errors: string[]): IsolationSettings {
 // Values that end up as ssh arguments: never option-like, never with spaces.
 const HOST_RE = /^[A-Za-z0-9][A-Za-z0-9.:-]*$/;
 const USER_RE = /^[a-z_][a-z0-9_-]{0,31}$/;
+const GITHUB_LOGIN_RE = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
 
 function parseSandbox(raw: unknown, errors: string[]): ChecksSandbox | null {
   if (raw === undefined || raw === null) return null;

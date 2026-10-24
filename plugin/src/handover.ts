@@ -21,7 +21,7 @@ export interface HandoverRun {
   companyId: string;
   owner: string;
   agentId: string;
-  /** The scheduled day (YYYY-MM-DD), or the start minute of a "now" handover (YYYY-MM-DDTHH:MM, UTC). */
+  /** The scheduled day (YYYY-MM-DD), or the start of a "now" handover (YYYY-MM-DDTHH:MM:SS, UTC). */
   handoverKey: string;
   kind: HandoverKind;
   /** When agents may work. Null only for handovers recorded before windows were stored. */

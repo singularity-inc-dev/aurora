@@ -80,9 +80,9 @@ check "still one plan per person after another tick" "$(echo "$API_BODY" | json 
 
 M3_RUN_A=$(m3_run_of "$M3_A")
 check "Paperclip woke Ana's agent for the plan ticket" "$([ -n "$M3_RUN_A" ] && echo yes || echo no)" "yes"
-m3_propose "$M3_A" "$M3_RUN_A" '[{"title":"a"},{"title":"b"},{"title":"c"}]'
+m3_propose "$M3_A" "$M3_RUN_A" '[{"title":"a","claims":["a.txt"]},{"title":"b","claims":["b.txt"]},{"title":"c","claims":["c.txt"]}]'
 check "proposing more than the person's limit is refused" "$(echo "$API_BODY" | json 'd.result.error')" "propose at most 2 tasks"
-m3_propose "$M3_A" "$M3_RUN_A" '[{"title":"Fix login","description":"Users see a 500"},{"title":"Write docs"}]'
+m3_propose "$M3_A" "$M3_RUN_A" '[{"title":"Fix login","description":"Users see a 500","claims":["src/login/"]},{"title":"Write docs","claims":["docs/"]}]'
 M3_T1=$(echo "$API_BODY" | json 'd.result.data.taskIds[0]'); M3_T2=$(echo "$API_BODY" | json 'd.result.data.taskIds[1]')
 check "agent proposes 2 tasks" "$([ -n "$M3_T1" ] && [ -n "$M3_T2" ] && echo yes || echo no)" "yes"
 check "proposed tasks wait in backlog" "$(m3_issue "$M3_T1" status)" "backlog"
@@ -109,7 +109,7 @@ check "plan is approved" "$(m3_night ana@example.com status)" "approved"
 check "nothing starts before the night" "$(m3_issue "$M3_T1" status)" "backlog"
 
 M3_RUN_B=$(m3_run_of "$M3_B")
-m3_propose "$M3_B" "$M3_RUN_B" '[{"title":"Risky refactor"}]'
+m3_propose "$M3_B" "$M3_RUN_B" '[{"title":"Risky refactor","claims":["src/core/"]}]'
 M3_TB=$(echo "$API_BODY" | json 'd.result.data.taskIds[0]')
 M3_PLAN_B=$(m3_night bo@example.com planIssueId)
 api GET "/api/issues/$M3_PLAN_B/interactions"
@@ -121,7 +121,7 @@ check "event log records the rejection and reason" "$(m3_event "$M3_TB" outcome)
 
 echo "-- night routine"
 M3_RUN_C=$(m3_run_of "$M3_C")
-m3_propose "$M3_C" "$M3_RUN_C" '[{"title":"Slow task"}]'
+m3_propose "$M3_C" "$M3_RUN_C" '[{"title":"Slow task","claims":["slow.txt"]}]'
 M3_TC=$(echo "$API_BODY" | json 'd.result.data.taskIds[0]')
 M3_PLAN_C=$(m3_night cy@example.com planIssueId)
 api GET "/api/issues/$M3_PLAN_C/interactions"
