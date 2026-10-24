@@ -1,3 +1,4 @@
+import { isolatedAdapterConfig } from "./agentenv.ts";
 import type { BoardApi, PersonApi, PluginApi } from "./paperclip.ts";
 import { PaperclipError } from "./paperclip.ts";
 
@@ -41,7 +42,7 @@ function serialized<T>(fn: () => Promise<T>): Promise<T> {
 export async function join(plugin: PluginApi, board: BoardApi, person: PersonApi, token: string, form: JoinForm): Promise<JoinOutcome> {
   const claim = await plugin.claimInvite(token, form.timezone);
   if (!claim.ok) return { ok: false, status: claim.status, message: claim.message };
-  const { inviteId, email, timezone, defaults } = claim.plan;
+  const { inviteId, email, timezone, defaults, agent } = claim.plan;
   let step = "creating your account";
   try {
     const paperclipInvite = await board.createHumanInvite();
@@ -52,8 +53,10 @@ export async function join(plugin: PluginApi, board: BoardApi, person: PersonApi
     const agentId = await board.createAgent({
       name: `${form.name}'s night agent`.slice(0, 120),
       adapterType: defaults.agentAdapterType,
-      adapterConfig: defaults.agentAdapterConfig,
+      // In its own environment: the system user vt-invite made for this person (agent isolation).
+      adapterConfig: agent ? isolatedAdapterConfig(defaults.agentAdapterType, defaults.agentAdapterConfig) : defaults.agentAdapterConfig,
       budgetMonthlyCents: defaults.agentMonthlyBudgetCents,
+      defaultEnvironmentId: agent?.agentEnvironmentId ?? null,
     });
     step = "saving your settings";
     await serialized(async () => {
@@ -67,6 +70,7 @@ export async function join(plugin: PluginApi, board: BoardApi, person: PersonApi
           {
             email,
             agentId,
+            ...(agent ? { agentEnvironmentId: agent.agentEnvironmentId, agentUser: agent.agentUser, checksKey: agent.checksKey } : {}),
             timezone,
             nightStartHour: defaults.nightStartHour,
             maxTasksPerNight: defaults.maxTasksPerNight,

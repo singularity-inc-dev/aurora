@@ -78,7 +78,7 @@ V1A_PC="$V1A_D/it/instances/default"
 V1A_FILES="$V1A_PC/secrets/master.key:$V1A_PC/secrets/decision-signing.key:$V1A_PC/config.json:$V1A_PC/.env:/home/vt-agent-bo/.bashrc:$SSHBED/keys/ana-run:$SSHBED/keys/bo-checks"
 V1A_DIRS="$V1A_D/it:$V1A_D/it-repos:$V1A_PC/logs:$V1A_PC/data:/home/vt-agent-bo"
 v1a_agent() { # name env -> agent id
-  api POST "/api/companies/$V1A_CID/agents" "{\"name\":\"$1\",\"role\":\"engineer\",\"adapterType\":\"claude_local\",\"adapterConfig\":{\"engine\":\"cli\",\"command\":\"$ROOT/scripts/it/lib/fake-claude\",\"env\":{\"VT_PROBE_FILES\":\"$V1A_FILES\",\"VT_PROBE_DIRS\":\"$V1A_DIRS\",\"VT_PROBE_SECRET_URL\":\"$BASE/api/companies/$V1A_CID/secrets\"}},\"defaultEnvironmentId\":\"$2\"}"
+  api POST "/api/companies/$V1A_CID/agents" "{\"name\":\"$1\",\"role\":\"engineer\",\"adapterType\":\"claude_local\",\"adapterConfig\":{\"engine\":\"cli\",\"command\":\"$ROOT/scripts/it/lib/fake-claude\",\"env\":{\"VT_PROBE_FILES\":\"$V1A_FILES\",\"VT_PROBE_DIRS\":\"$V1A_DIRS\",\"VT_PROBE_SECRET_PATH\":\"/api/companies/$V1A_CID/secrets\",\"VT_PROBE_API\":\"$BASE\",\"VT_PROBE_SECRET_KEYS\":\"vt-link-signing vt-checks-key-bo vt-checks-key-ana\"}},\"defaultEnvironmentId\":\"$2\"}"
   local id; id=$(echo "$API_BODY" | json 'd.id')
   api PATCH "/api/agents/$id/permissions" '{"canCreateAgents":false,"canCreateSkills":false,"canAssignTasks":true}'
   echo "$id"
@@ -86,7 +86,7 @@ v1a_agent() { # name env -> agent id
 V1A_A=$(v1a_agent "Ana's agent" "$V1A_ENV_A")
 V1A_B=$(v1a_agent "Bo's agent" "$V1A_ENV_B")
 v1a_person() { # email agent env user checksKey
-  echo "{\"email\":\"$1\",\"agentId\":\"$2\",\"agentEnvironmentId\":\"$3\",\"agentUser\":\"$4\",\"checksKey\":{\"type\":\"secret_ref\",\"secretId\":\"$5\"},\"timezone\":\"UTC\",\"nightStartHour\":22,\"nightBudgetCapCents\":500}"
+  echo "{\"email\":\"$1\",\"agentId\":\"$2\",\"agentEnvironmentId\":\"$3\",\"agentUser\":\"$4\",\"checksKey\":{\"type\":\"secret_ref\",\"secretId\":\"$5\"},\"modelAccess\":\"subscription\",\"timezone\":\"UTC\",\"nightStartHour\":22,\"nightBudgetCapCents\":500}"
 }
 V1A_PEOPLE="[$(v1a_person ana@example.com "$V1A_A" "$V1A_ENV_A" vt-agent-ana "$V1A_CK_A"),$(v1a_person bo@example.com "$V1A_B" "$V1A_ENV_B" vt-agent-bo "$V1A_CK_B")]"
 # The test command passes only when it runs as an owner's agent user; the lint command only when Paperclip's master key is out of reach.
@@ -137,7 +137,9 @@ check "v1a: it sees no other user's processes (so no other run's token on a comm
 check "v1a: Paperclip's master key, signing keys, config and .env are refused" "$(echo "$V1A_PROBE" | json "['master.key','decision-signing.key','config.json','.env'].map(f=>d['read:$V1A_PC/'+(f.endsWith('.key')?'secrets/':'')+f]).join()")" "refused,refused,refused,refused"
 check "v1a: Bo's files and the SSH keys are refused" "$(echo "$V1A_PROBE" | json "[d['read:/home/vt-agent-bo/.bashrc'],d['read:$SSHBED/keys/ana-run'],d['read:$SSHBED/keys/bo-checks']].join()")" "refused,refused,refused"
 check "v1a: Paperclip's data folders, the repositories and Bo's home cannot be listed" "$(echo "$V1A_PROBE" | json "['$V1A_D/it','$V1A_D/it-repos','$V1A_PC/logs','$V1A_PC/data','/home/vt-agent-bo'].map(x=>d['list:'+x]).join()")" "refused,refused,refused,refused,refused"
-check "v1a: its own run token cannot read the company's secrets" "$(echo "$V1A_PROBE" | json 'd.secretApi==="401"||d.secretApi==="403"||d.secretApi==="404" ? "refused" : d.secretApi')" "refused"
+check "v1a: its own run token works (control: it may read its own agent)" "$(echo "$V1A_PROBE" | json 'd.meApi')" "200"
+check "v1a: ...but cannot list the company's secrets" "$(echo "$V1A_PROBE" | json 'd.secretApi')" "403"
+check "v1a: inside its run, Paperclip refuses it the link signing key and the checks keys" "$(echo "$V1A_PROBE" | json "['vt-link-signing','vt-checks-key-bo','vt-checks-key-ana'].map(k=>d['agentSecret:'+k]).join()")" "403,403,403"
 check "v1a: no Paperclip secret is handed to it (environment names)" "$(echo "$V1A_PROBE" | json "d.envNames.split(' ').filter(n=>!n.startsWith('VT_PROBE_')&&/SECRET|BETTER_AUTH|JWT|DATABASE|MASTER|SIGN|GITHUB_TOKEN|SMTP/.test(n)).join()||'none'")" "none"
 check "v1a: the signing key's value appears nowhere in what came back" "$(grep -rlF "$V1A_SIGN_VALUE" "$V1A_WT" 2>/dev/null | wc -l | tr -d ' ')" "0"
 api PATCH "/api/issues/$V1A_ISS" '{"status":"done"}'
@@ -159,4 +161,4 @@ api POST /api/plugins/tools/execute "{\"tool\":\"$PLUGIN_KEY:run_checks\",\"para
 check "v1a: without a checks sandbox the commands are refused, not run" "$(echo "$API_BODY" | json 'd.result.data.results.find(r=>r.name==="tests").summary')" "not run: the checks sandbox is not configured (commands never run as Paperclip's own user)"
 api PATCH "/api/issues/$V1A_ISS" '{"status":"done"}'
 unset V1A_SIGN_VALUE
-sshbed_stop
+# The SSH bed stays up for scripts/it/v1b.sh; the test script stops it at the end.

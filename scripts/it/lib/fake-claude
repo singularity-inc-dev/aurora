@@ -38,9 +38,18 @@ if [ -n "${VT_PROBE_DIRS:-}" ]; then
   IFS=':' read -ra dirs <<<"$VT_PROBE_DIRS"
   for d in "${dirs[@]}"; do json+=$(probe "list:$d" ls "$d"); done
 fi
-if [ -n "${VT_PROBE_SECRET_URL:-}" ] && [ -n "${PAPERCLIP_API_KEY:-}" ]; then
-  code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $PAPERCLIP_API_KEY" "$VT_PROBE_SECRET_URL" 2>/dev/null || echo 000)
-  json+="\"secretApi\":\"$code\","
+# Paperclip lets a run read the secrets bound to its own agent; try the ones that are not.
+if [ -n "${VT_PROBE_SECRET_KEYS:-}" ] && [ -n "${PAPERCLIP_API_KEY:-}" ]; then
+  # The address and token Paperclip gives the run (over SSH: its bridge). Control: the agent may read itself.
+  api="${PAPERCLIP_API_URL:-${VT_PROBE_API:-}}"
+  json+="\"apiUrl\":\"$api\",\"meApi\":\"$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $PAPERCLIP_API_KEY" "$api/api/agents/me" 2>/dev/null || echo 000)\","
+  if [ -n "${VT_PROBE_SECRET_PATH:-}" ]; then
+    json+="\"secretApi\":\"$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $PAPERCLIP_API_KEY" "$api$VT_PROBE_SECRET_PATH" 2>/dev/null || echo 000)\","
+  fi
+  for k in $VT_PROBE_SECRET_KEYS; do
+    code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $PAPERCLIP_API_KEY" -H 'content-type: application/json' -d '{}' "$api/api/agents/me/secrets/$k/value" 2>/dev/null || echo 000)
+    json+="\"agentSecret:$k\":\"$code\","
+  done
 fi
 if [ -n "${VT_PROBE_DB_PORT:-}" ]; then
   json+=$(probe "db" bash -c "exec 3<>/dev/tcp/127.0.0.1/$VT_PROBE_DB_PORT && printf 'x' >&3")

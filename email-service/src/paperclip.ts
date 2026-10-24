@@ -1,3 +1,4 @@
+import type { AgentBinding } from "./agentenv.ts";
 import type { ServiceConfig } from "./config.ts";
 
 export interface Email {
@@ -62,7 +63,7 @@ export interface InviteDefaults {
 }
 
 export type InviteClaim =
-  | { ok: true; status: "claimed"; plan: { inviteId: string; email: string; timezone: string; defaults: InviteDefaults } }
+  | { ok: true; status: "claimed"; plan: { inviteId: string; email: string; timezone: string; defaults: InviteDefaults; agent: AgentBinding | null } }
   | { ok: false; status: "invalid" | "expired" | "already-used" | "refused"; message: string };
 
 /** What the service needs from the plugin. Kept as an interface so tests can fake it. */
@@ -74,7 +75,7 @@ export interface PluginApi {
   publishResult(token: string, result: PublishResult): Promise<LinkOutcome>;
   waitingPullRequests(): Promise<{ repo: string | null; pullRequests: WaitingPullRequest[] }>;
   pullRequestUpdate(taskId: string, state: "merged" | "closed", mergeSha: string | null): Promise<void>;
-  createInvite(email: string, timezone: string | null): Promise<{ ok: boolean; message?: string; url?: string; email?: string; expiresAt?: string }>;
+  createInvite(email: string, timezone: string | null, agent?: AgentBinding | null): Promise<{ ok: boolean; message?: string; url?: string; email?: string; expiresAt?: string }>;
   previewInvite(token: string): Promise<InviteCheck>;
   claimInvite(token: string, timezone: string | null): Promise<InviteClaim>;
   finishInvite(inviteId: string, result: { ok: true; agentId: string; userId: string } | { ok: false; message: string }): Promise<{ ok: boolean; message: string }>;
@@ -124,7 +125,7 @@ export function paperclipApi(cfg: ServiceConfig, fetchImpl: typeof fetch = fetch
     async pullRequestUpdate(taskId, state, mergeSha) {
       await call("POST", "/prs/update", { taskId, state, mergeSha });
     },
-    createInvite: (email, timezone) => call("POST", "/invites", { email, ...(timezone ? { timezone } : {}) }, [409]),
+    createInvite: (email, timezone, agent) => call("POST", "/invites", { email, ...(timezone ? { timezone } : {}), ...(agent ? { agent } : {}) }, [409]),
     previewInvite: (token) => call<InviteCheck>("POST", "/invites/preview", { token }),
     claimInvite: (token, timezone) => call<InviteClaim>("POST", "/invites/claim", { token, ...(timezone ? { timezone } : {}) }),
     finishInvite: (inviteId, result) => call("POST", "/invites/finish", { inviteId, ...result }),
@@ -134,7 +135,9 @@ export function paperclipApi(cfg: ServiceConfig, fetchImpl: typeof fetch = fetch
 /** Board calls the join flow needs (the board API key acts for the owner). */
 export interface BoardApi {
   createHumanInvite(): Promise<string>;
-  createAgent(input: { name: string; adapterType: string; adapterConfig: Record<string, unknown>; budgetMonthlyCents: number }): Promise<string>;
+  createAgent(input: { name: string; adapterType: string; adapterConfig: Record<string, unknown>; budgetMonthlyCents: number; defaultEnvironmentId?: string | null }): Promise<string>;
+  /** Any board call (used for the agent's environment, agentenv.ts). */
+  request<T = unknown>(method: string, path: string, body?: unknown): Promise<T>;
   getAgent(agentId: string): Promise<Record<string, unknown>>;
   /** Plugin settings for the company (read, change, save). */
   getPluginConfig(): Promise<Record<string, unknown>>;
@@ -178,12 +181,14 @@ export function boardApi(cfg: ServiceConfig, fetchImpl: typeof fetch = fetch): B
         adapterConfig: input.adapterConfig,
         budgetMonthlyCents: input.budgetMonthlyCents,
         permissions: { canCreateAgents: false, canCreateSkills: false },
+        ...(input.defaultEnvironmentId ? { defaultEnvironmentId: input.defaultEnvironmentId } : {}),
       });
       // Set again through the permissions route, which is what the plugin's route audit reads.
       await req("PATCH", `/api/agents/${encodeURIComponent(agent.id)}/permissions`, { canCreateAgents: false, canCreateSkills: false, canAssignTasks: true });
       return agent.id;
     },
     getAgent: (agentId) => req("GET", `/api/agents/${encodeURIComponent(agentId)}`),
+    request: (method, path, body) => req(method, path, body),
     async getPluginConfig() {
       const id = await resolvePluginId();
       const res = await req<{ configJson?: Record<string, unknown> } | null>("GET", `/api/plugins/${id}/config?companyId=${c}`);

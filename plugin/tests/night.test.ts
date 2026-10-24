@@ -9,6 +9,7 @@ const person: Person = {
   agentEnvironmentId: null,
   agentUser: null,
   checksKey: null,
+  modelAccess: null,
   timezone: "UTC",
   nightStartHour: 22,
   maxTasksPerNight: 3,

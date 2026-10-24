@@ -7,8 +7,8 @@ import { agentProblems, auditIsolation, auditSettingsIsolation, ENVIRONMENT_ADAP
 function settingsWith(raw: Record<string, unknown> = {}): PluginSettings {
   const r = parseSettings({
     people: [
-      { email: "ana@example.com", agentId: "a1", agentEnvironmentId: "env-a", timezone: "UTC", nightStartHour: 22, nightBudgetCapCents: 100 },
-      { email: "bo@example.com", agentId: "b1", agentEnvironmentId: "env-b", timezone: "UTC", nightStartHour: 22, nightBudgetCapCents: 100 },
+      { email: "ana@example.com", agentId: "a1", agentEnvironmentId: "env-a", modelAccess: "subscription", timezone: "UTC", nightStartHour: 22, nightBudgetCapCents: 100 },
+      { email: "bo@example.com", agentId: "b1", agentEnvironmentId: "env-b", modelAccess: "subscription", timezone: "UTC", nightStartHour: 22, nightBudgetCapCents: 100 },
     ],
     ...raw,
   });

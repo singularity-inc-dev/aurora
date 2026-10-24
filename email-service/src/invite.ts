@@ -3,10 +3,11 @@
  * Usage: node src/invite.ts <email> [timezone]
  * Prints the link too, so the owner can send it another way.
  */
+import { ensureAgentEnvironment, parseAgentLogin } from "./agentenv.ts";
 import { loadConfig } from "./config.ts";
 import { safeError, smtpSender } from "./mailer.ts";
 import { esc } from "./pages.ts";
-import { paperclipApi } from "./paperclip.ts";
+import { boardApi, paperclipApi } from "./paperclip.ts";
 
 const [email, timezone] = process.argv.slice(2);
 if (!email) {
@@ -14,7 +15,11 @@ if (!email) {
   process.exit(2);
 }
 const cfg = loadConfig();
-const created = await paperclipApi(cfg).createInvite(email, timezone ?? null);
+// vt-invite (as root) made the new agent's own system user and keys (deploy/lib/agents.sh).
+const login = parseAgentLogin(process.env.AGENT_LOGIN);
+const board = boardApi(cfg);
+const agent = login ? await ensureAgentEnvironment(board.request, cfg.companyId, login) : null;
+const created = await paperclipApi(cfg).createInvite(email, timezone ?? null, agent);
 if (!created.ok || !created.url) {
   console.error(`Not created: ${created.message ?? "unknown reason"}`);
   process.exit(1);

@@ -9,13 +9,40 @@ Milestone names now follow the spec (see CLAUDE.md, "Milestones" and "Built so f
 | Piece | What | Status |
 | --- | --- | --- |
 | Step 1 | Project files realigned with the spec; decision register and the M5 answers in CLAUDE.md | Done |
-| A | Agent isolation (spec gap 1) | Not started |
-| B | Each owner's agent on their own Claude subscription or API key (gap 2) | Not started |
+| A | Agent isolation (spec gap 1) | Done, live-tested |
+| B | Each owner's agent on their own Claude subscription or API key (gap 2) | Done, live-tested with stand-ins |
 | C | Handover any time ("Hand over now") and night names renamed to handover | Not started |
 | D | Claims and the pre-handover check | Not started |
 | E | Merge replay at handback | Not started |
 | F | Numbers from the event log, CSV export | Not started |
 | G | Collision audit (M0) | Not started |
+
+### A. Agent isolation (done)
+Each person's agent runs as a system user of its own (`vt-a-...`), which Paperclip reaches over SSH on 127.0.0.1 (Paperclip's own "ssh" environment). That user is not in Paperclip's group. Paperclip puts run tokens on command lines, so nothing started over SSH can see other users' processes (`ProtectProc=invisible`). Checks (tests, lint) run as the owner's own agent user through `deploy/bin/vt-check-runner`, in a fresh folder each time, never as Paperclip's user. The plugin refuses to work for an agent that is not isolated.
+
+**Checked live** (`scripts/it/v1a.sh`, 24 checks; real Paperclip running a hostile stand-in agent over SSH):
+- The agent ran as `vt-agent-ana`; its commit came back to the task's branch on the host.
+- Refused: Paperclip's master key, signing keys, config and `.env`; its data folders and the repositories; Bo's files; the SSH keys; the company's secrets API with its own run token (403); the link signing key and the checks keys through Paperclip's agent-secret route (403).
+- It saw 0 other processes, got no Paperclip secret in its environment, and the signing key's value was in nothing that came back.
+- Tests ran as the agent's user; agent-written check code could not read the master key. The checks key can only start the runner.
+- The audit flags an agent in someone else's environment, or one on an adapter that always runs as Paperclip's user (`process`).
+
+**Deployment rehearsal** (77 checks, 0 failed): `vt-setup` and `vt-invite` make the user, the keys (deleted from disk once Paperclip has them) and Paperclip's SSH environment. The owner's and Dee's agents log in over SSH as their own users. The agent's user cannot read Paperclip's config, data, database password or backups, and cannot log in to PostgreSQL. `vt-check` checks all of this. The rehearsal found a real bug: sshd reads a user's key file as that user, so the keys now live in `/etc/ssh/vision-and-tom/`.
+
+**Unit tests:** plugin 287, email service 36.
+
+**Not verified:** a real Ubuntu SSH service with `ProtectProc=invisible` (rehearsed with this machine's sshd and a private `/proc`); a real Claude Code run over SSH (the stand-in is a script).
+
+**Known limits:** Paperclip's built-in laptop database has a fixed password, so never run real agents on it. An agent can interfere with its own owner's checks; Hardy's locked sandbox is M4.
+
+### B. Each owner's own Claude access (done)
+`sudo vt-model-access <email> subscription "<their SSH public key>"`: the owner's own key may only start Claude Code's own sign-in (`claude auth login`) on their agent's user. The login stays in that user's home. `sudo vt-model-access <email> api-key <secret>`: the owner stores their own key in Paperclip; their agent alone gets it. DEPLOY.md step 12 is rewritten.
+
+**Checked live** (`scripts/it/v1b.sh`, 15 checks, stand-ins only, no real account): Ana signed in through the stand-in sign-in and her agent's run used that login; Bo's run used his own key; Bo's agent could not read Ana's login; Bo's key cannot also go to Ana (never one shared account); a key typed into a subscription agent is flagged; the owner's key can run nothing else. Rehearsal: both tools on the real kit.
+
+**Unit-tested:** a scan of every Aurora source file shows no code reads, copies or logs Claude login files (only `vt-check` tests that Paperclip's own user has none, without opening it).
+
+**Not verified:** a real Claude subscription sign-in and a real API key.
 
 ### Recorded as later (not built in thin version 1)
 - Approvals as each owner's own GitHub review (spec gap 13). The email Approve stays as it is for the pilot.

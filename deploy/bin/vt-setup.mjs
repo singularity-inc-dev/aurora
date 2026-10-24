@@ -6,8 +6,11 @@
 // Safe to run again: it finds what already exists instead of making it twice.
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { ensureAgentEnvironment, isolatedAdapterConfig, parseAgentLogin } from "../../email-service/src/agentenv.ts";
 
 const input = JSON.parse(readFileSync(0, "utf8"));
+// The owner's agent's own system user and fresh keys, made by vt-setup as root (deploy/lib/agents.sh).
+const agentLogin = parseAgentLogin(process.env.AGENT_LOGIN);
 const base = input.paperclipUrl;
 const origin = new URL(input.publicUrl).origin;
 const PLUGIN_KEY = "vision-and-tom.night-agents";
@@ -108,32 +111,47 @@ if (!projectId && input.projectRepoPath) {
   log("project created for the repository");
 }
 const people = Array.isArray(current.people) ? current.people : [];
-if (!people.some((p) => String(p.email).toLowerCase() === input.owner.email.toLowerCase())) {
+// Paperclip's SSH environment for the agent's own user, and the key for running checks as that user.
+const binding = agentLogin ? await ensureAgentEnvironment(async (m, p, b) => (await call(m, p, b, board)).data, cid, agentLogin) : null;
+if (binding) log(`your agent runs as its own system user ${binding.agentUser}`);
+const ownerRow = people.find((p) => String(p.email).toLowerCase() === input.owner.email.toLowerCase());
+if (ownerRow && binding) {
+  // Already set up (vt-setup run again, or an older install): move the agent into its own environment.
+  const agent = (await call("GET", `/api/agents/${ownerRow.agentId}`, undefined, board)).data;
+  await call("PATCH", `/api/agents/${ownerRow.agentId}`, { defaultEnvironmentId: binding.agentEnvironmentId, adapterConfig: isolatedAdapterConfig(agent.adapterType, agent.adapterConfig ?? {}) }, board);
+  Object.assign(ownerRow, binding);
+}
+if (!ownerRow) {
+  const adapterType = invites.agentAdapterType ?? "claude_local";
   const agent = (await call("POST", `/api/companies/${cid}/agents`, {
-    name: `${input.owner.name}'s night agent`,
+    name: `${input.owner.name}'s agent`,
     role: "engineer",
-    adapterType: invites.agentAdapterType ?? "claude_local",
-    adapterConfig: invites.agentAdapterConfig ?? {},
+    adapterType,
+    adapterConfig: binding ? isolatedAdapterConfig(adapterType, invites.agentAdapterConfig ?? {}) : invites.agentAdapterConfig ?? {},
     budgetMonthlyCents: invites.agentMonthlyBudgetCents ?? 3000,
     permissions: { canCreateAgents: false, canCreateSkills: false },
+    ...(binding ? { defaultEnvironmentId: binding.agentEnvironmentId } : {}),
   }, board)).data;
   await call("PATCH", `/api/agents/${agent.id}/permissions`, { canCreateAgents: false, canCreateSkills: false, canAssignTasks: true }, board);
   people.push({
     email: input.owner.email.toLowerCase(),
     agentId: agent.id,
+    ...(binding ?? {}),
     timezone: input.ownerTimezone || invites.defaultTimezone || "UTC",
     nightStartHour: invites.nightStartHour ?? 22,
     maxTasksPerNight: invites.maxTasksPerNight ?? 3,
     nightBudgetCapCents: invites.nightBudgetCapCents ?? 300,
     secrets: [],
   });
-  log("your night agent created (cannot create agents or skills)");
+  log("your agent created (cannot create agents or skills)");
 }
 const config = {
   ...current,
   links: { ...(current.links ?? {}), baseUrl: `${input.publicUrl}/vt`, signingSecret },
   ...(input.githubRepo ? { github: { repo: input.githubRepo } } : {}),
   night: { ...(current.night ?? {}), ...(projectId ? { projectId } : {}) },
+  // Checks run as each owner's own agent user, over the same SSH server.
+  ...(agentLogin ? { checks: { ...(current.checks ?? {}), sandbox: { host: agentLogin.host, port: agentLogin.port, knownHosts: agentLogin.knownHosts } } } : {}),
   invites,
   people,
 };

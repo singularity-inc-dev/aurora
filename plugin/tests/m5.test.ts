@@ -212,8 +212,13 @@ describe("undecided tasks carry over", () => {
 });
 
 describe("invite links", () => {
+  // What vt-invite makes (as root) before the link: the new agent's own user and environment.
+  const agentFor = (email: string) => {
+    const n = email.split("@")[0]!;
+    return { agentEnvironmentId: `env-${n}`, agentUser: `vt-a-${n}`, checksKey: { type: "secret_ref", secretId: `ck-${n}` } };
+  };
   async function invite(t: Awaited<ReturnType<typeof setup>>, email = "cy@example.com") {
-    const res = await t.api("invite-create", { email, timezone: "Europe/Berlin" });
+    const res = await t.api("invite-create", { email, timezone: "Europe/Berlin", agent: agentFor(email) });
     expect(res.status).toBe(201);
     return { ...res.body, url: res.body.url as string, token: (res.body.url as string).split("/join/")[1]! };
   }
@@ -222,11 +227,13 @@ describe("invite links", () => {
     const t = await setup();
     const inv = await invite(t);
     expect(inv.url).toMatch(/^http:\/\/mail\.test\/join\//);
-    expect((await t.api("invite-preview", { token: inv.token })).body).toMatchObject({ ok: true, email: "cy@example.com", timezone: "Europe/Berlin" });
+    const preview = (await t.api("invite-preview", { token: inv.token })).body;
+    expect(preview).toMatchObject({ ok: true, email: "cy@example.com", timezone: "Europe/Berlin" });
+    expect(JSON.stringify(preview)).not.toContain("vt-a-cy");
     const [a, b] = await Promise.all([t.api("invite-claim", { token: inv.token }), t.api("invite-claim", { token: inv.token })]);
     expect([a.body.status, b.body.status].sort()).toEqual(["already-used", "claimed"]);
     const plan = (a.body.status === "claimed" ? a : b).body.plan;
-    expect(plan).toMatchObject({ email: "cy@example.com", timezone: "Europe/Berlin", defaults: { agentAdapterType: "process", nightBudgetCapCents: 300, maxTasksPerNight: 3 } });
+    expect(plan).toMatchObject({ email: "cy@example.com", timezone: "Europe/Berlin", defaults: { agentAdapterType: "process", nightBudgetCapCents: 300, maxTasksPerNight: 3 }, agent: agentFor("cy@example.com") });
     expect((await t.api("invite-preview", { token: inv.token })).body.status).toBe("already-used");
   });
 
@@ -238,8 +245,16 @@ describe("invite links", () => {
 
     const inv2 = await invite(t, "dee@example.com");
     const plan2 = (await t.api("invite-claim", { token: inv2.token })).body.plan;
-    t.setConfig({ ...baseConfig, people: [...baseConfig.people, { email: "dee@example.com", agentId: "agent-dee", timezone: "UTC", nightStartHour: 22, nightBudgetCapCents: 300 }] });
-    expect((await t.api("invite-finish", { inviteId: plan2.inviteId, ok: true, agentId: "agent-dee", userId: "u1" })).body).toEqual({ ok: true, message: "joined" });
+    const inv3 = await invite(t, "dee@example.com");
+    const plan3 = (await t.api("invite-claim", { token: inv3.token })).body.plan;
+    const dee = { email: "dee@example.com", agentId: "agent-dee", timezone: "UTC", nightStartHour: 22, nightBudgetCapCents: 300 };
+    // Bound to the agent but not to the agent's own user: not a join.
+    t.setConfig({ ...baseConfig, people: [...baseConfig.people, dee] });
+    expect((await t.api("invite-finish", { inviteId: plan2.inviteId, ok: true, agentId: "agent-dee", userId: "u1" })).body.ok).toBe(false);
+    const { agentEnvironmentId, agentUser, checksKey } = agentFor("dee@example.com");
+    t.setConfig({ ...baseConfig, people: [...baseConfig.people, { ...dee, agentEnvironmentId, agentUser, checksKey }] });
+    expect((await t.api("invite-finish", { inviteId: plan3.inviteId, ok: true, agentId: "agent-dee", userId: "u1" })).body).toEqual({ ok: true, message: "joined" });
+    plan2.inviteId = plan3.inviteId;
     expect(t.db.tables.invites.find((r) => r.id === plan2.inviteId)).toMatchObject({ state: "done", agent_id: "agent-dee" });
     // Someone already on the team cannot be invited again.
     expect((await t.api("invite-create", { email: "dee@example.com" })).body).toEqual({ ok: false, message: "this person is already on the team" });
@@ -255,6 +270,14 @@ describe("invite links", () => {
     vi.setSystemTime(new Date(MORNING.getTime() + 31 * 60_000)); // invites live 30 minutes here
     expect((await t.api("invite-claim", { token: inv.token })).body.status).toBe("expired");
     expect(t.db.tables.invites[0]!.state).toBe("new");
+  });
+
+  it("with isolation required, refuses an invite without the new agent's own user", async () => {
+    const t = await setup();
+    expect((await t.api("invite-create", { email: "z@example.com" })).body.message).toContain("needs its own system user");
+    expect((await t.api("invite-create", { email: "z@example.com", agent: { agentUser: "-x" } })).body.message).toContain("malformed");
+    t.setConfig({ ...baseConfig, people: [{ ...baseConfig.people[0], ...agentFor("ana@example.com") }] });
+    expect((await t.api("invite-create", { email: "z@example.com", agent: agentFor("ana@example.com") })).body.message).toContain("already belongs");
   });
 
   it("needs links set up, a valid email and timezone", async () => {

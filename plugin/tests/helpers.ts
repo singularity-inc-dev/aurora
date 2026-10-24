@@ -36,7 +36,7 @@ export function isolatedAgentFields(id: string): Record<string, unknown> {
   return { adapterType: "claude_local", adapterConfig: { engine: "cli" }, defaultEnvironmentId: `env-${id}` };
 }
 /** The matching person fields: the same environment. */
-export const isolatedPersonFields = (agentId: string) => ({ agentEnvironmentId: `env-${agentId}` });
+export const isolatedPersonFields = (agentId: string) => ({ agentEnvironmentId: `env-${agentId}`, modelAccess: "subscription" });
 
 export function write(dir: string, file: string, content: string): void {
   mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });

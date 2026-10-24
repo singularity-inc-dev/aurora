@@ -10,7 +10,9 @@
 # Needs the test users from scripts/it/lib/setup-test-users.sh.
 
 SSHBED_PORT="${SSHBED_PORT:-2299}"
-SSHBED="$ROOT/.paperclip-data/sshbed"
+SSHBED="${SSHBED:-$ROOT/.paperclip-data/sshbed}"
+# Where authorized_keys files live (the rehearsal points this at the kit's own folder).
+SSHBED_AUTH_DIR="${SSHBED_AUTH_DIR:-$SSHBED/authorized_keys}"
 
 sshbed_require() {
   [ "$(id -u)" = "0" ] && [ "$(uname -s)" = "Linux" ] || { echo "  the isolation checks need Linux and root (the cloud test machine)"; return 1; }
@@ -21,7 +23,7 @@ sshbed_require() {
 # sshbed_start : fresh host key and config; prints nothing on success.
 sshbed_start() {
   sshbed_stop
-  rm -rf "$SSHBED" && mkdir -p "$SSHBED/keys" "$SSHBED/authorized_keys" && chmod 711 "$SSHBED" && chmod 700 "$SSHBED/keys" && chmod 755 "$SSHBED/authorized_keys"
+  rm -rf "$SSHBED" && mkdir -p "$SSHBED/keys" "$SSHBED_AUTH_DIR" && chmod 711 "$SSHBED" && chmod 700 "$SSHBED/keys" && chmod 755 "$SSHBED_AUTH_DIR"
   ssh-keygen -q -t ed25519 -N "" -f "$SSHBED/host_key" >/dev/null
   mkdir -p /run/sshd && chmod 755 /run/sshd
   cat >"$SSHBED/sshd_config" <<CFG
@@ -32,7 +34,7 @@ PidFile $SSHBED/sshd.pid
 UsePAM no
 PermitRootLogin no
 AllowUsers vt-agent-ana vt-agent-bo vt-checks
-AuthorizedKeysFile $SSHBED/authorized_keys/%u
+AuthorizedKeysFile $SSHBED_AUTH_DIR/%u
 AuthenticationMethods publickey
 PasswordAuthentication no
 KbdInteractiveAuthentication no
@@ -66,8 +68,8 @@ sshbed_key() { ssh-keygen -q -t ed25519 -N "" -C "$1" -f "$SSHBED/keys/$1" >/dev
 
 # sshbed_authorize <user> <keyname> [options] : add that public key for the user (root-owned file, 644).
 sshbed_authorize() {
-  printf '%s %s\n' "${3:-restrict}" "$(cat "$SSHBED/keys/$2.pub")" >>"$SSHBED/authorized_keys/$1"
-  chmod 644 "$SSHBED/authorized_keys/$1"
+  printf '%s %s\n' "${3:-restrict}" "$(cat "$SSHBED/keys/$2.pub")" >>"$SSHBED_AUTH_DIR/$1"
+  chmod 644 "$SSHBED_AUTH_DIR/$1"
 }
 
 # sshbed_ssh <user> <keyname> <command...> : run a command as that user through the bed.

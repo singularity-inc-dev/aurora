@@ -7,7 +7,9 @@
 #    Paperclip from its lockfile, plugin and email service built, settings written
 #  - Paperclip in authenticated mode, reachable only through Caddy (HTTPS with a
 #    local certificate authority instead of Let's Encrypt; ports 8080/8443)
-#  - deploy/bin/vt-setup: owner account + admin claim, company, plugin, settings
+#  - deploy/bin/vt-setup: owner account + admin claim, company, plugin, settings,
+#    the owner's agent as its own system user over SSH (the test users of
+#    scripts/it/lib/setup-test-users.sh stand in for the users the kit makes)
 #  - invite links over HTTPS: a new person joins; used/expired/forged links refused
 #  - vt-backup, a simulated disaster, vt-restore, and a simulated reboot
 # Services are started the way their systemd unit files say (scripts/rehearsal/unit.mjs);
@@ -146,10 +148,18 @@ check "public sign-up is refused (accounts only through invites)" "$("${HTTPS[@]
 MY_IP=$(hostname -I | awk '{print $1}')
 check "Paperclip and the email service are not reachable from outside (127.0.0.1 only)" "$(curl -s -m 3 -o /dev/null -w '%{http_code}' "http://$MY_IP:3398/api/health")/$(curl -s -m 3 -o /dev/null -w '%{http_code}' "http://$MY_IP:3397/health")" "000/000"
 
+echo "== 5b. The agents' SSH server (stand-in for Ubuntu's sshd with the kit's rules and hidden processes)"
+LOG_DIR="$LOGS" EXTRA_PIDS="" SSHBED="$R/sshd" SSHBED_PORT=2399 SSHBED_AUTH_DIR="$VT_ROOT/etc/ssh/vision-and-tom"
+. "$ROOT/scripts/it/lib/sshbed.sh"
+if sshbed_require && sshbed_start; then EXTRA="$EXTRA $SSHBED_PID"; pass "sshd for the agents' users is up on 127.0.0.1:$SSHBED_PORT"; else fail "sshd for the agents' users"; fi
+# The kit makes one user per person; here the test users stand in (the last one is shared by invites nobody joins).
+export VT_SSH_PORT=$SSHBED_PORT VT_SSH_HOST_KEY_PUB="$SSHBED/host_key.pub" VT_REHEARSAL_AGENT_USERS="vt-agent-ana vt-agent-bo vt-checks"
+STANDIN_CLAUDE="$VT_ROOT/opt/vision-and-tom/app/scripts/it/lib/fake-claude"
+
 echo "== 6. vt-setup (the owner's account, company, plugin, settings)"
 OWNER_PW=$(rand 12)
 if ! OWNER_NAME="Olive Owner" OWNER_EMAIL=owner@example.com OWNER_TIMEZONE=Europe/London OWNER_PASSWORD="$OWNER_PW" \
-  VT_INVITE_DEFAULTS='{"agentAdapterType":"process","agentAdapterConfig":{"command":"pwd"},"expiresMinutes":60}' \
+  VT_INVITE_DEFAULTS="{\"agentAdapterType\":\"claude_local\",\"agentAdapterConfig\":{\"command\":\"$STANDIN_CLAUDE\"},\"expiresMinutes\":60}" \
   VT_PROJECT_CLONE_URL="$GH/acme/app.git" bash "$KIT_BIN/vt-setup" >"$LOGS/setup.log" 2>&1; then
   echo "  vt-setup failed; last lines:"; tail -15 "$LOGS/setup.log" | sed 's/^/    /'
 fi
@@ -171,6 +181,22 @@ check "the owner is the first person, with their own agent" "$(people | json 'd.
 check "the project repository was cloned for the agents" "$(git -C "$VT_ROOT/var/lib/paperclip/repos/project" log --format=%s -1)" "init"
 check "the email service is up behind HTTPS" "$("${HTTPS[@]}" "$URL/vt/health")" "ok"
 check "the email service's settings file holds no secret" "$(grep -cF -e "$GH_TOKEN_VALUE" -e "$API_KEY" "$VT_ROOT/etc/vision-and-tom/email-service.env" | tr -d ' ')" "0"
+echo "-- the owner's agent runs as its own system user"
+person() { board "$PC/api/plugins/$PLUGIN_ID/config?companyId=$CID" | json "d.configJson.people.find(p=>p.email==='$1')"; }
+OWNER_ENV=$(person owner@example.com | json 'd.agentEnvironmentId')
+check "the owner's agent is bound to its own environment and user" "$(person owner@example.com | json 'd.agentUser')/$(board "$PC/api/agents/$(person owner@example.com | json 'd.agentId')" | json "d.defaultEnvironmentId==='$OWNER_ENV' && d.adapterConfig.engine")" "vt-agent-ana/cli"
+check "Paperclip logs in as that user over SSH (environment probe)" "$(board -X POST "$PC/api/environments/$OWNER_ENV/probe" -d '{}' | json 'd.ok && d.details.username')" "vt-agent-ana"
+check "its keys are in the kit's root-owned folder: Paperclip's (commands only) and the checks key (runner only)" "$(grep -c '^from="127.0.0.1,::1",restrict ssh-ed25519' "$VT_ROOT/etc/ssh/vision-and-tom/vt-agent-ana")/$(grep -c '^restrict,command=".*/deploy/bin/vt-check-runner" ssh-ed25519' "$VT_ROOT/etc/ssh/vision-and-tom/vt-agent-ana")/$(stat -c '%U %a' "$VT_ROOT/etc/ssh/vision-and-tom/vt-agent-ana")" "1/1/root 644"
+check "no private key was left behind on disk" "$(ls -d "${TMPDIR:-/tmp}"/vt-agent-keys.* 2>/dev/null | wc -l | tr -d ' ')" "0"
+echo "-- the owner chooses their own Claude subscription (vt-model-access with their SSH public key)"
+ssh-keygen -q -t ed25519 -N "" -C "olive@laptop" -f "$R/olive-key" >/dev/null
+MA_OUT=$(bash "$KIT_BIN/vt-model-access" owner@example.com subscription "$(cat "$R/olive-key.pub")" 2>&1)
+check "vt-model-access prints the sign-in command for the owner's own computer" "$(echo "$MA_OUT" | grep -c "ssh -t vt-agent-ana@$DOMAIN")" "1"
+check "the owner's key may only start Claude Code's own sign-in, on their agent's user" "$(grep -c "^restrict,pty,command=\".*/deploy/bin/vt-claude-login\" $(cut -d' ' -f1-2 "$R/olive-key.pub") vt-owner-login\$" "$VT_ROOT/etc/ssh/vision-and-tom/vt-agent-ana")" "1"
+check "the plugin's isolation audit passes (isolation required)" "$(board -X POST "$PC/api/plugins/$PLUGIN_ID/data/route-audit" -d "{\"companyId\":\"$CID\",\"params\":{}}" | json 'd.data.ok && d.data.isolationRequired')" "true"
+as_agent() { runuser -u vt-agent-ana -- "$@" >/dev/null 2>&1 && echo allowed || echo refused; }
+check "the agent's user cannot read Paperclip's config, data folder, database password or the backups" "$(as_agent cat "$VT_ROOT/var/lib/paperclip/instances/default/config.json")/$(as_agent ls "$VT_ROOT/var/lib/paperclip")/$(as_agent cat "$SECRETS/db-url")/$(as_agent ls "$VT_ROOT/var/backups/vision-and-tom")" "refused/refused/refused/refused"
+check "the agent's user cannot log in to the database (no password, or Paperclip's embedded default)" "$(as_agent env PGCONNECT_TIMEOUT=5 /usr/lib/postgresql/16/bin/psql -w -h 127.0.0.1 -p "$PG_PORT" -U paperclip -d paperclip -tAc 'select 1')/$(as_agent env PGPASSWORD=paperclip PGCONNECT_TIMEOUT=5 /usr/lib/postgresql/16/bin/psql -w -h 127.0.0.1 -p "$PG_PORT" -U paperclip -d paperclip -tAc 'select 1')" "refused/refused"
 
 echo "== 7. Invite link: a new person joins through one link"
 INVITE_OUT=$(bash "$KIT_BIN/vt-invite" dee@example.com Europe/Paris 2>&1)
@@ -188,6 +214,15 @@ check "Dee's Paperclip account works and is in the company" "$("${HTTPS[@]}" -H 
 DEE_AGENT=$(people | json 'd.data.people.find(p=>p.email==="dee@example.com").agentId')
 check "Dee's row is in the plugin settings, bound to one new agent" "$([ -n "$DEE_AGENT" ] && echo yes)/$(people | json 'd.data.people.find(p=>p.email==="dee@example.com").timezone')" "yes/Europe/Paris"
 check "Dee's agent has safe defaults (no agent or skill creation, budget set)" "$(board "$PC/api/agents/$DEE_AGENT" | json '[d.name,d.permissions.canCreateAgents,d.permissions.canCreateSkills,d.role,d.budgetMonthlyCents].join("/")')" "Dee Doe's night agent/false/false/engineer/3000"
+echo "-- Dee chooses her own API key: she stores it in Paperclip herself, the admin only points her agent at it"
+DEE_KEY="sk-ant-standin-$(rand 12)"
+"${HTTPS[@]}" -o /dev/null -X POST -H "cookie: $DEE_COOKIE" -H "origin: $URL" -H 'content-type: application/json' -d "{\"name\":\"Dee's Anthropic key\",\"key\":\"anthropic-api-key-dee\",\"value\":\"$DEE_KEY\"}" "$URL/api/companies/$CID/secrets"
+check "vt-model-access binds Dee's own key to her agent only" "$(bash "$KIT_BIN/vt-model-access" dee@example.com api-key anthropic-api-key-dee 2>&1 | grep -c "now uses their own API key")/$(board "$PC/api/agents/$DEE_AGENT" | json 'd.adapterConfig.env.ANTHROPIC_API_KEY.type')" "1/secret_ref"
+check "her key cannot also be given to the owner's agent (never one shared account)" "$(bash "$KIT_BIN/vt-model-access" owner@example.com api-key anthropic-api-key-dee 2>&1 | grep -c "already dee@example.com's key")" "1"
+check "the key's value is not in the plugin settings or the agent's settings" "$(board "$PC/api/plugins/$PLUGIN_ID/config?companyId=$CID" | grep -cF "$DEE_KEY")/$(board "$PC/api/agents/$DEE_AGENT" | grep -cF "$DEE_KEY")" "0/0"
+unset DEE_KEY
+DEE_ENV=$(person dee@example.com | json 'd.agentEnvironmentId')
+check "Dee's agent runs as its own system user (environment probe)" "$(person dee@example.com | json 'd.agentUser')/$(board -X POST "$PC/api/environments/$DEE_ENV/probe" -d '{}' | json 'd.ok && d.details.username')/$(board "$PC/api/agents/$DEE_AGENT" | json "d.defaultEnvironmentId==='$DEE_ENV'")" "vt-agent-bo/vt-agent-bo/true"
 check "the plugin's route audit accepts Dee's agent" "$(board -X POST "$PC/api/plugins/$PLUGIN_ID/data/route-audit" -d "{\"companyId\":\"$CID\",\"params\":{}}" | json 'd.data.ok')" "true"
 check "a used invite link is refused (POST)" "$("${HTTPS[@]}" -o /dev/null -w '%{http_code}' -X POST --data-urlencode "name=Mallory" --data-urlencode "password=$(rand 12)" "$LINK")/$("${HTTPS[@]}" -X POST --data-urlencode "name=M" --data-urlencode "password=$(rand 12)" "$LINK" | grep -oE '<h1>[^<]*</h1>')" "409/<h1>Invite already used</h1>"
 check "a used invite link is refused (opening it)" "$("${HTTPS[@]}" "$LINK" | grep -oE '<h1>[^<]*</h1>')" "<h1>Invite already used</h1>"

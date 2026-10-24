@@ -1,4 +1,5 @@
 import { sandboxLogin, type Person, type PluginSettings } from "./config.js";
+import { auditModelAccess } from "./modelaccess.js";
 import { auditAgentRoutes, type AgentRouteFacts } from "./routes.js";
 
 /**
@@ -64,9 +65,9 @@ export function auditSettingsIsolation(settings: PluginSettings): string[] {
   return [];
 }
 
-/** Everything that stops a person's agent from working: side doors (routes.ts) and isolation. */
+/** Everything that stops a person's agent from working: side doors (routes.ts), isolation and model access. */
 export function agentProblems(settings: PluginSettings, person: Person, agent: AgentIsolationFacts | null, companyId: string): string[] {
   const routes = auditAgentRoutes(agent, companyId);
   if (!agent) return routes;
-  return [...routes, ...auditIsolation(settings, person, agent)];
+  return [...routes, ...auditIsolation(settings, person, agent), ...auditModelAccess(settings, person, agent)];
 }

@@ -15,6 +15,9 @@ export const DEFAULT_NIGHT: NightSettings = {
 };
 
 export type SecretAccess = "read-only" | "read-write";
+export type ModelAccess = "subscription" | "api-key";
+/** Name, in a person's own keys, of their Anthropic API key (model access "api-key"). */
+export const MODEL_KEY_NAME = "anthropic-api-key";
 
 /** Shared Paperclip secret reference shape. Never a raw secret value. */
 export interface SecretRef {
@@ -41,6 +44,12 @@ export interface Person {
   agentUser: string | null;
   /** Key for running checks as agentUser; on the server its only command is vt-check-runner. */
   checksKey: SecretRef | null;
+  /**
+   * How this person's agent uses Claude (piece B): their own subscription, signed
+   * in with Claude Code's own login on their agent's user, or their own API key
+   * (a secret named MODEL_KEY_NAME in their own keys). Never one shared account.
+   */
+  modelAccess: ModelAccess | null;
   timezone: string;
   nightStartHour: number;
   maxTasksPerNight: number;
@@ -263,6 +272,11 @@ export const instanceConfigSchema: JsonSchema = {
           agentEnvironmentId: { type: "string", title: "Agent environment id (this person's own system user; set by vt-setup or the invite)" },
           agentUser: { type: "string", title: "That environment's system user" },
           checksKey: { type: "object", title: "Key for running checks as that user", format: "secret-ref" },
+          modelAccess: {
+            type: "string",
+            title: "Claude access: the owner's own subscription (signed in on their agent) or their own API key (key named anthropic-api-key)",
+            enum: ["subscription", "api-key"],
+          },
           timezone: { type: "string", title: "Timezone (IANA, e.g. Europe/London)", minLength: 1 },
           nightStartHour: { type: "integer", title: "Night start hour (0-23)", minimum: 0, maximum: 23 },
           maxTasksPerNight: {
@@ -408,6 +422,12 @@ export function parseSettings(raw: unknown): ParseResult {
       if (!checksKey) errors.push(`${at}.checksKey: must be a Paperclip secret reference`);
     }
 
+    let modelAccess: ModelAccess | null = null;
+    if (entry.modelAccess !== undefined && entry.modelAccess !== null && entry.modelAccess !== "") {
+      if (entry.modelAccess !== "subscription" && entry.modelAccess !== "api-key") errors.push(`${at}.modelAccess: must be subscription or api-key`);
+      else modelAccess = entry.modelAccess;
+    }
+
     const secrets: PersonSecret[] = [];
     const seenNames = new Set<string>();
     const rawSecrets = entry.secrets ?? [];
@@ -444,12 +464,23 @@ export function parseSettings(raw: unknown): ParseResult {
       agentEnvironmentId,
       agentUser,
       checksKey,
+      modelAccess,
       timezone,
       nightStartHour: nightStartHour as number,
       maxTasksPerNight: maxTasksPerNight as number,
       nightBudgetCapCents: nightBudgetCapCents as number,
       secrets,
     });
+  });
+
+  // Never one shared account: an API key belongs to exactly one person.
+  const keyOwners = new Map<string, string>();
+  people.forEach((p, i) => {
+    const key = p.secrets.find((s) => s.name === MODEL_KEY_NAME);
+    if (p.modelAccess === "api-key" && !key) errors.push(`people[${i}].secrets: model access api-key needs the person's own key named ${MODEL_KEY_NAME}`);
+    if (!key) return;
+    if (keyOwners.has(key.secret.secretId)) errors.push(`people[${i}].secrets: ${MODEL_KEY_NAME} is already another person's key (never one shared account)`);
+    else keyOwners.set(key.secret.secretId, p.email);
   });
 
   const isolation = parseIsolation(raw.isolation, errors);

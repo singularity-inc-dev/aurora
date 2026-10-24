@@ -33,7 +33,18 @@ function plugin(over: Partial<PluginApi> = {}): PluginApi & { calls: string[] } 
     previewInvite: async () => ({ ok: true, status: "valid", message: "ok", email: "cy@example.com", timezone: "Europe/Berlin" }),
     claimInvite: async () => {
       calls.push("claim");
-      return { ok: true, status: "claimed", plan: { inviteId: "inv-1", email: "cy@example.com", timezone: "Europe/Berlin", defaults: { nightStartHour: 22, nightBudgetCapCents: 300, maxTasksPerNight: 3, agentAdapterType: "process", agentAdapterConfig: { command: "pwd" }, agentMonthlyBudgetCents: 3000 } } };
+      return {
+        ok: true,
+        status: "claimed",
+        plan: {
+          inviteId: "inv-1",
+          email: "cy@example.com",
+          timezone: "Europe/Berlin",
+          defaults: { nightStartHour: 22, nightBudgetCapCents: 300, maxTasksPerNight: 3, agentAdapterType: "claude_local", agentAdapterConfig: { model: "x" }, agentMonthlyBudgetCents: 3000 },
+          // made by vt-invite: the new agent's own system user and environment
+          agent: { agentEnvironmentId: "env-cy", agentUser: "vt-a-cy", checksKey: { type: "secret_ref", secretId: "ck-cy" } },
+        },
+      };
     },
     finishInvite: async (_id, r) => {
       calls.push(`finish:${r.ok ? "ok" : r.message}`);
@@ -113,7 +124,8 @@ function fakePaperclip() {
   let config: Record<string, unknown> = { links: { baseUrl: "x" }, people: [{ email: "ana@example.com", agentId: "a1" }] };
   const board: BoardApi = {
     createHumanInvite: async () => (log.push("paperclip-invite"), "pc-invite"),
-    createAgent: async (input) => (log.push(`agent:${input.name}:${input.adapterType}:${input.budgetMonthlyCents}`), "agent-cy"),
+    createAgent: async (input) => (log.push(`agent:${input.name}:${input.adapterType}:${input.budgetMonthlyCents}:${input.defaultEnvironmentId}:${JSON.stringify(input.adapterConfig)}`), "agent-cy"),
+    request: async <T,>() => ({}) as T,
     getAgent: async () => ({}),
     getPluginConfig: async () => config,
     savePluginConfig: async (c) => void ((config = c), log.push("saved")),
@@ -139,8 +151,20 @@ describe("invite page and join", () => {
     expect(res.status).toBe(200);
     expect(html).toContain("<h1>You&#39;re in</h1>");
     expect(html).toContain('href="https://team.example.com"');
-    expect(pc.log).toEqual(["paperclip-invite", "signup:cy@example.com:Cy Ng", "accept:s=1:pc-invite", "agent:Cy Ng's night agent:process:3000", "saved"]);
-    expect((pc.config().people as unknown[])[1]).toEqual({ email: "cy@example.com", agentId: "agent-cy", timezone: "Europe/Berlin", nightStartHour: 22, maxTasksPerNight: 3, nightBudgetCapCents: 300, secrets: [] });
+    // The agent runs in its own environment (its own system user), with Claude's CLI engine.
+    expect(pc.log).toEqual(["paperclip-invite", "signup:cy@example.com:Cy Ng", "accept:s=1:pc-invite", `agent:Cy Ng's night agent:claude_local:3000:env-cy:{"model":"x","engine":"cli"}`, "saved"]);
+    expect((pc.config().people as unknown[])[1]).toEqual({
+      email: "cy@example.com",
+      agentId: "agent-cy",
+      agentEnvironmentId: "env-cy",
+      agentUser: "vt-a-cy",
+      checksKey: { type: "secret_ref", secretId: "ck-cy" },
+      timezone: "Europe/Berlin",
+      nightStartHour: 22,
+      maxTasksPerNight: 3,
+      nightBudgetCapCents: 300,
+      secrets: [],
+    });
     expect(api.calls).toEqual(["claim", "finish:ok"]);
   });
 

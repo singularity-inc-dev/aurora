@@ -48,7 +48,7 @@ function fakeApi(over: Partial<PluginApi> = {}): PluginApi & { calls: string[] }
     },
     async claimInvite() {
       calls.push("claim");
-      return { ok: true, status: "claimed", plan: { inviteId: "inv-1", email: "cy@example.com", timezone: "Europe/Berlin", defaults: { nightStartHour: 22, nightBudgetCapCents: 300, maxTasksPerNight: 3, agentAdapterType: "process", agentAdapterConfig: {}, agentMonthlyBudgetCents: 3000 } } };
+      return { ok: true, status: "claimed", plan: { inviteId: "inv-1", email: "cy@example.com", timezone: "Europe/Berlin", defaults: { nightStartHour: 22, nightBudgetCapCents: 300, maxTasksPerNight: 3, agentAdapterType: "process", agentAdapterConfig: {}, agentMonthlyBudgetCents: 3000 }, agent: null } };
     },
     async finishInvite(_id, result) {
       calls.push(`finish:${result.ok}`);

@@ -32,7 +32,7 @@ Rent a "cloud server" (also called a VPS) from any provider. Hetzner, DigitalOce
 | Disk (SSD) | 40 GB | 80 GB |
 | Extra option | **Backups** (or "snapshots"). Turn them on. It keeps a copy outside the server. | same |
 
-These sizes are estimates, not measurements. At night, each person's agent runs at the same time as the others'. If the server feels slow, move up to the next size in your provider's control panel.
+These sizes are estimates, not measurements. During a handover, each person's agent runs at the same time as the others'. Measure it during your first real handover (see "During the first real handover: measure memory" in Part C). If the server feels slow, move up to the next size in your provider's control panel.
 
 When you create the server, the provider shows its **IP address** (four numbers, for example `203.0.113.10`) and either a **root password** or an SSH key setup. Write down the IP address.
 
@@ -174,7 +174,7 @@ This takes about 10 minutes. It installs these exact versions and checks every d
 - the plugin and the email service
 - the agents' Claude Code tool
 
-It also turns on the firewall (only SSH and web traffic are let in). The last line should be:
+It also turns on the firewall (only SSH and web traffic are let in), and sets up SSH so that each person's agent can run as a system user of its own, which cannot read Paperclip's data or secrets. For that it restarts the SSH service once: the window you are typing in stays connected. (If it ever drops, just log in again as in step 5.) The last line should be:
 
 ```
 ==> Installed. Next: sudo /opt/vision-and-tom/app/deploy/bin/vt-setup
@@ -193,7 +193,7 @@ It asks for your name, your email, your timezone (for example `Europe/London`) a
 - your Paperclip account, made the administrator
 - your company
 - the plugin and its settings
-- your own night agent
+- your own agent, with a system user of its own (its name starts with `vt-a-`)
 - the copy of your repository the agents work in
 - the email service
 
@@ -220,9 +220,32 @@ Then, on your own computer:
    ```
    Wait 2 minutes, log in again (step 5), and run `vt-check`. It should say **All good.** again.
 
-### ☐ 12. 🔑 Connect the agents to Claude (not tested yet; see "Known gaps")
+### ☐ 12. 🔑 Connect each agent to its owner's own Claude account
 
-The agents use the Claude Code tool installed in step 9. It needs your Anthropic account. In Paperclip, open each agent, follow its **Adapter** settings, and use **Test environment**. This step was not rehearsed in this milestone.
+Every agent uses **its own owner's** Claude access, never one shared account. Each owner chooses one of two ways, for themselves. Do this for yourself now, and for each teammate after they join (Part C).
+
+**Never sign in to Claude as `root` or as the `paperclip` user on the server**, and never put a key into an agent's settings by hand. `vt-check` warns if Paperclip's own user has a Claude login.
+
+**Way 1: the owner's own Claude subscription (Pro or Max).** The owner signs in with Claude Code's own sign-in page. The login stays with their agent; you never see it, and Vision and Tom never reads it.
+
+1. The owner sends you their **SSH public key**: one line starting with `ssh-ed25519` (on their computer: `cat ~/.ssh/id_ed25519.pub`; if they have none, `ssh-keygen -t ed25519` makes one). A public key is not a secret.
+2. On the server, type (with their email and their key in the quotes):
+   ```
+   vt-model-access ana@example.com subscription "ssh-ed25519 AAAA... ana@laptop"
+   ```
+   It prints a line like `ssh -t vt-a-1234567890@team.example.com`. Send that line to the owner.
+3. 🔑 The owner types that line **on their own computer**. Claude Code's sign-in opens; they follow it with their own Claude account. That key can do nothing else on the server. Later, adding `status` or `logout` at the end of the line shows or ends the sign-in.
+
+**Way 2: the owner's own API key.** The owner stores their key in Paperclip themselves; you only point their agent at it.
+
+1. 🔑 The owner signs in to Paperclip, opens the company's **Secrets**, and adds a secret with the key `anthropic-api-key-THEIRNAME` and their own Anthropic API key as the value.
+2. On the server, type:
+   ```
+   vt-model-access ana@example.com api-key anthropic-api-key-ana
+   ```
+   Only that owner's agent gets that key. Giving the same key to a second person is refused.
+
+Then run `vt-check`. A person without a choice shows as a problem, and their agent does no work until they choose.
 
 ---
 
@@ -236,9 +259,21 @@ vt-invite ana@example.com Europe/London
 
 Ana gets an email with a link. The command also prints the link, so you can send it another way.
 
+- The command also makes the system user Ana's agent will run as. Only an admin (root on the server) can invite.
 - The link works **once** and expires after 2 days.
-- Opening it, Ana picks her name and a password. That creates her Paperclip account, her own night agent with safe settings, and her row in the plugin settings.
+- Opening it, Ana picks her name and a password. That creates her Paperclip account, her own agent with safe settings (running as that system user), and her row in the plugin settings.
+- Then connect her agent to her own Claude account (step 12, for Ana).
 - A used or expired link shows "Invite already used" or "Invite expired" and creates nothing. Just run `vt-invite` again.
+
+### During the first real handover: measure memory
+
+The server sizes in step 1 are estimates. During your first real handover, while the agents work, log in (step 5) and type:
+
+```
+free -m && ps -eo user=,rss= | awk '{m[$1]+=$2} END {for (u in m) if (m[u] > 51200) printf "%-14s %6d MB\n", u, m[u]/1024}'
+```
+
+The first part shows how much memory is used and free. The second shows the memory each user takes: `paperclip` is Paperclip, and each `vt-a-...` line is one person's agent. Do it two or three times during the handover. If "available" in the `Mem:` line falls under about 500 MB, move up one server size (step 1). Note the numbers in PROGRESS.md so the sizes become measurements.
 
 ### Backups
 
@@ -300,11 +335,13 @@ Run `vt-check` afterwards. Delete the `before-restore-...` folder only once you'
 | Part | Runs as | Reachable |
 |---|---|---|
 | Caddy (HTTPS, certificates from Let's Encrypt) | user `caddy` | from the internet, ports 80 and 443 |
-| Paperclip and the agents | user `paperclip` | only through Caddy (it listens on 127.0.0.1:3100) |
+| Paperclip | user `paperclip` | only through Caddy (it listens on 127.0.0.1:3100) |
+| Each person's agent | its own user `vt-a-...`, not in the `paperclip` group | Paperclip logs in to it over SSH on 127.0.0.1 only; the owner's own key may only start Claude Code's sign-in (step 12) |
 | Email service (morning emails, Approve/Reject/invite pages at `/vt/...`) | user `vt-mail` | only through Caddy (127.0.0.1:3299) |
 | PostgreSQL 16 | user `postgres` | only on the server |
 
 - **Sign-up through the web address is closed.** New accounts are only made by invite links.
+- **Each agent runs as a system user of its own.** It cannot read Paperclip's files, its database password, its secrets or the key that signs Approve links, nor another person's agent. Nothing started over SSH can see other users' running programs. The checks (tests and lint) run as that same agent user, in a fresh folder each time, never as Paperclip's own user.
 - **The GitHub token that can push and merge** is read only by the email service. It is handed over by the system, and only when Approve is used (and to check pull requests that wait for review). It is not stored in Paperclip at all.
 - **Everything restarts by itself** if it crashes, and starts by itself after a reboot. The backup runs even if the server was off at 03:30 (it catches up).
 
@@ -312,15 +349,13 @@ All versions are listed in `deploy/versions.env` and in the lockfiles next to it
 
 ## Known gaps
 
-- **Agents run as the same system user as Paperclip.** A badly behaved agent could read Paperclip's own database and its stored secrets. What it still can't do:
-  - read the GitHub push token or the email password
-  - push or merge on GitHub by itself
-
-  But in principle it could forge an Approve link. Your branch protection (step 4, "Require approvals") is the backstop: even a forged Approve only opens a pull request that waits for a human review. The real fix is to run agents in Paperclip's separate "ssh" or "sandbox" environment. That's a decision for a later milestone.
+- **What an agent can still do.** It can use Paperclip's API as itself (with the run token Paperclip gives it), read and change its own working copy, and run its owner's own checks. Checks run as the agent's own user, so an agent could interfere with its own checks; Hardy's separate, locked sandbox for checks comes in a later milestone (M4). Your branch protection (step 4) stays the backstop for anything it merges.
+- **Never run real agents on Paperclip's built-in database** (the laptop "quickstart" setup): its password is a fixed, well-known one. This server uses PostgreSQL with a random password.
 - **Email account approval power.** Anyone who can read your email can use its links. There is no second step before Approve or Reject applies (your decision, M4).
 - **Not tested for real:**
   - a real server and a real reboot (rehearsed in a folder on the build machine instead)
   - real Let's Encrypt certificates (rehearsed with Caddy's local certificate authority)
   - a real email provider (rehearsed with a mail server that needs a password and STARTTLS)
   - real GitHub (rehearsed with a stand-in that runs real git and the same pull-request calls)
-  - the agents' Claude Code login (step 12)
+  - a real Claude Code sign-in and a real API key (step 12 was rehearsed with stand-ins)
+  - the SSH rules and the hidden processes on a real Ubuntu SSH service (rehearsed on this build machine's own SSH server)

@@ -9,6 +9,13 @@ const table = (db: Db) => `"${db.namespace}".invites`;
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/** What vt-invite made for the new person's agent (piece A: agent isolation). */
+export interface InviteAgent {
+  agentEnvironmentId: string;
+  agentUser: string;
+  checksKey: { type: "secret_ref"; secretId: string };
+}
+
 export interface InviteRow {
   id: string;
   companyId: string;
@@ -17,6 +24,21 @@ export interface InviteRow {
   expiresAt: Date;
   state: "new" | "processing" | "done" | "failed";
   result: string | null;
+  agent: InviteAgent | null;
+}
+
+const USER_RE = /^[a-z_][a-z0-9_-]{0,31}$/;
+const ID_RE = /^[A-Za-z0-9-]{1,64}$/;
+
+/** The agent part of an invite request, or null when it is missing or malformed. */
+export function parseInviteAgent(raw: unknown): InviteAgent | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const r = raw as Record<string, unknown>;
+  const key = (r.checksKey ?? {}) as Record<string, unknown>;
+  if (typeof r.agentEnvironmentId !== "string" || !ID_RE.test(r.agentEnvironmentId)) return null;
+  if (typeof r.agentUser !== "string" || !USER_RE.test(r.agentUser)) return null;
+  if (key.type !== "secret_ref" || typeof key.secretId !== "string" || !ID_RE.test(key.secretId)) return null;
+  return { agentEnvironmentId: r.agentEnvironmentId, agentUser: r.agentUser, checksKey: { type: "secret_ref", secretId: key.secretId } };
 }
 
 function toInvite(r: Record<string, unknown>): InviteRow {
@@ -28,6 +50,10 @@ function toInvite(r: Record<string, unknown>): InviteRow {
     expiresAt: new Date(String(r.expires_at)),
     state: String(r.state) as InviteRow["state"],
     result: (r.result as string | null) ?? null,
+    agent:
+      r.agent_environment_id && r.agent_user && r.checks_key_secret_id
+        ? { agentEnvironmentId: String(r.agent_environment_id), agentUser: String(r.agent_user), checksKey: { type: "secret_ref", secretId: String(r.checks_key_secret_id) } }
+        : null,
   };
 }
 
@@ -43,7 +69,7 @@ export async function createInvite(
   ctx: PluginContext,
   settings: PluginSettings,
   companyId: string,
-  input: { email?: unknown; timezone?: unknown },
+  input: { email?: unknown; timezone?: unknown; agent?: unknown },
   now: Date,
 ): Promise<InviteCreated> {
   if (!settings.links) return { ok: false, message: "set up the morning email links first (they sign invites too)" };
@@ -53,23 +79,27 @@ export async function createInvite(
   if (settings.people.length >= MAX_PEOPLE) return { ok: false, message: `the team already has ${MAX_PEOPLE} people` };
   const timezone = typeof input.timezone === "string" && input.timezone.trim() ? input.timezone.trim() : settings.invites.defaultTimezone;
   if (!isValidTimezone(timezone)) return { ok: false, message: "timezone must be an IANA timezone, e.g. Europe/London" };
+  const agent = parseInviteAgent(input.agent);
+  if (input.agent !== undefined && !agent) return { ok: false, message: "the agent's user and environment are malformed" };
+  // Fail closed: with isolation required, every new agent gets its own system user first (vt-invite does that as root).
+  if (settings.isolation.required && !agent) return { ok: false, message: "the new agent needs its own system user first (run vt-invite on the server, as root)" };
+  if (agent && settings.people.some((p) => p.agentEnvironmentId === agent.agentEnvironmentId || p.agentUser === agent.agentUser)) {
+    return { ok: false, message: "that agent user already belongs to someone on the team" };
+  }
 
   const id = randomUUID();
   const expiresAt = new Date(now.getTime() + settings.invites.expiresMinutes * 60_000);
-  await ctx.db.execute(`INSERT INTO ${table(ctx.db)} (id, company_id, email, timezone, expires_at) VALUES ($1, $2, $3, $4, $5)`, [
-    id,
-    companyId,
-    email,
-    timezone,
-    expiresAt.toISOString(),
-  ]);
+  await ctx.db.execute(
+    `INSERT INTO ${table(ctx.db)} (id, company_id, email, timezone, expires_at, agent_environment_id, agent_user, checks_key_secret_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [id, companyId, email, timezone, expiresAt.toISOString(), agent?.agentEnvironmentId ?? null, agent?.agentUser ?? null, agent?.checksKey.secretId ?? null],
+  );
   const secret = await ctx.secrets.resolve(settings.links.signingSecret, { companyId });
   const token = signInvite({ v: 1, k: "join", i: id, c: companyId, o: email, e: Math.floor(expiresAt.getTime() / 1000) }, secret);
   return { ok: true, inviteId: id, email, url: `${settings.links.baseUrl}/join/${token}`, expiresAt: expiresAt.toISOString() };
 }
 
 export type InviteCheck =
-  | { ok: true; status: "valid"; message: string; email: string; timezone: string; inviteId: string }
+  | { ok: true; status: "valid"; message: string; email: string; timezone: string; inviteId: string; agent: InviteAgent | null }
   | { ok: false; status: "invalid" | "expired" | "already-used"; message: string };
 
 const INVALID = { ok: false as const, status: "invalid" as const, message: "This invite link is not valid." };
@@ -87,11 +117,16 @@ async function authenticate(ctx: PluginContext, settings: PluginSettings, compan
   if (!row || row.companyId !== c.c || row.email !== c.o) return INVALID;
   if (row.expiresAt.getTime() <= now.getTime()) return EXPIRED;
   if (row.state !== "new") return { ok: false, status: "already-used", message: "This invite link was already used." };
-  return { ok: true, status: "valid", message: "ok", email: row.email, timezone: row.timezone, inviteId: row.id, row };
+  return { ok: true, status: "valid", message: "ok", email: row.email, timezone: row.timezone, inviteId: row.id, agent: row.agent, row };
 }
 
-export async function previewInvite(ctx: PluginContext, settings: PluginSettings, companyId: string, token: string, now: Date): Promise<InviteCheck> {
+export async function previewInvite(ctx: PluginContext, settings: PluginSettings, companyId: string, token: string, now: Date) {
   const { row: _row, ...check } = await authenticate(ctx, settings, companyId, token, now);
+  // The page only needs to know who is invited.
+  if (check.ok) {
+    const { agent: _agent, ...shown } = check;
+    return shown;
+  }
   return check;
 }
 
@@ -100,6 +135,8 @@ export interface NewPersonPlan {
   email: string;
   timezone: string;
   defaults: InviteSettings;
+  /** The new agent's own system user and environment (null only with isolation off). */
+  agent: InviteAgent | null;
 }
 
 export type InviteClaim = { ok: true; status: "claimed"; plan: NewPersonPlan } | { ok: false; status: "invalid" | "expired" | "already-used" | "refused"; message: string };
@@ -129,7 +166,11 @@ export async function claimInvite(
     auth.inviteId,
   ]);
   if (rowCount !== 1) return { ok: false, status: "already-used", message: "This invite link was already used." };
-  return { ok: true, status: "claimed", plan: { inviteId: auth.inviteId, email: auth.email, timezone: tz, defaults: settings.invites } };
+  if (settings.isolation.required && !auth.agent) {
+    await setResult(ctx.db, auth.inviteId, "failed", "no agent user for this invite");
+    return { ok: false, status: "refused", message: "This invite has no agent user. Ask for a new one." };
+  }
+  return { ok: true, status: "claimed", plan: { inviteId: auth.inviteId, email: auth.email, timezone: tz, defaults: settings.invites, agent: auth.agent } };
 }
 
 /**
@@ -147,7 +188,8 @@ export async function finishInvite(
   if (!row || row.companyId !== companyId || row.state !== "processing") return { ok: false, message: "invite is not being processed" };
   if (result.ok === true && typeof result.agentId === "string") {
     const person = findPersonByEmail(settings, row.email);
-    if (!person || person.agentId !== result.agentId) {
+    const boundToItsUser = !row.agent || (person?.agentEnvironmentId === row.agent.agentEnvironmentId && person?.agentUser === row.agent.agentUser);
+    if (!person || person.agentId !== result.agentId || !boundToItsUser) {
       await setResult(ctx.db, row.id, "failed", "the settings row for this person was not saved");
       return { ok: false, message: "the settings row for this person was not saved" };
     }
