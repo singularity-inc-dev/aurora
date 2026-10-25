@@ -7,6 +7,7 @@ import { loadConfig } from "../src/config.ts";
 import type { GithubClient } from "../src/github.ts";
 import { checkJoinForm, join } from "../src/join.ts";
 import type { BoardApi, LinkCheck, LinkOutcome, PersonApi, PluginApi, PublishResult } from "../src/paperclip.ts";
+import { paperclipApi } from "../src/paperclip.ts";
 import { syncPullRequests } from "../src/prsync.ts";
 import { createLinkServer } from "../src/server.ts";
 
@@ -48,6 +49,8 @@ function plugin(over: Partial<PluginApi> = {}): PluginApi & { calls: string[] } 
     },
     handoverStatus: async (email) => ({ ok: true, email, timezone: "UTC", handoverStartHour: 22, handovers: [] }),
     startHandover: async (email) => (calls.push(`start:${email}`), { ok: true, handoverKey: "2026-10-24T14:05:00" }),
+    numbers: async () => ({ team: {} }),
+    numbersCsv: async () => "Date\r\n",
     finishInvite: async (_id, r) => {
       calls.push(`finish:${r.ok ? "ok" : r.message}`);
       return { ok: true, message: "joined" };
@@ -273,5 +276,18 @@ describe("Hand over now page", () => {
     expect(res.status).toBe(200);
     expect(await res.text()).toContain("Started.");
     expect(api.calls).toEqual(["start:ana@example.com"]);
+  });
+});
+
+describe("numbers (piece F)", () => {
+  it("unwraps the CSV the plugin sends inside JSON", async () => {
+    const seen: string[] = [];
+    const fake = (async (url: string) => {
+      seen.push(String(url));
+      return new Response(JSON.stringify({ csv: "Date,Owner\r\n2026-10-24,ana@example.com\r\n" }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const api = paperclipApi({ paperclipUrl: "http://pc", plugin: "p", companyId: "co", paperclipApiKey: null } as never, fake);
+    expect(await api.numbersCsv()).toBe("Date,Owner\r\n2026-10-24,ana@example.com\r\n");
+    expect(seen).toEqual(["http://pc/api/plugins/p/api/numbers/csv?companyId=co"]);
   });
 });

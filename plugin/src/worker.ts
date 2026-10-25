@@ -6,6 +6,8 @@ import { ensureTaskRow, getTaskRow, recordChecks, recordHandoff } from "./eventl
 import { handoffDescription, HandoffRefused, parseHandoffRequest, planHandoff } from "./handoff.js";
 import { agentProblems, auditSettingsIsolation } from "./isolation.js";
 import { HANDOFF_ORIGIN, HANDOVER_TICK_JOB } from "./ids.js";
+import { numbersCsv } from "./numbers.js";
+import { loadNumbers } from "./numberstore.js";
 import { listRuns } from "./handoverstore.js";
 import { proposeHandover, ProposalRefused, startHandoverNow, tickAll } from "./handoverrunner.js";
 import { startTicker, type Ticker } from "./ticker.js";
@@ -344,6 +346,12 @@ const plugin = definePlugin({
           body: { ok: true, email: person.email, timezone: person.timezone, handoverStartHour: person.handoverStartHour, handovers: runs.map((r) => ({ handoverKey: r.handoverKey, kind: r.kind, status: r.status, stopReason: r.stopReason })) },
         };
       }
+      case "numbers":
+        return { status: 200, body: await loadNumbers(ctx, input.companyId) };
+      case "numbers-csv":
+        // Paperclip 2026.1012.0 sends plugin route bodies as JSON (headers are not passed on),
+        // so the CSV text travels inside JSON; vt-numbers writes it to a file.
+        return { status: 200, body: { csv: numbersCsv(await loadNumbers(ctx, input.companyId)) } };
       case "invite-create": {
         const created = await createInvite(ctx, settings, input.companyId, body, now);
         return { status: created.ok ? 201 : 409, body: created };

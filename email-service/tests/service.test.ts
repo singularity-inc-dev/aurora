@@ -37,6 +37,12 @@ function fakeApi(over: Partial<PluginApi> = {}): PluginApi & { calls: string[] }
     async waitingPullRequests() {
       return { repo: null, pullRequests: [] };
     },
+    async numbers() {
+      return { team: {} };
+    },
+    async numbersCsv() {
+      return "Date\r\n";
+    },
     async pullRequestUpdate(taskId, state) {
       calls.push(`pr-update:${taskId}:${state}`);
     },

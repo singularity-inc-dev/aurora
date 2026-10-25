@@ -224,8 +224,8 @@ check "Dee's agent has safe defaults (no agent or skill creation, budget set)" "
 echo "-- Dee chooses her own API key: she stores it in Paperclip herself, the admin only points her agent at it"
 DEE_KEY="sk-ant-standin-$(rand 12)"
 "${HTTPS[@]}" -o /dev/null -X POST -H "cookie: $DEE_COOKIE" -H "origin: $URL" -H 'content-type: application/json' -d "{\"name\":\"Dee's Anthropic key\",\"key\":\"anthropic-api-key-dee\",\"value\":\"$DEE_KEY\"}" "$URL/api/companies/$CID/secrets"
-check "vt-model-access binds Dee's own key to her agent only" "$(bash "$KIT_BIN/vt-model-access" dee@example.com api-key anthropic-api-key-dee 2>&1 | grep -c "now uses their own API key")/$(board "$PC/api/agents/$DEE_AGENT" | json 'd.adapterConfig.env.ANTHROPIC_API_KEY.type')" "1/secret_ref"
-check "her key cannot also be given to the owner's agent (never one shared account)" "$(bash "$KIT_BIN/vt-model-access" owner@example.com api-key anthropic-api-key-dee 2>&1 | grep -c "already dee@example.com's key")" "1"
+check "vt-model-access binds Dee's own key to Dee's agent only" "$(bash "$KIT_BIN/vt-model-access" dee@example.com api-key anthropic-api-key-dee 2>&1 | grep -c "now uses their own API key")/$(board "$PC/api/agents/$DEE_AGENT" | json 'd.adapterConfig.env.ANTHROPIC_API_KEY.type')" "1/secret_ref"
+check "Dee's key cannot also be given to the owner's agent (never one shared account)" "$(bash "$KIT_BIN/vt-model-access" owner@example.com api-key anthropic-api-key-dee 2>&1 | grep -c "already dee@example.com's key")" "1"
 check "the key's value is not in the plugin settings or the agent's settings" "$(board "$PC/api/plugins/$PLUGIN_ID/config?companyId=$CID" | grep -cF "$DEE_KEY")/$(board "$PC/api/agents/$DEE_AGENT" | grep -cF "$DEE_KEY")" "0/0"
 unset DEE_KEY
 DEE_ENV=$(person dee@example.com | json 'd.agentEnvironmentId')
@@ -246,6 +246,10 @@ echo "  waiting 65s for it to expire..."; sleep 65
 check "the expired invite link is refused (opening it)" "$("${HTTPS[@]}" "$EXP_LINK" | grep -oE '<h1>[^<]*</h1>')" "<h1>Invite expired</h1>"
 check "the expired invite link is refused (POST), no account made" "$("${HTTPS[@]}" -o /dev/null -w '%{http_code}' -X POST --data-urlencode "name=Eve" --data-urlencode "password=$(rand 12)" "$EXP_LINK")/$(signin eve@example.com whatever-password | grep -c . | tr -d ' ')" "409/0"
 board -X POST "$PC/api/plugins/$PLUGIN_ID/config" -d "{\"companyId\":\"$CID\",\"configJson\":$CFG}" >/dev/null
+
+echo "-- the pilot's numbers (vt-numbers, as the admin)"
+NUM_OUT=$(bash "$KIT_BIN/vt-numbers" "$R/numbers.csv" 2>&1)
+check "vt-numbers writes the measurement sheet and prints the team's measures" "$(head -1 "$R/numbers.csv" | tr -d '\r' | cut -d, -f1-3)/$(echo "$NUM_OUT" | grep -c '^Team: ')" "Date,Handover,Owner/1"
 
 echo "== 8. vt-check (what the owner runs to see that everything works)"
 bash "$KIT_BIN/vt-backup" >"$LOGS/backup1.log" 2>&1

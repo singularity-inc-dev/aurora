@@ -90,6 +90,9 @@ export interface PluginApi {
   /** Hand over now (only ever called for the owner signed in to Paperclip). */
   handoverStatus(email: string): Promise<HandoverStatus>;
   startHandover(email: string): Promise<{ ok: boolean; message?: string; handoverKey?: string }>;
+  /** The pilot's numbers from the event log (piece F): a summary, and the measurement sheet as CSV. */
+  numbers(): Promise<Record<string, unknown>>;
+  numbersCsv(): Promise<string>;
   finishInvite(inviteId: string, result: { ok: true; agentId: string; userId: string } | { ok: false; message: string }): Promise<{ ok: boolean; message: string }>;
 }
 
@@ -143,6 +146,10 @@ export function paperclipApi(cfg: ServiceConfig, fetchImpl: typeof fetch = fetch
     finishInvite: (inviteId, result) => call("POST", "/invites/finish", { inviteId, ...result }),
     handoverStatus: (email) => call<HandoverStatus>("GET", `/handovers/status?${company}&email=${encodeURIComponent(email)}`, undefined, [404]),
     startHandover: (email) => call("POST", "/handovers/start", { email }, [404, 409]),
+    numbers: () => call("GET", `/numbers?${company}`),
+    async numbersCsv() {
+      return (await call<{ csv: string }>("GET", `/numbers/csv?${company}`)).csv;
+    },
   };
 }
 
