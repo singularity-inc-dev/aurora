@@ -16,7 +16,7 @@ SSHBED_AUTH_DIR="${SSHBED_AUTH_DIR:-$SSHBED/authorized_keys}"
 
 sshbed_require() {
   [ "$(id -u)" = "0" ] && [ "$(uname -s)" = "Linux" ] || { echo "  the isolation checks need Linux and root (the cloud test machine)"; return 1; }
-  command -v sshd >/dev/null && command -v ssh >/dev/null && id vt-agent-ana >/dev/null 2>&1 && id vt-agent-bo >/dev/null 2>&1 && id vt-checks >/dev/null 2>&1 ||
+  command -v sshd >/dev/null && command -v ssh >/dev/null && id vt-agent-ana >/dev/null 2>&1 && id vt-agent-bo >/dev/null 2>&1 && id vt-agent-cy >/dev/null 2>&1 && id vt-checks >/dev/null 2>&1 ||
     { echo "  missing OpenSSH or test users: run scripts/it/lib/setup-test-users.sh first (changes this machine; ask the owner)"; return 1; }
 }
 
@@ -33,7 +33,7 @@ HostKey $SSHBED/host_key
 PidFile $SSHBED/sshd.pid
 UsePAM no
 PermitRootLogin no
-AllowUsers vt-agent-ana vt-agent-bo vt-checks
+AllowUsers vt-agent-ana vt-agent-bo vt-agent-cy vt-checks
 AuthorizedKeysFile $SSHBED_AUTH_DIR/%u
 AuthenticationMethods publickey
 PasswordAuthentication no

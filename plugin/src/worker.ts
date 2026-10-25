@@ -9,7 +9,7 @@ import { HANDOFF_ORIGIN, HANDOVER_TICK_JOB } from "./ids.js";
 import { numbersCsv } from "./numbers.js";
 import { loadNumbers } from "./numberstore.js";
 import { listRuns } from "./handoverstore.js";
-import { proposeHandover, ProposalRefused, startHandoverNow, tickAll } from "./handoverrunner.js";
+import { projectAreas, proposeHandover, ProposalRefused, startHandoverNow, tickAll } from "./handoverrunner.js";
 import { startTicker, type Ticker } from "./ticker.js";
 import { renderBriefing } from "./briefing.js";
 import { getAction, getBriefingById, listPendingBriefings, markBriefingSent } from "./briefstore.js";
@@ -102,6 +102,19 @@ const plugin = definePlugin({
         settingsProblems,
         agents,
       };
+    });
+
+    // For the admin (vt-check): what the committed CODEOWNERS means to Aurora, and GitHub teams it names (they match nobody).
+    ctx.data.register("codeowners", async (params) => {
+      const companyId = typeof params.companyId === "string" ? params.companyId : "";
+      const parsed = parseSettings(await ctx.config.get(companyId));
+      if (!parsed.ok) return { ok: false, errors: parsed.errors };
+      try {
+        const { areas, notes, teams } = await projectAreas(ctx, parsed.settings, companyId, null);
+        return { ok: true, source: areas?.source ?? null, teams: teams ?? [], notes };
+      } catch (err) {
+        return { ok: false, errors: [err instanceof Error ? err.message : "the repository could not be read"] };
+      }
     });
 
     // One event-log row, scoped to the caller's company.

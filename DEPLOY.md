@@ -86,6 +86,8 @@ Then say who owns which part. Add a file called `CODEOWNERS` at the top of the r
 /src/api/   @bo-github-login
 ```
 
+Name **people, not teams**: a GitHub team like `@your-org/web` matches nobody, because Aurora cannot see who is in a team. If the file names one, `vt-check` prints a WARNING naming the team and its line, and every plan says so too; list the people instead.
+
 Commit it to `main`. Before every handover, Vision and Tom reads this committed file (never an agent's unsaved copy). A task that reaches into another person's area goes to that person's agent instead. If you name people by GitHub login, also enter each person's login as "GitHub login" in the plugin settings (step 10), so the two can be matched.
 
 ---
@@ -407,7 +409,7 @@ All versions are listed in `deploy/versions.env` and in the lockfiles next to it
 - **Never run real agents on Paperclip's built-in database** (the laptop "quickstart" setup): its password is a fixed, well-known one. This server uses PostgreSQL with a random password.
 - **Two plans at the very same moment.** If two people's agents propose overlapping tasks within the same second or so, both can pass the pre-handover check. The merge replay at handback is the backstop.
 - **Updating a server that is already running** is not scripted yet. A version that needs new Paperclip permissions (0.8.0 needs read-only access to the project's folder) has to be reinstalled in Paperclip; uninstalling without `--force` keeps its settings. Until this is scripted, install fresh with this version.
-- **CODEOWNERS teams.** Entries like `@org/team` are not matched to people; name people by email or login.
+- **CODEOWNERS teams.** Entries like `@org/team` are not matched to people (Aurora cannot see who is in a team), so nobody is protected in those areas. `vt-check` and every plan name each team and its line; list people by email or login instead.
 - **Email account approval power.** Anyone who can read your email can use its links. There is no second step before Approve or Reject applies (your decision, M4).
 - **Not tested for real:**
   - a real server and a real reboot (rehearsed in a folder on the build machine instead)

@@ -350,7 +350,12 @@ export interface ProposeResult {
  * No project or workspace: no areas (claims are still compared). A workspace that
  * cannot be read refuses the proposal: the check never passes on a guess.
  */
-async function projectAreas(ctx: PluginContext, settings: PluginSettings, companyId: string, projectId: string | null): Promise<{ areas: Areas | null; notes: string[] }> {
+export async function projectAreas(
+  ctx: PluginContext,
+  settings: PluginSettings,
+  companyId: string,
+  projectId: string | null,
+): Promise<{ areas: Areas | null; notes: string[]; teams?: Array<{ team: string; lines: number[] }> }> {
   const id = settings.handover.projectId ?? projectId;
   if (!id) return { areas: null, notes: ["No project is set, so owner areas are unknown; only claims were compared."] };
   const ws = await ctx.projects.getPrimaryWorkspace(id, companyId);

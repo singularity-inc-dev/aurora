@@ -6,7 +6,7 @@
 #   sudo scripts/it/lib/setup-test-users.sh
 #
 # - OpenSSH from Ubuntu (client and server). It is never started as a system service here.
-# - Test users: vt-agent-ana and vt-agent-bo (stand-ins for two owners' agents)
+# - Test users: vt-agent-ana, vt-agent-bo and vt-agent-cy (stand-ins for owners' agents)
 #   and vt-checks (the checks sandbox). Private homes, no passwords.
 set -euo pipefail
 [ "$(id -u)" = "0" ] || { echo "run as root"; exit 1; }
@@ -17,7 +17,7 @@ if ! command -v sshd >/dev/null || ! command -v ssh >/dev/null; then
   DEBIAN_FRONTEND=noninteractive apt-get install -y -q openssh-client openssh-server
 fi
 
-for u in vt-agent-ana vt-agent-bo vt-checks; do
+for u in vt-agent-ana vt-agent-bo vt-agent-cy vt-checks; do
   if ! id "$u" >/dev/null 2>&1; then
     if [ "$u" = vt-checks ]; then
       # The checks user keeps nothing between runs: its home belongs to root.
@@ -31,4 +31,4 @@ for u in vt-agent-ana vt-agent-bo vt-checks; do
   usermod -p '*' "$u"
   [ "$u" = vt-checks ] || chmod 700 "/home/$u"
 done
-echo "ready: $(id vt-agent-ana) / $(id vt-agent-bo) / $(id vt-checks)"
+echo "ready: $(id vt-agent-ana) / $(id vt-agent-bo) / $(id vt-agent-cy) / $(id vt-checks)"

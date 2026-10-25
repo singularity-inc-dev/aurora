@@ -47,6 +47,16 @@ I could not open GitHub's Dependabot page from the cloud session, so I listed th
 - **Rehearsal, 93 checks, 0 failed** (10 new, over HTTPS on the real kit). Fay's join failed halfway (Paperclip refused her agent after her account and membership were made). The page said the link still works, and the link still opened. A try with another password showed the form again. A try with the same password joined: her account from the first try was reused, she has exactly one Paperclip account and exactly one agent, locked down, and the link was then used up. The audit then had one thing left for her, choosing her own Claude access, and accepted every agent after she chose it.
 
 
+### Step 3. CODEOWNERS teams (done)
+A GitHub team entry (`@org/team`) matches nobody, because Aurora cannot see who is in a team. So the pre-handover check protects nobody in that area. Now it says so, naming each team and its lines:
+- **Every plan** the owner approves starts its notes with: "WARNING: CODEOWNERS names GitHub teams @acme/leads (line 1), @acme/web (lines 2, 3). Aurora cannot see who is in a team, so nobody is protected in those areas. Ask your admin to list the people instead (their GitHub login, e.g. @ana, or their email), next to or instead of the team."
+- **`sudo vt-check`** (the admin's check) prints `WARNING  CODEOWNERS names the GitHub team @acme/web (line 1); ...`, one line per team, and ends "All good, but 1 warning(s) above." A warning does not make the check fail. With people only, it says "CODEOWNERS names people only (no GitHub teams)".
+- Behind it: a read-only plugin data view `codeowners` (the committed file at the project's main branch, as the pre-handover check reads it).
+
+**Tests:** unit: plugin 384 (team entries told apart from people; the warning text; an area owned only by a team lets a task through, which is why the warning matters; the plan shows the warning; the admin's view lists the team). Live: v1a to v1d **84 passed, 0 failed** (the plugin's view names `@acme-v1d/ops` and line 3, with the plan's warning text); rehearsal **94 passed, 0 failed** (`vt-check` on the real kit names `@acme/web`, line 1, and does not fail for it).
+
+**Test machine change (your answer: allowed on cloud test machines):** `scripts/it/lib/setup-test-users.sh` now also makes a fourth test agent user, `vt-agent-cy`. The rehearsal's third stand-in was the checks user, whose home is read-only, so Paperclip could not use it for Fay's agent once she really joined (step 2's new checks); `vt-check` reported that.
+
 ## Thin version 1 for the pilot (done)
 
 Milestone names now follow the spec (see CLAUDE.md, "Milestones" and "Built so far").

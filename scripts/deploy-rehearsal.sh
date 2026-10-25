@@ -152,8 +152,9 @@ echo "== 5b. The agents' SSH server (stand-in for Ubuntu's sshd with the kit's r
 LOG_DIR="$LOGS" EXTRA_PIDS="" SSHBED="$R/sshd" SSHBED_PORT=2399 SSHBED_AUTH_DIR="$VT_ROOT/etc/ssh/vision-and-tom"
 . "$ROOT/scripts/it/lib/sshbed.sh"
 if sshbed_require && sshbed_start; then EXTRA="$EXTRA $SSHBED_PID"; pass "sshd for the agents' users is up on 127.0.0.1:$SSHBED_PORT"; else fail "sshd for the agents' users"; fi
-# The kit makes one user per person; here the test users stand in (the last one is shared by invites nobody joins).
-export VT_SSH_PORT=$SSHBED_PORT VT_SSH_HOST_KEY_PUB="$SSHBED/host_key.pub" VT_REHEARSAL_AGENT_USERS="vt-agent-ana vt-agent-bo vt-checks"
+# The kit makes one user per person; here the test users stand in, given out in this order
+# (owner, Dee, Eve who never joins, Fay; the last one is shared by any invite after that).
+export VT_SSH_PORT=$SSHBED_PORT VT_SSH_HOST_KEY_PUB="$SSHBED/host_key.pub" VT_REHEARSAL_AGENT_USERS="vt-agent-ana vt-agent-bo vt-checks vt-agent-cy"
 STANDIN_CLAUDE="$VT_ROOT/opt/vision-and-tom/app/scripts/it/lib/fake-claude"
 
 echo "== 6. vt-setup (the owner's account, company, plugin, settings)"
@@ -334,6 +335,16 @@ check "the plugin's audit has one thing left for her: choosing her own Claude ac
 ssh-keygen -q -t ed25519 -N "" -C "fay@laptop" -f "$R/fay-key" >/dev/null
 bash "$KIT_BIN/vt-model-access" fay@example.com subscription "$(cat "$R/fay-key.pub")" >/dev/null 2>&1
 check "after she chooses her own Claude subscription, the audit accepts every agent" "$(board -X POST "$PC/api/plugins/$PLUGIN_ID/data/route-audit" -d "{\"companyId\":\"$CID\",\"params\":{}}" | json 'd.data.ok || JSON.stringify([...d.data.settingsProblems, ...d.data.agents.filter(a=>a.problems.length).map(a=>a.email+": "+a.problems.join("; "))])')" "true"
+
+echo "== 13. A GitHub team in CODEOWNERS: vt-check names it, so the admin can list people instead"
+PROJ="$VT_ROOT/var/lib/paperclip/repos/project"
+PROJ_USER=$(stat -c %U "$PROJ")
+printf '/src/ @acme/web\n/docs/ owner@example.com\n' >"$R/CODEOWNERS"
+install -o "$PROJ_USER" -m 644 "$R/CODEOWNERS" "$PROJ/CODEOWNERS"
+runuser -u "$PROJ_USER" -- git -C "$PROJ" add CODEOWNERS
+runuser -u "$PROJ_USER" -- git -C "$PROJ" -c user.email=owner@example.com -c user.name=Olive commit -q -m "owner areas"
+VT_CHECK_URL="$URL" VT_CHECK_CACERT="$CA" VT_CHECK_MIN_CERT_DAYS=0 bash "$KIT_BIN/vt-check" >"$LOGS/check-teams.log" 2>&1 || true
+check "vt-check warns, naming the team and its line, and does not fail for it" "$(grep -c 'WARNING  CODEOWNERS names the GitHub team @acme/web (line 1)' "$LOGS/check-teams.log")/$(tail -1 "$LOGS/check-teams.log")" "1/All good, but 1 warning(s) above."
 
 echo
 echo "Result: $PASS passed, $FAIL failed"

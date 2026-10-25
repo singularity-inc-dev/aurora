@@ -3,10 +3,10 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { parseCodeowners } from "../src/claims.js";
+import { codeownersTeams, isTeamEntry, parseCodeowners } from "../src/claims.js";
 import type { Person } from "../src/config.js";
 import { MAX_QUESTIONS, movedTicketNote, ownerQuestions, preHandoverCheck, type Areas, type OpenClaim, type Verdict } from "../src/prehandover.js";
-import { readAreas } from "../src/repoareas.js";
+import { readAreas, teamWarning } from "../src/repoareas.js";
 
 const person = (email: string, githubLogin: string | null = null): Person => ({
   email,
@@ -101,6 +101,20 @@ describe("questions to the owner", () => {
   });
 });
 
+describe("GitHub teams in CODEOWNERS", () => {
+  it("tells a team (@org/team) from a person (@login or email)", () => {
+    expect(["@acme/web", "@acme/web-team", "@ana", "ana@example.com", "@a/b/c"].map(isTeamEntry)).toEqual([true, true, false, false, true]);
+    expect(codeownersTeams(parseCodeowners("/a/ @ana\n").rules)).toEqual([]);
+    expect(teamWarning("CODEOWNERS", [])).toBeNull();
+    expect(teamWarning(".github/CODEOWNERS", [{ team: "@acme/web", lines: [4] }])).toMatch(/^WARNING: \.github\/CODEOWNERS names GitHub team @acme\/web \(line 4\)\. /);
+  });
+
+  it("an area owned only by a team protects nobody: the pre-handover check lets the task through (hence the warning)", () => {
+    const [v] = preHandoverCheck(ana, team, [{ title: "API", claims: ["src/api/x.ts"] }], [], areas("/src/api/ @acme/backend\n"));
+    expect(v!.overlap).toBeNull();
+  });
+});
+
 describe("owner areas from the repository", () => {
   const dir = mkdtempSync(path.join(tmpdir(), "vt-areas-"));
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -135,6 +149,21 @@ describe("owner areas from the repository", () => {
     const { areas: a, notes } = await readAreas(dir);
     expect(a.rules).toEqual([]);
     expect(notes[0]).toMatch(/No CODEOWNERS file/);
+  });
+
+  it("warns, naming each GitHub team and its lines, because a team matches nobody", async () => {
+    writeFileSync(path.join(dir, "CODEOWNERS"), "* @acme/leads\n/src/ui/ @acme/web @ana\n/src/api/ @acme/web\n/docs/ bo@example.com\n");
+    g("add", "CODEOWNERS");
+    g("commit", "-qm", "teams");
+    const { notes, teams } = await readAreas(dir);
+    expect(teams).toEqual([
+      { team: "@acme/leads", lines: [1] },
+      { team: "@acme/web", lines: [2, 3] },
+    ]);
+    expect(notes[0]).toBe(
+      "WARNING: CODEOWNERS names GitHub teams @acme/leads (line 1), @acme/web (lines 2, 3). Aurora cannot see who is in a team, so nobody is protected in those areas. " +
+        "Ask your admin to list the people instead (their GitHub login, e.g. @ana, or their email), next to or instead of the team.",
+    );
   });
 
   it("throws when the repository cannot be read", async () => {

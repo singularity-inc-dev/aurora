@@ -63,3 +63,11 @@ check "v1d: Ana's plan asks her two questions" "$(echo "$V1D_DETAILS" | grep -c 
 check "v1d: and says what was overlapped" "$(echo "$V1D_DETAILS" | grep -c 'overlaps `docs`, claimed by bo@example.com'"'"'s task "Rewrite the docs"')" "1"
 check "v1d: the kept task shows its claims" "$(echo "$V1D_DETAILS" | grep -c 'Search box (claims `src/ui/search.tsx`)')" "1"
 git -C "$V1A_REPO" checkout -q -- CODEOWNERS
+
+echo "-- a GitHub team in CODEOWNERS is named in a warning (it matches nobody)"
+printf '/src/ui/   ana@example.com\n/src/api/  @bo-v1d\n/infra/    @acme-v1d/ops\n' >"$V1A_REPO/CODEOWNERS"
+git -C "$V1A_REPO" add CODEOWNERS && git -C "$V1A_REPO" -c user.email=t@example.com -c user.name=T commit -q -m "a team"
+api POST "/api/plugins/$PLUGIN_ID/data/codeowners" "{\"companyId\":\"$V1A_CID\",\"params\":{}}"
+check "v1d: the admin's CODEOWNERS view names the team and its line" "$(echo "$API_BODY" | json 'd.data.teams.map(t=>t.team+":"+t.lines.join()).join()')" "@acme-v1d/ops:3"
+check "v1d: ...with the warning the plan shows" "$(echo "$API_BODY" | json 'd.data.notes[0].startsWith("WARNING: CODEOWNERS names GitHub team @acme-v1d/ops (line 3).")')" "true"
+git -C "$V1A_REPO" reset -q --hard HEAD~1

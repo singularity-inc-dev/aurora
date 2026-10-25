@@ -249,7 +249,7 @@ describe("Hand over now", () => {
 });
 
 /** A real repository with a CODEOWNERS file: Ana owns src/ui, Bo owns src/api. */
-function repoWithOwners(): string {
+function repoWithOwners(codeowners = "/src/ui/  ana@example.com\n/src/api/  @bo-dev\n"): string {
   const dir = mkdtempSync(path.join(tmpdir(), "vt-owners-"));
   const g = (...args: string[]) => execFileSync("git", args, { cwd: dir, stdio: "pipe" });
   g("init", "-q", "-b", "main");
@@ -257,7 +257,7 @@ function repoWithOwners(): string {
   g("config", "user.name", "t");
   mkdirSync(path.join(dir, "src/api"), { recursive: true });
   writeFileSync(path.join(dir, "src/api/search.ts"), "x\n");
-  writeFileSync(path.join(dir, "CODEOWNERS"), "/src/ui/  ana@example.com\n/src/api/  @bo-dev\n");
+  writeFileSync(path.join(dir, "CODEOWNERS"), codeowners);
   g("add", ".");
   g("commit", "-qm", "init");
   return dir;
@@ -306,6 +306,20 @@ describe("claims and the pre-handover check", () => {
     expect(details).toContain("claims `src/ui/search.tsx`");
     expect(details).toContain("**Pre-handover check: one question**");
     expect(details).toContain('1. "Search API": `src/api/search.ts` is in bo@example.com\'s area');
+  });
+
+  it("a GitHub team in CODEOWNERS: the plan warns, naming the team, and the admin's view lists it", async () => {
+    const t = await setup();
+    t.h.seed({ projects: [{ id: "proj-1", companyId: CO, name: "App" } as unknown as Project], projectWorkspaces: [workspace(repoWithOwners("/src/ui/  ana@example.com\n/src/api/  @acme/backend\n"))] });
+    await t.tick(EVENING);
+    const res = await t.h.executeTool<Proposed>(TOOL_PROPOSE, { tasks: [{ title: "Search API", claims: ["src/api/search.ts"] }] }, t.run);
+    expect(res.data.taskIds).toHaveLength(1); // nobody is matched through a team
+    const [interaction] = await t.h.ctx.issues.listInteractions(res.data.planIssueId, CO);
+    const details = (interaction as unknown as { payload: { detailsMarkdown: string } }).payload.detailsMarkdown;
+    expect(details).toContain("_WARNING: CODEOWNERS names GitHub team @acme/backend (line 2).");
+    expect(details).toContain("list the people instead");
+    const view = await t.h.getData<{ ok: boolean; source: string; teams: unknown[] }>("codeowners", { companyId: CO });
+    expect(view).toEqual({ ok: true, source: "CODEOWNERS", teams: [{ team: "@acme/backend", lines: [2] }], notes: [expect.stringContaining("WARNING")] });
   });
 
   it("a later claim on the same files goes to the owner who claimed them first", async () => {

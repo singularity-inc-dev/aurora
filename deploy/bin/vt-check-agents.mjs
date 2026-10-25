@@ -1,7 +1,7 @@
 // Part of vt-check: is every person's agent isolated? (thin version 1, piece A)
 // Asks Paperclip (board API key) about each person's agent and environment, and
-// prints "OK ..." / "PROBLEM ..." lines, plus "USER <name>" for each agent's
-// system user so vt-check can test that user's file access itself.
+// prints "OK ..." / "PROBLEM ..." / "WARNING ..." lines, plus "USER <name>" for
+// each agent's system user so vt-check can test that user's file access itself.
 // Usage: node vt-check-agents.mjs <paperclipUrl> <apiKeyFile> <companyId>
 import { readFileSync } from "node:fs";
 
@@ -54,3 +54,12 @@ else {
   const why = [...(audit?.settingsProblems ?? []), ...(audit?.agents ?? []).flatMap((a) => a.problems.map((x) => `${a.email}: ${x}`))];
   out("PROBLEM", `the plugin's audit refuses: ${why.join("; ").slice(0, 300) || "no answer"}`);
 }
+
+// GitHub teams in CODEOWNERS match nobody (Aurora cannot see who is in a team): name them so the admin can list people.
+const owners = (await call("POST", `/api/plugins/${plugin.id}/data/codeowners`, { companyId: cid, params: {} })).data?.data;
+if (owners?.ok && owners.teams?.length) {
+  for (const t of owners.teams) {
+    out("WARNING", `${owners.source} names the GitHub team ${t.team} (line${t.lines.length > 1 ? "s" : ""} ${t.lines.join(", ")}); Aurora cannot see who is in a team, so nobody is protected there. List the people instead (GitHub login or email).`);
+  }
+} else if (owners?.ok && owners.source && owners.source !== "none") out("OK", `${owners.source} names people only (no GitHub teams)`);
+else if (owners?.ok) out("OK", "no CODEOWNERS file: owner areas are not used (only claims are compared)");

@@ -145,6 +145,25 @@ export function areaOwners(rules: readonly OwnerRule[], claim: string, claimIsFi
   return [...owners];
 }
 
+/** A GitHub team ("@org/team"). Aurora cannot see who is in a team, so a team never matches a person. */
+export function isTeamEntry(entry: string): boolean {
+  return /^@[^/\s]+\/\S+$/.test(entry);
+}
+
+/** Every team named in CODEOWNERS, with the lines that name it (in file order). */
+export function codeownersTeams(rules: readonly OwnerRule[]): Array<{ team: string; lines: number[] }> {
+  const teams = new Map<string, number[]>();
+  for (const rule of rules) {
+    for (const owner of rule.owners) {
+      if (!isTeamEntry(owner)) continue;
+      const lines = teams.get(owner) ?? [];
+      if (!lines.includes(rule.line)) lines.push(rule.line);
+      teams.set(owner, lines);
+    }
+  }
+  return [...teams].map(([team, lines]) => ({ team, lines }));
+}
+
 /** Does a CODEOWNERS owner entry name this person (by email or GitHub login)? */
 export function ownerNames(entry: string, person: { email: string; githubLogin?: string | null }): boolean {
   const e = entry.toLowerCase();
