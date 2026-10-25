@@ -288,6 +288,8 @@ for u in $(awk '!s[$0]++' "$STATE/enabled"); do "$R/svc-hook.sh" start "$u"; don
 for _ in $(seq 1 90); do "${HTTPS[@]}" -o /dev/null "$URL/vt/health" 2>/dev/null && curl -fs -o /dev/null "$PC/api/health" && break; sleep 1; done
 check "the services that start at boot" "$(awk '!s[$0]++' "$STATE/enabled" | sort | tr '\n' ' ')" "caddy.service paperclip.service vt-email.service "
 check "after the reboot: Paperclip and the email service answer over HTTPS" "$("${HTTPS[@]}" -o /dev/null -w '%{http_code}' "$URL/api/health")/$("${HTTPS[@]}" "$URL/vt/health")" "200/ok"
+# The plugin's worker starts a little after Paperclip answers; give it up to a minute.
+for _ in $(seq 1 60); do [ "$(people | json 'd.data.people.length' 2>/dev/null)" = "2" ] && break; sleep 1; done
 check "after the reboot: data is still there" "$(people | json 'd.data.people.length')" "2"
 for unit in paperclip vt-email caddy; do
   check "$unit.service restarts by itself and starts at boot" "$(grep -c '^Restart=always$' "$UNITS/$unit.service")/$(grep -c '^WantedBy=multi-user.target$' "$UNITS/$unit.service")" "1/1"

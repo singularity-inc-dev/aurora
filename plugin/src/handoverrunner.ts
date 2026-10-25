@@ -128,7 +128,7 @@ async function maybeBrief(ctx: PluginContext, companyId: string, settings: Plugi
   if (run && run.taskIds.length > 0 && !stillInItsWindow) {
     if (!(await getBriefing(ctx.db, companyId, person.email, run.handoverKey))) {
       const carried = await earlierBriefingTaskIds(ctx.db, companyId, person.email, run.handoverKey);
-      await createBriefing(ctx, person, settings.links, companyId, run.handoverKey, run, carried, now);
+      await createBriefing(ctx, person, settings.links, companyId, run.handoverKey, run, carried, now, settings.people);
       return;
     }
   }
@@ -140,7 +140,7 @@ async function maybeBrief(ctx: PluginContext, companyId: string, settings: Plugi
   if (open && OPEN_STATUSES.includes(open.status)) return;
   const carried = await earlierBriefingTaskIds(ctx.db, companyId, person.email, lastDay);
   if (carried.length === 0) return;
-  await createBriefing(ctx, person, settings.links, companyId, lastDay, null, carried, now);
+  await createBriefing(ctx, person, settings.links, companyId, lastDay, null, carried, now, settings.people);
 }
 
 async function taskStatus(ctx: PluginContext, companyId: string, taskId: string | undefined): Promise<string | null> {

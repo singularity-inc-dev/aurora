@@ -24,6 +24,21 @@ export interface BriefingItem {
   carried?: boolean;
 }
 
+/** A conflict the merge replay found, as one owner sees it (piece E). */
+export interface BriefingConflict {
+  taskId: string;
+  title: string;
+  identifier: string | null;
+  withOwner: string;
+  withTaskId: string;
+  withTitle: string;
+  withIdentifier: string | null;
+  files: string[];
+}
+
+/** Key prefix of a short email telling an owner about a conflict found in a teammate's handback. */
+export const CONFLICT_NOTICE_PREFIX = "conflict-";
+
 export interface Briefing {
   id: string;
   companyId: string;
@@ -32,6 +47,7 @@ export interface Briefing {
   status: "pending" | "sent";
   items: BriefingItem[];
   notes: string[];
+  conflicts: BriefingConflict[];
 }
 
 export interface LinkAction {
@@ -67,6 +83,7 @@ function toBriefing(r: Record<string, unknown>): Briefing {
     status: r.status === "sent" ? "sent" : "pending",
     items: json<BriefingItem[]>(r.items, []),
     notes: json<string[]>(r.notes, []),
+    conflicts: json<BriefingConflict[]>(r.conflicts ?? "[]", []),
   };
 }
 
@@ -108,8 +125,8 @@ export async function listPendingBriefings(db: Db, companyId: string): Promise<B
 /** Insert the briefing; returns false if one already exists for this person and handover. */
 export async function insertBriefing(db: Db, b: Omit<Briefing, "status">): Promise<boolean> {
   const { rowCount } = await db.execute(
-    `INSERT INTO ${t(db, "briefings")} (id, company_id, owner, handover_key, items, notes) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (company_id, owner, handover_key) DO NOTHING`,
-    [b.id, b.companyId, b.owner, b.handoverKey, JSON.stringify(b.items), JSON.stringify(b.notes)],
+    `INSERT INTO ${t(db, "briefings")} (id, company_id, owner, handover_key, items, notes, conflicts) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (company_id, owner, handover_key) DO NOTHING`,
+    [b.id, b.companyId, b.owner, b.handoverKey, JSON.stringify(b.items), JSON.stringify(b.notes), JSON.stringify(b.conflicts)],
   );
   return rowCount === 1;
 }

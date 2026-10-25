@@ -53,6 +53,7 @@ describe("renderBriefing", () => {
     handoverKey: "2026-10-21",
     status: "pending",
     notes: [],
+    conflicts: [],
     items: [
       { taskId: "t1", identifier: "VT-1", title: "Fix login", category: "ready", summary: "Fix login: 1 file changed, 2 insertions(+)", checks: "checks passed on abc1234", reason: null, approveActionId: "a1", rejectActionId: "r1" },
       { taskId: "t2", identifier: "VT-2", title: "Docs <draft>", category: "blocked", summary: "Docs <draft>", checks: "checks failed", reason: "checks failed", approveActionId: null, rejectActionId: "r2" },

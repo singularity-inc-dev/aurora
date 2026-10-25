@@ -1,7 +1,20 @@
 import type { PluginContext } from "@paperclipai/plugin-sdk";
 import type { LinkSettings, Person } from "./config.js";
 import { getTaskRow } from "./eventlog.js";
-import { getPullRequest, insertAction, insertBriefing, newId, type Briefing, type BriefingItem, type Category } from "./briefstore.js";
+import {
+  CONFLICT_NOTICE_PREFIX,
+  earlierBriefingTaskIds,
+  getPullRequest,
+  insertAction,
+  insertBriefing,
+  newId,
+  type Briefing,
+  type BriefingConflict,
+  type BriefingItem,
+  type Category,
+} from "./briefstore.js";
+import { recordConflict } from "./conflictstore.js";
+import { replayPairs, type ReadyBranch } from "./replay.js";
 import { isClean, revParse, shortStat } from "./merge.js";
 import type { HandoverRun } from "./handover.js";
 import { actionsIn } from "./tiers.js";
@@ -80,10 +93,36 @@ async function gatherFacts(ctx: PluginContext, companyId: string, taskId: string
   return facts;
 }
 
+function readyBranch(f: TaskFacts, owner: string): ReadyBranch | null {
+  if (!classify(f).approvable || !f.worktree || !f.branchHead) return null;
+  return { taskId: f.taskId, owner, title: f.title, identifier: f.identifier, head: f.branchHead, cwd: f.worktree.cwd };
+}
+
+/** Every other task in the company that is ready and waiting for its owner's decision. */
+async function otherReadyBranches(ctx: PluginContext, companyId: string, except: readonly string[]): Promise<ReadyBranch[]> {
+  const rows = await ctx.db.query(
+    `SELECT * FROM "${ctx.db.namespace}".task_events WHERE company_id = $1 AND outcome IS NULL AND decision_action_id IS NULL AND checks_result = 'passed'`,
+    [companyId],
+  );
+  const result: ReadyBranch[] = [];
+  for (const row of rows) {
+    const taskId = String(row.task_id);
+    if (except.includes(taskId)) continue;
+    const ready = readyBranch(await gatherFacts(ctx, companyId, taskId), String(row.owner));
+    if (ready) result.push(ready);
+  }
+  return result;
+}
+
 /**
  * Build and store the handback email for one person and one handover. Safe to
  * call twice. Tasks from earlier emails that are still undecided come back with
  * fresh links; tasks whose pull request waits for review are listed without links.
+ *
+ * Before it is stored, the merge replay (piece E) test-merges each ready branch
+ * against the others and against every other owner's ready branch. Conflicts are
+ * listed for this owner; the other owner hears about a new one in a short email of
+ * their own (if that task was already handed back to them). Nothing is merged.
  */
 export async function createBriefing(
   ctx: PluginContext,
@@ -94,6 +133,7 @@ export async function createBriefing(
   run: HandoverRun | null,
   carriedTaskIds: string[],
   now: Date,
+  team: readonly Person[] = [person],
 ): Promise<Briefing | null> {
   const briefingId = newId();
   const expiresAt = new Date(now.getTime() + links.expiresMinutes * 60_000);
@@ -101,6 +141,7 @@ export async function createBriefing(
   const actions: Array<Parameters<typeof insertAction>[1]> = [];
   const thisOne = run?.taskIds ?? [];
   const taskIds = [...thisOne, ...carriedTaskIds.filter((id) => !thisOne.includes(id))];
+  const mine: ReadyBranch[] = [];
   for (const taskId of taskIds) {
     const f = await gatherFacts(ctx, companyId, taskId);
     if (f.outcome === "accepted" || f.outcome === "rejected") continue;
@@ -126,6 +167,8 @@ export async function createBriefing(
       continue;
     }
     const c = classify(f);
+    const ready = readyBranch(f, person.email);
+    if (ready) mine.push(ready);
     const action = (kind: LinkKind) => {
       const a = {
         id: newId(),
@@ -158,9 +201,29 @@ export async function createBriefing(
   }
   if (!run && items.length === 0) return null;
   const notes = run?.status === "budget_stopped" ? ["Your agent hit this handover's budget cap and was paused. Resume it in Paperclip when you are ready."] : [];
-  const briefing = { id: briefingId, companyId, owner: person.email, handoverKey, items, notes };
+
+  const { conflicts: found, unreplayed } = mine.length ? await replayPairs(mine, await otherReadyBranches(ctx, companyId, taskIds)) : { conflicts: [], unreplayed: [] };
+  const conflicts: BriefingConflict[] = [];
+  const tell = new Map<string, string[]>();
+  for (const c of found) {
+    conflicts.push({ taskId: c.a.taskId, title: c.a.title, identifier: c.a.identifier, withOwner: c.b.owner, withTaskId: c.b.taskId, withTitle: c.b.title, withIdentifier: c.b.identifier, files: c.files });
+    if ((await recordConflict(ctx.db, companyId, c)) && c.b.owner !== person.email) tell.set(c.b.owner, [...(tell.get(c.b.owner) ?? []), c.b.taskId]);
+  }
+  if (unreplayed.length) notes.push(`${unreplayed.length} pair(s) of ready tasks could not be test-merged against each other, so they may still conflict.`);
+
+  const briefing = { id: briefingId, companyId, owner: person.email, handoverKey, items, notes, conflicts };
   if (!(await insertBriefing(ctx.db, briefing))) return null;
   for (const a of actions) await insertAction(ctx.db, a);
+
+  for (const [owner, theirTasks] of tell) {
+    const other = team.find((p) => p.email === owner);
+    if (!other) continue;
+    const key = `${CONFLICT_NOTICE_PREFIX}${now.toISOString().slice(0, 19)}`;
+    const earlier = await earlierBriefingTaskIds(ctx.db, companyId, owner, key);
+    // Not handed back yet: their own handback email will show the conflict.
+    if (!theirTasks.some((id) => earlier.includes(id))) continue;
+    await createBriefing(ctx, other, links, companyId, key, null, [...new Set([...theirTasks, ...earlier])], now, team);
+  }
   return { ...briefing, status: "pending" };
 }
 
@@ -192,13 +255,37 @@ export function renderBriefing(b: Briefing, links: LinkSettings, secret: string,
     `${links.baseUrl}/l/${signLink({ v: 1, a: actionId, c: b.companyId, o: b.owner, t: item.taskId, k: kind, e: exp }, secret)}`;
   const count = (c: Category) => b.items.filter((i) => i.category === c).length;
   const waiting = count("waiting");
-  const subject = `Your handover of ${describeKey(b.handoverKey)}: ${count("ready")} ready, ${count("blocked")} blocked, ${count("failed")} failed${waiting ? `, ${waiting} waiting for review` : ""}`;
+  const conflicts = b.conflicts ?? [];
+  const notice = b.handoverKey.startsWith(CONFLICT_NOTICE_PREFIX);
+  const conflictCount = conflicts.length ? `, ${conflicts.length} conflict${conflicts.length === 1 ? "" : "s"}` : "";
+  const subject = notice
+    ? `A teammate's new work conflicts with yours${conflictCount ? ` (${conflicts.length})` : ""}: ${count("ready")} ready for your decision`
+    : `Your handover of ${describeKey(b.handoverKey)}: ${count("ready")} ready, ${count("blocked")} blocked, ${count("failed")} failed${waiting ? `, ${waiting} waiting for review` : ""}${conflictCount}`;
+  const intro = notice
+    ? "Vision and Tom test-merged a teammate's new work with yours and found a conflict. Your tasks below are still waiting for your decision."
+    : `Here is what your agent did in your handover of ${describeKey(b.handoverKey)}.`;
 
-  const text: string[] = [`Here is what your agent did in your handover of ${describeKey(b.handoverKey)}.`, ""];
-  const html: string[] = [`<p>Here is what your agent did in your handover of ${esc(describeKey(b.handoverKey))}.</p>`];
+  const text: string[] = [intro, ""];
+  const html: string[] = [`<p>${esc(intro)}</p>`];
   for (const note of b.notes) {
     text.push(`Note: ${note}`, "");
     html.push(`<p><strong>Note:</strong> ${esc(note)}</p>`);
+  }
+  if (conflicts.length) {
+    const name = (title: string, id: string | null) => `"${title}"${id ? ` (${id})` : ""}`;
+    text.push(`CONFLICTS FOUND BY THE MERGE REPLAY (${conflicts.length})`);
+    html.push(`<h2>Conflicts found by the merge replay (${conflicts.length})</h2><ul>`);
+    for (const c of conflicts) {
+      const other = c.withOwner === b.owner ? `your ${name(c.withTitle, c.withIdentifier)}` : `${c.withOwner}'s ${name(c.withTitle, c.withIdentifier)}`;
+      const line = `Your ${name(c.title, c.identifier)} and ${other} both change ${c.files.join(", ") || "the same files"}.`;
+      const advice =
+        c.withOwner === b.owner
+          ? "Nothing has been merged. Approve one; the other then has to be redone on top of it."
+          : `Nothing has been merged. Agree with ${c.withOwner} which goes first: approve that one, and the other has to be redone on top of it.`;
+      text.push(`- ${line}`, `  ${advice}`, "");
+      html.push(`<li><p><strong>${esc(line)}</strong><br>${esc(advice)}</p></li>`);
+    }
+    html.push("</ul>");
   }
   for (const [cat, label] of SECTIONS) {
     const items = b.items.filter((i) => i.category === cat);
