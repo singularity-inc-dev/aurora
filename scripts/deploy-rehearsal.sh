@@ -346,6 +346,18 @@ runuser -u "$PROJ_USER" -- git -C "$PROJ" -c user.email=owner@example.com -c use
 VT_CHECK_URL="$URL" VT_CHECK_CACERT="$CA" VT_CHECK_MIN_CERT_DAYS=0 bash "$KIT_BIN/vt-check" >"$LOGS/check-teams.log" 2>&1 || true
 check "vt-check warns, naming the team and its line, and does not fail for it" "$(grep -c 'WARNING  CODEOWNERS names the GitHub team @acme/web (line 1)' "$LOGS/check-teams.log")/$(tail -1 "$LOGS/check-teams.log")" "1/All good, but 1 warning(s) above."
 
+echo "== 14. Stop everything at once (vt-stop), then start again (vt-start)"
+# Stand-in for an agent's program that is still running when the owner pulls the plug.
+runuser -u vt-agent-ana -- sleep 600 &
+sleep 1
+STOP_OUT=$(bash "$KIT_BIN/vt-stop" 2>&1); echo "$STOP_OUT" >"$LOGS/stop.log"
+check "vt-stop says everything stopped" "$(echo "$STOP_OUT" | grep -c '^==> Stopped')" "1"
+check "Paperclip and the email service are down; links do nothing" "$("${HTTPS[@]}" -o /dev/null -w '%{http_code}' "$URL/api/health")/$("${HTTPS[@]}" -o /dev/null -w '%{http_code}' "$LINK")" "502/502"
+check "the agent's leftover program was ended" "$(ps -u vt-agent-ana -o stat= | grep -cv '^Z')" "0"
+START_OUT=$(VT_CHECK_URL="$URL" VT_CHECK_CACERT="$CA" VT_CHECK_MIN_CERT_DAYS=0 bash "$KIT_BIN/vt-start" 2>&1)
+for _ in $(seq 1 60); do [ "$(people | json 'd.data.people.length' 2>/dev/null)" = "3" ] && break; sleep 1; done
+check "vt-start brings it back and vt-check passes" "$(echo "$START_OUT" | grep -c '^All good')/$("${HTTPS[@]}" "$URL/vt/health")/$(people | json 'd.data.people.length')" "1/ok/3"
+
 echo
 echo "Result: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

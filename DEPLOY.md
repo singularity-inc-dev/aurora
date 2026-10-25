@@ -16,6 +16,8 @@ This is a checklist. Do the steps in order and tick each box.
 
 **Time:** about 1 hour, plus up to a day for the web address to start working (step 2).
 
+For the first real run (one email account, one protected test repository, your own Claude sign-in, one handover), follow **FIRST-REAL-RUN.md**; it points back here for the server.
+
 ---
 
 ## Part A: before the server (on your own computer)
@@ -378,6 +380,8 @@ Run `vt-check` afterwards. Delete the `before-restore-...` folder only once you'
    ```
 
 ### If something is wrong
+
+- **Stop everything at once:** `vt-stop`. It stops Paperclip, every agent (also programs they left running) and the email service; links stop working, and it stays stopped after a restart, until `vt-start`. Nothing is deleted.
 
 - `vt-check` says which part is wrong.
 - See a part's latest messages: `journalctl -u paperclip -n 50`. The other parts are `vt-email` (emails and links), `caddy` (HTTPS) and `postgresql` (database).

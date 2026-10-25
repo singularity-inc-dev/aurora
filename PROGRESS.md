@@ -57,6 +57,12 @@ A GitHub team entry (`@org/team`) matches nobody, because Aurora cannot see who 
 
 **Test machine change (your answer: allowed on cloud test machines):** `scripts/it/lib/setup-test-users.sh` now also makes a fourth test agent user, `vt-agent-cy`. The rehearsal's third stand-in was the checks user, whose home is read-only, so Paperclip could not use it for Fay's agent once she really joined (step 2's new checks); `vt-check` reported that.
 
+### Step 4. FIRST-REAL-RUN.md and an emergency stop (done)
+- **FIRST-REAL-RUN.md**: a short checklist for the first real run: the server (DEPLOY.md steps 1 to 11), one email account used only for sending, one protected test repository (CODEOWNERS naming people, a required review by a second person, because GitHub never lets an author approve their own pull request), your own Claude sign-in for your agent, one real handover from a backlog ticket to a merged pull request, what you should see at each step, and how to stop everything. 🔑 marks the steps only you can do. README.md and DEPLOY.md point to it.
+- **`sudo vt-stop`** stops everything at once: Paperclip, every agent (including programs an agent left running under its own user) and the email service, so Approve, Reject and invite links do nothing. It stays stopped after a restart of the server, until **`sudo vt-start`**, which ends with `vt-check`. Nothing is deleted; Caddy and the backups keep running. The guide also lists the outside stops only you can do: revoke the `vt-push` token on GitHub, power the server off.
+
+**Tests:** rehearsal **98 passed, 0 failed** (4 new: an agent's leftover program is ended, Paperclip and the email links answer 502, everything comes back with `vt-start` and `vt-check` passes). Found while testing: right after a program is ended it can still be listed for a moment, so `vt-stop` once reported a leftover that was already gone; it now re-checks for up to 10 seconds and does not count such ended programs.
+
 ## Thin version 1 for the pilot (done)
 
 Milestone names now follow the spec (see CLAUDE.md, "Milestones" and "Built so far").
