@@ -13,7 +13,7 @@ import { proposeHandover, ProposalRefused, startHandoverNow, tickAll } from "./h
 import { startTicker, type Ticker } from "./ticker.js";
 import { renderBriefing } from "./briefing.js";
 import { getAction, getBriefingById, listPendingBriefings, markBriefingSent } from "./briefstore.js";
-import { executeLink, previewLink, recordPublishResult, recordPullRequestUpdate } from "./links.js";
+import { executeLink, listStuckApprovals, previewLink, recordPublishResult, recordPullRequestUpdate, recoverApproval } from "./links.js";
 import { claimInvite, createInvite, finishInvite, previewInvite } from "./invites.js";
 import { listWaitingPullRequests } from "./briefstore.js";
 import { HANDOFF_TOOL, PROPOSE_TOOL, RUN_CHECKS_TOOL, TOOL_HANDOFF, TOOL_PROPOSE, TOOL_RUN_CHECKS } from "./tools.js";
@@ -319,6 +319,11 @@ const plugin = definePlugin({
         return { status: 200, body: await executeLink(ctx, settings, input.companyId, token, body.reason, now) };
       case "link-publish-result":
         return { status: 200, body: await recordPublishResult(ctx, settings, input.companyId, token, body, now) };
+      case "links-stuck":
+        // Approvals interrupted between the tap and GitHub (gap 27); the email service finishes them.
+        return { status: 200, body: { approvals: await listStuckApprovals(ctx, settings, input.companyId, input.query?.olderThanMinutes, now) } };
+      case "link-recover":
+        return { status: 200, body: await recoverApproval(ctx, settings, input.companyId, body, now) };
       case "prs-waiting":
         return {
           status: 200,

@@ -176,7 +176,7 @@ CID=$(sed -n 's/^VT_COMPANY_ID=//p' "$VT_ROOT/etc/vision-and-tom/email-service.e
 board() { curl -s -H "authorization: Bearer $API_KEY" -H 'content-type: application/json' "$@"; }
 PLUGIN_ID=$(board "$PC/api/plugins" | json 'd.find(p=>(p.pluginKey||p.key)==="vision-and-tom.night-agents").id')
 people() { board -X POST "$PC/api/plugins/$PLUGIN_ID/data/people" -d "{\"companyId\":\"$CID\",\"params\":{}}"; }
-check "the plugin is installed and its settings are valid" "$(people | json 'd.data.ok')" "true"
+check "the plugin is installed and its settings are valid" "$(people | json 'd.data.ok || JSON.stringify([...d.data.settingsProblems, ...d.data.agents.filter(a=>a.problems.length).map(a=>a.email+": "+a.problems.join("; "))])')" "true"
 check "the owner is the first person, with their own agent" "$(people | json 'd.data.people.map(p=>p.email).join(",")')" "owner@example.com"
 check "the project repository was cloned for the agents" "$(git -C "$VT_ROOT/var/lib/paperclip/repos/project" log --format=%s -1)" "init"
 check "the email service is up behind HTTPS" "$("${HTTPS[@]}" "$URL/vt/health")" "ok"
@@ -230,7 +230,7 @@ check "the key's value is not in the plugin settings or the agent's settings" "$
 unset DEE_KEY
 DEE_ENV=$(person dee@example.com | json 'd.agentEnvironmentId')
 check "Dee's agent runs as its own system user (environment probe)" "$(person dee@example.com | json 'd.agentUser')/$(board -X POST "$PC/api/environments/$DEE_ENV/probe" -d '{}' | json 'd.ok && d.details.username')/$(board "$PC/api/agents/$DEE_AGENT" | json "d.defaultEnvironmentId==='$DEE_ENV'")" "vt-agent-bo/vt-agent-bo/true"
-check "the plugin's route audit accepts Dee's agent" "$(board -X POST "$PC/api/plugins/$PLUGIN_ID/data/route-audit" -d "{\"companyId\":\"$CID\",\"params\":{}}" | json 'd.data.ok')" "true"
+check "the plugin's route audit accepts Dee's agent" "$(board -X POST "$PC/api/plugins/$PLUGIN_ID/data/route-audit" -d "{\"companyId\":\"$CID\",\"params\":{}}" | json 'd.data.ok || JSON.stringify([...d.data.settingsProblems, ...d.data.agents.filter(a=>a.problems.length).map(a=>a.email+": "+a.problems.join("; "))])')" "true"
 check "a used invite link is refused (POST)" "$("${HTTPS[@]}" -o /dev/null -w '%{http_code}' -X POST --data-urlencode "name=Mallory" --data-urlencode "password=$(rand 12)" "$LINK")/$("${HTTPS[@]}" -X POST --data-urlencode "name=M" --data-urlencode "password=$(rand 12)" "$LINK" | grep -oE '<h1>[^<]*</h1>')" "409/<h1>Invite already used</h1>"
 check "a used invite link is refused (opening it)" "$("${HTTPS[@]}" "$LINK" | grep -oE '<h1>[^<]*</h1>')" "<h1>Invite already used</h1>"
 check "still exactly two people" "$(people | json 'd.data.people.length')" "2"
@@ -308,6 +308,32 @@ echo "== 11. Secrets stay with the service that needs them"
 check "the GitHub token is in no Paperclip file" "$(grep -rlF "$GH_TOKEN_VALUE" "$VT_ROOT/var/lib/paperclip" --exclude-dir=repos 2>/dev/null | wc -l | tr -d ' ')" "0"
 check "the GitHub token is not in the database" "$(runuser -u postgres -- env PGHOST="$PG_HOST" PGPORT="$PG_PORT" pg_dump paperclip | grep -cF "$GH_TOKEN_VALUE" | tr -d ' ')" "0"
 check "the push token is only given to the email service unit" "$(grep -l 'github-token' "$UNITS"/*.service | xargs -n1 basename | tr '\n' ' ')" "vt-email.service "
+
+echo "== 12. A join that fails halfway does not use up the invite (spec gap 27)"
+# Fay's invite (made after the restore). Paperclip refuses to create an agent of an unknown type,
+# which makes her join fail after her account and membership were made: a real failure halfway.
+CFG=$(board "$PC/api/plugins/$PLUGIN_ID/config?companyId=$CID" | json 'd.configJson')
+board -X POST "$PC/api/plugins/$PLUGIN_ID/config" -d "{\"companyId\":\"$CID\",\"configJson\":$(echo "$CFG" | json '({...d,invites:{...d.invites,agentAdapterType:"no_such_adapter"}})')}" >/dev/null
+FAY_PW=$(rand 12)
+fay_join() { "${HTTPS[@]}" -X POST --data-urlencode "name=Fay Fox" --data-urlencode "password=$1" --data-urlencode "timezone=Europe/Rome" "$NEW_LINK"; }
+OUT=$(fay_join "$FAY_PW")
+check "the join fails while creating her agent; the page says the link still works" "$(echo "$OUT" | grep -oE '<h1>[^<]*</h1>')/$(echo "$OUT" | grep -c 'while creating your agent')/$(echo "$OUT" | grep -c 'Your invite link still works')" "<h1>Something went wrong</h1>/1/1"
+check "her account was made before the failure, but she is not in the settings yet" "$(signin fay@example.com "$FAY_PW" | grep -c . | tr -d ' ')/$(people | json 'd.data.people.some(p=>p.email==="fay@example.com")')" "1/false"
+check "the link still opens the join form" "$("${HTTPS[@]}" "$NEW_LINK" | grep -c 'You were invited as <strong>fay@example.com')" "1"
+board -X POST "$PC/api/plugins/$PLUGIN_ID/config" -d "{\"companyId\":\"$CID\",\"configJson\":$CFG}" >/dev/null
+OUT=$(fay_join "$(rand 12)")
+check "a try with another password shows the form again and asks for the first one" "$(echo "$OUT" | grep -c 'type the same password you chose then')/$(echo "$OUT" | grep -c '<form method=\"post\"')" "1/1"
+OUT=$(fay_join "$FAY_PW")
+check "a try with the same password joins (her account from the first try is reused)" "$(echo "$OUT" | grep -oE '<h1>[^<]*</h1>')" "<h1>You&#39;re in</h1>"
+FAY_ENV=$(person fay@example.com | json 'd.agentEnvironmentId')
+FAY_AGENT=$(person fay@example.com | json 'd.agentId')
+check "Fay is in the company, with exactly one agent in her own environment, locked down" "$("${HTTPS[@]}" -H "cookie: $(signin fay@example.com "$FAY_PW")" "$URL/api/companies" | json '(Array.isArray(d)?d:d.items).length')/$(board "$PC/api/companies/$CID/agents" | json "d.filter(a=>a.defaultEnvironmentId==='$FAY_ENV').length")/$(board "$PC/api/agents/$FAY_AGENT" | json '[d.permissions.canCreateAgents,d.permissions.canCreateSkills].join()')" "1/1/false,false"
+check "one Paperclip account for her email" "$(runuser -u postgres -- env PGHOST="$PG_HOST" PGPORT="$PG_PORT" psql -tAc "select count(*) from \"user\" where email='fay@example.com'" paperclip 2>/dev/null)" "1"
+check "the link is used now" "$("${HTTPS[@]}" "$NEW_LINK" | grep -oE '<h1>[^<]*</h1>')" "<h1>Invite already used</h1>"
+check "the plugin's audit has one thing left for her: choosing her own Claude access (DEPLOY.md step 12)" "$(board -X POST "$PC/api/plugins/$PLUGIN_ID/data/route-audit" -d "{\"companyId\":\"$CID\",\"params\":{}}" | json 'JSON.stringify([...d.data.settingsProblems, ...d.data.agents.filter(a=>a.problems.length).map(a=>a.email+": "+a.problems.join("; "))])')" '["fay@example.com: no Claude access chosen for this person yet: their own subscription or API key (vt-model-access)"]'
+ssh-keygen -q -t ed25519 -N "" -C "fay@laptop" -f "$R/fay-key" >/dev/null
+bash "$KIT_BIN/vt-model-access" fay@example.com subscription "$(cat "$R/fay-key.pub")" >/dev/null 2>&1
+check "after she chooses her own Claude subscription, the audit accepts every agent" "$(board -X POST "$PC/api/plugins/$PLUGIN_ID/data/route-audit" -d "{\"companyId\":\"$CID\",\"params\":{}}" | json 'd.data.ok || JSON.stringify([...d.data.settingsProblems, ...d.data.agents.filter(a=>a.problems.length).map(a=>a.email+": "+a.problems.join("; "))])')" "true"
 
 echo
 echo "Result: $PASS passed, $FAIL failed"

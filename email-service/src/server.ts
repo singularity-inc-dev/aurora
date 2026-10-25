@@ -43,6 +43,8 @@ export interface ServerDeps {
   signInUrl?: string;
   /** Who is signed in to Paperclip (Hand over now). */
   session?: SessionApi;
+  /** Approvals being published right now (the recovery of interrupted ones leaves these alone). */
+  inFlight?: Set<string>;
 }
 
 /** Approve in GitHub mode: publish, then let the plugin record what happened. */
@@ -52,10 +54,16 @@ async function approve(api: PluginApi, deps: ServerDeps, token: string, outcome:
     log("approve needs GitHub, but no GitHub token is set up");
     return api.publishResult(token, { result: "failed", message: "the GitHub token is not set up on the server" });
   }
-  // Whatever happens, report back: a lost answer would hold the task's decision forever.
-  const result = await deps.github.publish(outcome.publish).catch(() => ({ result: "failed" as const, message: "could not reach GitHub" }));
-  log(`published to GitHub: ${result.result}`);
-  return api.publishResult(token, result);
+  // Whatever happens, report back: a lost answer holds the task until the recovery finds it (recover.ts).
+  const id = outcome.publish.actionId;
+  if (id) deps.inFlight?.add(id);
+  try {
+    const result = await deps.github.publish(outcome.publish).catch(() => ({ result: "failed" as const, message: "could not reach GitHub" }));
+    log(`published to GitHub: ${result.result}`);
+    return await api.publishResult(token, result);
+  } finally {
+    if (id) deps.inFlight?.delete(id);
+  }
 }
 
 /**
@@ -115,6 +123,8 @@ export function createLinkServer(api: PluginApi, log: (msg: string) => void = ()
         if (typeof input === "string") return send(res, 400, joinPage(check, input, { name: form.get("name") ?? "", timezone: form.get("timezone") ?? "" }));
         const outcome = await join(api, deps.board, deps.person, token, input);
         log(`invite used: ${outcome.status}`);
+        // e.g. an account from an earlier try with another password: show the form again (the invite still works).
+        if (outcome.status === "needs-input") return send(res, 400, joinPage(check, outcome.message, { name: form.get("name") ?? "", timezone: form.get("timezone") ?? "" }));
         return send(res, outcome.ok ? 200 : 409, joinResultPage(outcome, deps.signInUrl ?? "/"));
       }
 

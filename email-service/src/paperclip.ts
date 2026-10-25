@@ -20,6 +20,8 @@ export interface LinkCheck {
 
 /** What the plugin asks the email service to publish on GitHub for an approved task. */
 export interface PublishRequest {
+  /** The approval being published (kept in flight so the recovery never races it). */
+  actionId?: string;
   repo: string;
   worktree: string;
   branch: string;
@@ -37,6 +39,13 @@ export type PublishResult =
   | { result: "merged"; number: number; url: string; mergeSha: string }
   | { result: "waiting"; number: number; url: string; reason: string }
   | { result: "failed"; message: string };
+
+/** An approval interrupted between the tap and GitHub (a crash), found by the plugin. */
+export interface StuckApproval {
+  actionId: string;
+  taskId: string;
+  publish: PublishRequest;
+}
 
 export interface WaitingPullRequest {
   taskId: string;
@@ -63,7 +72,21 @@ export interface InviteDefaults {
 }
 
 export type InviteClaim =
-  | { ok: true; status: "claimed"; plan: { inviteId: string; email: string; timezone: string; defaults: InviteDefaults; agent: AgentBinding | null } }
+  | {
+      ok: true;
+      status: "claimed";
+      plan: {
+        inviteId: string;
+        /** This try's number (an invite can be tried again after a failure). */
+        attempt?: number;
+        email: string;
+        timezone: string;
+        defaults: InviteDefaults;
+        agent: AgentBinding | null;
+        /** What an earlier, failed try already made. */
+        resume?: { userId: string | null; agentId: string | null };
+      };
+    }
   | { ok: false; status: "invalid" | "expired" | "already-used" | "refused"; message: string };
 
 export interface HandoverStatus {
@@ -93,7 +116,13 @@ export interface PluginApi {
   /** The pilot's numbers from the event log (piece F): a summary, and the measurement sheet as CSV. */
   numbers(): Promise<Record<string, unknown>>;
   numbersCsv(): Promise<string>;
-  finishInvite(inviteId: string, result: { ok: true; agentId: string; userId: string } | { ok: false; message: string }): Promise<{ ok: boolean; message: string }>;
+  finishInvite(
+    inviteId: string,
+    result: { ok: true; agentId: string; userId: string; attempt?: number } | { ok: false; message: string; attempt?: number; userId?: string | null; agentId?: string | null },
+  ): Promise<{ ok: boolean; message: string; retry?: boolean }>;
+  /** Approvals interrupted for longer than `olderThanMinutes` (GitHub mode). */
+  stuckApprovals(olderThanMinutes: number): Promise<StuckApproval[]>;
+  recoverApproval(actionId: string, olderThanMinutes: number, result: PublishResult): Promise<LinkOutcome>;
 }
 
 export class PaperclipError extends Error {
@@ -144,6 +173,10 @@ export function paperclipApi(cfg: ServiceConfig, fetchImpl: typeof fetch = fetch
     previewInvite: (token) => call<InviteCheck>("POST", "/invites/preview", { token }),
     claimInvite: (token, timezone) => call<InviteClaim>("POST", "/invites/claim", { token, ...(timezone ? { timezone } : {}) }),
     finishInvite: (inviteId, result) => call("POST", "/invites/finish", { inviteId, ...result }),
+    async stuckApprovals(olderThanMinutes) {
+      return (await call<{ approvals: StuckApproval[] }>("GET", `/links/stuck?${company}&olderThanMinutes=${olderThanMinutes}`)).approvals;
+    },
+    recoverApproval: (actionId, olderThanMinutes, result) => call<LinkOutcome>("POST", "/links/recover", { actionId, olderThanMinutes, ...result }),
     handoverStatus: (email) => call<HandoverStatus>("GET", `/handovers/status?${company}&email=${encodeURIComponent(email)}`, undefined, [404]),
     startHandover: (email) => call("POST", "/handovers/start", { email }, [404, 409]),
     numbers: () => call("GET", `/numbers?${company}`),
@@ -160,6 +193,12 @@ export interface BoardApi {
   /** Any board call (used for the agent's environment, agentenv.ts). */
   request<T = unknown>(method: string, path: string, body?: unknown): Promise<T>;
   getAgent(agentId: string): Promise<Record<string, unknown>>;
+  /** The agent whose default environment is this one (each new person's environment is their own), or null. */
+  findAgentByEnvironment(environmentId: string): Promise<string | null>;
+  /** Agents never create agents or skills (also re-applied to an agent an earlier join try made). */
+  lockAgent(agentId: string): Promise<void>;
+  /** Is this user already a member of the company? */
+  isMember(userId: string): Promise<boolean>;
   /** Plugin settings for the company (read, change, save). */
   getPluginConfig(): Promise<Record<string, unknown>>;
   savePluginConfig(config: Record<string, unknown>): Promise<void>;
@@ -169,6 +208,8 @@ export interface BoardApi {
 export interface PersonApi {
   /** Creates the account and returns its session cookie and user id. */
   signUp(input: { email: string; password: string; name: string }): Promise<{ cookie: string; userId: string }>;
+  /** Signs in to an account an earlier join try made (needs the same password). */
+  signIn(input: { email: string; password: string }): Promise<{ cookie: string; userId: string }>;
   acceptInvite(cookie: string, paperclipInviteToken: string): Promise<void>;
 }
 
@@ -189,6 +230,10 @@ export function boardApi(cfg: ServiceConfig, fetchImpl: typeof fetch = fetch): B
     return pluginId;
   }
   const c = encodeURIComponent(cfg.companyId);
+  async function lockAgent(agentId: string): Promise<void> {
+    // Set again through the permissions route, which is what the plugin's route audit reads.
+    await req("PATCH", `/api/agents/${encodeURIComponent(agentId)}/permissions`, { canCreateAgents: false, canCreateSkills: false, canAssignTasks: true });
+  }
   return {
     async createHumanInvite() {
       const inv = await req<{ token: string }>("POST", `/api/companies/${c}/invites`, { allowedJoinTypes: "human", humanRole: "operator" });
@@ -204,11 +249,20 @@ export function boardApi(cfg: ServiceConfig, fetchImpl: typeof fetch = fetch): B
         permissions: { canCreateAgents: false, canCreateSkills: false },
         ...(input.defaultEnvironmentId ? { defaultEnvironmentId: input.defaultEnvironmentId } : {}),
       });
-      // Set again through the permissions route, which is what the plugin's route audit reads.
-      await req("PATCH", `/api/agents/${encodeURIComponent(agent.id)}/permissions`, { canCreateAgents: false, canCreateSkills: false, canAssignTasks: true });
+      await lockAgent(agent.id);
       return agent.id;
     },
+    lockAgent,
     getAgent: (agentId) => req("GET", `/api/agents/${encodeURIComponent(agentId)}`),
+    async findAgentByEnvironment(environmentId) {
+      const list = await req<Array<{ id?: unknown; defaultEnvironmentId?: unknown; status?: unknown }>>("GET", `/api/companies/${c}/agents`);
+      const found = Array.isArray(list) ? list.find((a) => a.defaultEnvironmentId === environmentId && a.status !== "terminated") : undefined;
+      return typeof found?.id === "string" ? found.id : null;
+    },
+    async isMember(userId) {
+      const res = await req<{ members?: Array<{ principalId?: unknown }> }>("GET", `/api/companies/${c}/members`);
+      return Array.isArray(res.members) && res.members.some((m) => m.principalId === userId);
+    },
     request: (method, path, body) => req(method, path, body),
     async getPluginConfig() {
       const id = await resolvePluginId();
@@ -241,6 +295,17 @@ export function sessionApi(cfg: ServiceConfig, fetchImpl: typeof fetch = fetch):
   };
 }
 
+/** The session a sign-up or sign-in started: its cookie and the user's id. */
+async function sessionOf(res: Response): Promise<{ cookie: string; userId: string }> {
+  const cookie = res.headers
+    .getSetCookie()
+    .map((c) => c.split(";")[0]!)
+    .join("; ");
+  const body = (await res.json()) as { user?: { id?: string } };
+  if (!cookie || !body.user?.id) throw new PaperclipError(502, "Paperclip did not start a session for the new account");
+  return { cookie, userId: body.user.id };
+}
+
 export function personApi(cfg: ServiceConfig, fetchImpl: typeof fetch = fetch): PersonApi {
   // Paperclip's auth checks that requests come from its own public address.
   const origin = new URL(cfg.paperclipPublicUrl).origin;
@@ -256,13 +321,17 @@ export function personApi(cfg: ServiceConfig, fetchImpl: typeof fetch = fetch): 
         if (res.status === 422 || /exist/i.test(body.code ?? body.message ?? "")) throw new PaperclipError(409, "an account with this email already exists");
         throw new PaperclipError(res.status, `Paperclip refused the new account (${res.status})`);
       }
-      const cookie = res.headers
-        .getSetCookie()
-        .map((c) => c.split(";")[0]!)
-        .join("; ");
-      const body = (await res.json()) as { user?: { id?: string } };
-      if (!cookie || !body.user?.id) throw new PaperclipError(502, "Paperclip did not start a session for the new account");
-      return { cookie, userId: body.user.id };
+      return sessionOf(res);
+    },
+    async signIn(input) {
+      const res = await fetchImpl(`${cfg.paperclipUrl}/api/auth/sign-in/email`, {
+        method: "POST",
+        headers: { "content-type": "application/json", origin },
+        body: JSON.stringify({ email: input.email, password: input.password }),
+      });
+      if (res.status === 401) throw new PaperclipError(401, "the password does not match the existing account");
+      if (!res.ok) throw new PaperclipError(res.status, `Paperclip refused the sign-in (${res.status})`);
+      return sessionOf(res);
     },
     async acceptInvite(cookie, token) {
       const res = await fetchImpl(`${cfg.paperclipUrl}/api/invites/${encodeURIComponent(token)}/accept`, {
@@ -270,7 +339,12 @@ export function personApi(cfg: ServiceConfig, fetchImpl: typeof fetch = fetch): 
         headers: { "content-type": "application/json", origin, cookie },
         body: JSON.stringify({ requestType: "human" }),
       });
-      if (!res.ok) throw new PaperclipError(res.status, `Paperclip refused to add the new person to the company (${res.status})`);
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: unknown };
+        // Paperclip answers 409 "You already belong to this company" to a member.
+        if (res.status === 409 && /already belong/i.test(String(body.error ?? ""))) throw new PaperclipError(409, "already a member of the company");
+        throw new PaperclipError(res.status, `Paperclip refused to add the new person to the company (${res.status})`);
+      }
     },
   };
 }

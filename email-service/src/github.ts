@@ -111,6 +111,46 @@ export function githubClient(s: GithubSettings, fetchImpl: typeof fetch = fetch,
     return { number: created.body.number, url: created.body.html_url };
   }
 
+  async function publish(req: PublishRequest): Promise<PublishResult> {
+    if (!REPO_RE.test(req.repo) || !BRANCH_RE.test(req.branch) || !BRANCH_RE.test(req.baseBranch) || !SHA_RE.test(req.expectedHead) || req.branch.includes("..")) {
+      return { result: "failed", message: "the task's branch details are not valid" };
+    }
+    if (req.branch === req.baseBranch) return { result: "failed", message: "the task branch is the base branch" };
+    try {
+      await push(req);
+    } catch (err) {
+      return { result: "failed", message: `could not push the task branch: ${scrub(err instanceof Error ? err.message : "git failed", s.token)}` };
+    }
+    let pr: { number: number; url: string };
+    try {
+      pr = await findOrOpenPullRequest(req);
+    } catch (err) {
+      return { result: "failed", message: scrub(err instanceof Error ? err.message : "GitHub error", s.token) };
+    }
+    for (let attempt = 1; ; attempt += 1) {
+      const merge = await api<{ merged?: boolean; sha?: string; message?: string }>("PUT", `/repos/${req.repo}/pulls/${pr.number}/merge`, {
+        merge_method: "squash",
+        // GitHub refuses (409) if the pull request head is no longer the approved commit.
+        sha: req.expectedHead,
+        commit_title: `${req.title} (#${pr.number})`.slice(0, 250),
+      });
+      if (merge.status === 200 && merge.body?.merged && merge.body.sha) return { result: "merged", number: pr.number, url: pr.url, mergeSha: merge.body.sha };
+      if (merge.status === 409) return { result: "failed", message: "the pull request changed on GitHub after the email was sent" };
+      if (merge.status === 405 || merge.status === 422) {
+        // GitHub may still be computing mergeability right after opening; ask twice more before calling it blocked.
+        if (attempt < 3) {
+          const state = await api<{ mergeable?: boolean | null }>("GET", `/repos/${req.repo}/pulls/${pr.number}`);
+          if (state.body?.mergeable === null) {
+            await sleep(2000);
+            continue;
+          }
+        }
+        return { result: "waiting", number: pr.number, url: pr.url, reason: message(merge.body) };
+      }
+      return { result: "failed", message: `GitHub answered ${merge.status} to the merge: ${message(merge.body)}` };
+    }
+  }
+
   return {
     /**
      * Approve in GitHub mode: push the task branch, open a pull request, and
@@ -118,44 +158,31 @@ export function githubClient(s: GithubSettings, fetchImpl: typeof fetch = fetch,
      * branch protection blocks the merge, the pull request stays open and
      * waits for review.
      */
-    async publish(req: PublishRequest): Promise<PublishResult> {
-      if (!REPO_RE.test(req.repo) || !BRANCH_RE.test(req.branch) || !BRANCH_RE.test(req.baseBranch) || !SHA_RE.test(req.expectedHead) || req.branch.includes("..")) {
+    publish,
+
+    /**
+     * Finish an approval that was interrupted (a crash) between the owner's tap
+     * and the report back. If GitHub already merged the approved commit, that is
+     * the result; if its pull request was closed, the approval is given up; else
+     * the publish runs again, which is safe to repeat (same commit, no force
+     * push, the open pull request is reused, GitHub merges only that head).
+     * Throws when GitHub cannot be asked, so the next round tries again.
+     */
+    async resume(req: PublishRequest): Promise<PublishResult> {
+      if (!REPO_RE.test(req.repo) || !BRANCH_RE.test(req.branch) || !BRANCH_RE.test(req.baseBranch) || !SHA_RE.test(req.expectedHead)) {
         return { result: "failed", message: "the task's branch details are not valid" };
       }
-      if (req.branch === req.baseBranch) return { result: "failed", message: "the task branch is the base branch" };
-      try {
-        await push(req);
-      } catch (err) {
-        return { result: "failed", message: `could not push the task branch: ${scrub(err instanceof Error ? err.message : "git failed", s.token)}` };
-      }
-      let pr: { number: number; url: string };
-      try {
-        pr = await findOrOpenPullRequest(req);
-      } catch (err) {
-        return { result: "failed", message: scrub(err instanceof Error ? err.message : "GitHub error", s.token) };
-      }
-      for (let attempt = 1; ; attempt += 1) {
-        const merge = await api<{ merged?: boolean; sha?: string; message?: string }>("PUT", `/repos/${req.repo}/pulls/${pr.number}/merge`, {
-          merge_method: "squash",
-          // GitHub refuses (409) if the pull request head is no longer the approved commit.
-          sha: req.expectedHead,
-          commit_title: `${req.title} (#${pr.number})`.slice(0, 250),
-        });
-        if (merge.status === 200 && merge.body?.merged && merge.body.sha) return { result: "merged", number: pr.number, url: pr.url, mergeSha: merge.body.sha };
-        if (merge.status === 409) return { result: "failed", message: "the pull request changed on GitHub after the email was sent" };
-        if (merge.status === 405 || merge.status === 422) {
-          // GitHub may still be computing mergeability right after opening; ask twice more before calling it blocked.
-          if (attempt < 3) {
-            const state = await api<{ mergeable?: boolean | null }>("GET", `/repos/${req.repo}/pulls/${pr.number}`);
-            if (state.body?.mergeable === null) {
-              await sleep(2000);
-              continue;
-            }
-          }
-          return { result: "waiting", number: pr.number, url: pr.url, reason: message(merge.body) };
-        }
-        return { result: "failed", message: `GitHub answered ${merge.status} to the merge: ${message(merge.body)}` };
-      }
+      const owner = req.repo.split("/")[0]!;
+      const list = await api<Array<{ number?: number; html_url?: string; state?: string; merged_at?: string | null; merge_commit_sha?: string | null; head?: { sha?: string } }>>(
+        "GET",
+        `/repos/${req.repo}/pulls?state=all&per_page=100&head=${encodeURIComponent(`${owner}:${req.branch}`)}&base=${encodeURIComponent(req.baseBranch)}`,
+      );
+      if (list.status !== 200 || !Array.isArray(list.body)) throw new Error(`GitHub answered ${list.status} when listing pull requests`);
+      const approved = list.body.filter((p) => p.head?.sha === req.expectedHead && typeof p.number === "number" && typeof p.html_url === "string");
+      const merged = approved.find((p) => p.merged_at);
+      if (merged) return { result: "merged", number: merged.number!, url: merged.html_url!, mergeSha: merged.merge_commit_sha ?? "" };
+      if (approved.length > 0 && approved.every((p) => p.state === "closed")) return { result: "failed", message: "its pull request was closed on GitHub without merging" };
+      return publish(req);
     },
 
     /** Has a waiting pull request been merged or closed on GitHub? */

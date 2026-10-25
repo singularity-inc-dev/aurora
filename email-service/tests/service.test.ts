@@ -66,6 +66,12 @@ function fakeApi(over: Partial<PluginApi> = {}): PluginApi & { calls: string[] }
       calls.push(`finish:${result.ok}`);
       return { ok: true, message: "joined" };
     },
+    async stuckApprovals() {
+      return [];
+    },
+    async recoverApproval(): Promise<LinkOutcome> {
+      return { ok: false, status: "refused", message: "not in this test" };
+    },
     ...over,
   };
 }

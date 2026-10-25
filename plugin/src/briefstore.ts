@@ -64,6 +64,8 @@ export interface LinkAction {
   expiresAt: Date;
   state: "new" | "processing" | "done" | "refused";
   result: string | null;
+  /** When the link was clicked (set when it starts processing). */
+  usedAt: Date | null;
 }
 
 const json = <T>(v: unknown, fallback: T): T => {
@@ -102,6 +104,7 @@ function toAction(r: Record<string, unknown>): LinkAction {
     expiresAt: new Date(String(r.expires_at)),
     state: String(r.state) as LinkAction["state"],
     result: (r.result as string | null) ?? null,
+    usedAt: r.used_at ? new Date(r.used_at instanceof Date ? r.used_at.getTime() : String(r.used_at)) : null,
   };
 }
 
@@ -139,7 +142,7 @@ export async function markBriefingSent(db: Db, companyId: string, id: string): P
   return rowCount === 1;
 }
 
-export async function insertAction(db: Db, a: Omit<LinkAction, "state" | "result">): Promise<void> {
+export async function insertAction(db: Db, a: Omit<LinkAction, "state" | "result" | "usedAt">): Promise<void> {
   await db.execute(
     `INSERT INTO ${t(db, "link_actions")} (id, company_id, owner, task_id, kind, briefing_id, workspace_cwd, branch, base_ref, expected_head, expires_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
     [a.id, a.companyId, a.owner, a.taskId, a.kind, a.briefingId, a.workspaceCwd, a.branch, a.baseRef, a.expectedHead, a.expiresAt.toISOString()],
@@ -158,6 +161,12 @@ export async function claimAction(db: Db, id: string): Promise<boolean> {
     [id],
   );
   return rowCount === 1;
+}
+
+/** Links whose click is still being processed (normally for seconds; longer means it was interrupted). */
+export async function listProcessingActions(db: Db, companyId: string): Promise<LinkAction[]> {
+  const rows = await db.query(`SELECT * FROM ${t(db, "link_actions")} WHERE company_id = $1 AND state = 'processing' LIMIT 100`, [companyId]);
+  return rows.map(toAction);
 }
 
 export async function finishAction(db: Db, id: string, state: "done" | "refused", result: string): Promise<void> {

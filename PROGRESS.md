@@ -29,6 +29,24 @@ I could not open GitHub's Dependabot page from the cloud session, so I listed th
 
 **Tests:** unit: plugin 369, email service 39. Full live run (cold start): **320 passed, 0 failed** (rehearsal 83 of them, which installs Paperclip from the patched lockfile).
 
+**GitHub's own count.** On push, GitHub reported 26 alerts on the default branch `main` (8 critical, 3 high, 15 moderate). The audit here finds 19 on `main` (the table above). The other 7 are only on the Dependabot page, which this session cannot open, and the network here does not allow the other public database (osv.dev). Dependabot alerts are for `main`, so they close only when this branch is merged. **Please look at github.com/singularity-inc-dev/aurora/security/dependabot** and send me any alert that is not in the table above.
+
+### Step 2. Robustness (spec gap 27) (done)
+**A join that fails halfway no longer uses up the invite.**
+- A failed try gives the invite back, with what it already made (the account, the agent). The page says "Your invite link still works". After 5 failed tries it is used up; it still expires after 48 hours.
+- Every join step is safe to repeat. An account from an earlier try is signed in with the same password (another password shows the form again: "type the same password you chose then"). A person already in the company is not added again. The agent made earlier is found by its own environment and locked down again, never made twice. A settings row already saved is not saved twice.
+- One try at a time (compare-and-swap on a new `attempts` counter, migration 009). A try that never reports back (the email service stopped mid-join) is taken over after 10 minutes, and its late report is ignored. If the settings were saved but the report was lost, the next visit records the join ("You have already joined").
+
+**A crash mid-approval no longer leaves a task "in progress".**
+- The email service marks each approval it is publishing as in flight. Every 10 minutes (with the pull-request check) it asks the plugin for approvals still in progress after 15 minutes (`links/stuck`, board-only) and finishes each one on GitHub: if GitHub already merged the approved commit, that is recorded; if its pull request was closed, the approval is given up; otherwise the publish runs again, which is safe to repeat (same commit, no force push, the open pull request is reused, GitHub merges only that head). The result goes back through `links/recover`. A given-up approval releases the task, which comes back in the next email with fresh links.
+- The plugin's handover tick finishes the rest after 15 minutes: an approval without GitHub (the local merge, version check included), a Reject (its reason was lost, so the task is released), a click whose task was already decided (only the link record is closed). A GitHub approval the email service could not finish within a day is released.
+- Plugin version 0.10.0 (two new routes; no new permissions).
+
+**Tests:** unit: plugin 380 (invite retries, take-over, five-try limit, saved-but-not-reported; stuck approvals listed only after 15 minutes, recovered once, released; local merge finished by the tick; interrupted Reject; the version check), email service 51 (second try reuses account and agent; another password; last try; in-flight marking; recovery against the stand-in GitHub with real git: not yet published, already merged, waiting for review then merged, closed, branch moved, GitHub unreachable). Live (`IT_ONLY=m5` and the rehearsal):
+- **M5, 39 checks, 0 failed** (8 new). Approve was held at GitHub's merge step, then the email service was killed. The task was stuck "in progress" (decision held, nothing merged). After a restart, the link said "in progress", and within two minutes the recovery finished it: accepted, ticket done, merged once through the same pull request at exactly the approved commit.
+- **Rehearsal, 93 checks, 0 failed** (10 new, over HTTPS on the real kit). Fay's join failed halfway (Paperclip refused her agent after her account and membership were made). The page said the link still works, and the link still opened. A try with another password showed the form again. A try with the same password joined: her account from the first try was reused, she has exactly one Paperclip account and exactly one agent, locked down, and the link was then used up. The audit then had one thing left for her, choosing her own Claude access, and accepted every agent after she chose it.
+
+
 ## Thin version 1 for the pilot (done)
 
 Milestone names now follow the spec (see CLAUDE.md, "Milestones" and "Built so far").

@@ -29,7 +29,7 @@ const DEFAULTS: Record<TableName, Row> = {
   handover_runs: { task_ids: "[]", current_index: -1, current_attempt: 0, kind: "scheduled" },
   briefings: { status: "pending", items: "[]", notes: "[]", conflicts: "[]" },
   link_actions: { state: "new" },
-  invites: { state: "new" },
+  invites: { state: "new", attempts: 0 },
   pull_requests: { state: "waiting" },
   overlaps: {},
   conflicts: {},

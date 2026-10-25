@@ -91,14 +91,18 @@ m5_config 11
 check "M5: save settings in GitHub mode (repository name only)" "$API_STATUS" "200"
 
 echo "-- the email service: SMTP login + STARTTLS, GitHub token from a file"
-(cd "$ROOT/email-service" && unset GITHUB_TOKEN && PAPERCLIP_URL="$BASE" VT_COMPANY_ID="$M5_CID" LISTEN_PORT=3298 POLL_SECONDS=2 \
-  SMTP_HOST=127.0.0.1 SMTP_PORT=$M5_SMTP_PORT SMTP_REQUIRE_TLS=true SMTP_CA_FILE="$M5_DIR/smtp.crt" \
-  SMTP_USER=briefing@example.com SMTP_PASS_FILE="$M5_DIR/secrets/smtp-pass" MAIL_FROM="Vision and Tom <briefing@example.com>" \
-  GITHUB_TOKEN_FILE="$M5_GH_TOKEN_FILE" GITHUB_API_URL="$M5_GH/api" GITHUB_GIT_URL="$M5_GH" GITHUB_SYNC_MINUTES=1 \
-  STATE_DIR="$M5_DIR/email-state" exec node src/main.ts) >"$LOG_DIR/email-service-m5.log" 2>&1 &
-M5_ES_PID=$!
-m5_started email-service-m5 $M5_ES_PID
-for _ in $(seq 1 20); do curl -s -m 1 "$M5_LINKS/health" >/dev/null 2>&1 && break; sleep 0.5; done
+m5_es_start() { # [minutes after which an unanswered approval counts as interrupted]
+  (cd "$ROOT/email-service" && unset GITHUB_TOKEN && PAPERCLIP_URL="$BASE" VT_COMPANY_ID="$M5_CID" LISTEN_PORT=3298 POLL_SECONDS=2 \
+    SMTP_HOST=127.0.0.1 SMTP_PORT=$M5_SMTP_PORT SMTP_REQUIRE_TLS=true SMTP_CA_FILE="$M5_DIR/smtp.crt" \
+    SMTP_USER=briefing@example.com SMTP_PASS_FILE="$M5_DIR/secrets/smtp-pass" MAIL_FROM="Vision and Tom <briefing@example.com>" \
+    GITHUB_TOKEN_FILE="$M5_GH_TOKEN_FILE" GITHUB_API_URL="$M5_GH/api" GITHUB_GIT_URL="$M5_GH" GITHUB_SYNC_MINUTES=1 GITHUB_STUCK_MINUTES="${1:-15}" \
+    STATE_DIR="$M5_DIR/email-state" exec node src/main.ts) >>"$LOG_DIR/email-service-m5.log" 2>&1 &
+  M5_ES_PID=$!
+  m5_started email-service-m5 $M5_ES_PID
+  for _ in $(seq 1 20); do curl -s -m 1 "$M5_LINKS/health" >/dev/null 2>&1 && break; sleep 0.5; done
+}
+: >"$LOG_DIR/email-service-m5.log"
+m5_es_start
 check "M5: email service is up" "$(curl -s "$M5_LINKS/health")" "ok"
 
 api GET "/api/plugins/$PLUGIN_ID/jobs"
@@ -146,10 +150,10 @@ m5_work() { # taskId file
   echo "$wt"
 }
 
-echo "-- a night for Cy with two tasks"
+echo "-- a night for Cy with three tasks"
 m5_tick
-m5_tool propose_handover '{"tasks":[{"title":"Add greeting","claims":["greeting.txt"]},{"title":"Add farewell","claims":["farewell.txt"]}]}'
-M5_T1=$(echo "$API_BODY" | json 'd.result.data.taskIds[0]'); M5_T2=$(echo "$API_BODY" | json 'd.result.data.taskIds[1]')
+m5_tool propose_handover '{"tasks":[{"title":"Add greeting","claims":["greeting.txt"]},{"title":"Add farewell","claims":["farewell.txt"]},{"title":"Add welcome","claims":["welcome.txt"]}]}'
+M5_T1=$(echo "$API_BODY" | json 'd.result.data.taskIds[0]'); M5_T2=$(echo "$API_BODY" | json 'd.result.data.taskIds[1]'); M5_T3=$(echo "$API_BODY" | json 'd.result.data.taskIds[2]')
 M5_PLAN=$(m5_night planIssueId)
 api GET "/api/issues/$M5_PLAN/interactions"
 api POST "/api/issues/$M5_PLAN/interactions/$(echo "$API_BODY" | json '(Array.isArray(d)?d:d.items).find(i=>i.kind==="request_confirmation").id')/accept" '{}'
@@ -158,6 +162,8 @@ m5_config 10 && m5_tick
 M5_WT1=$(m5_work "$M5_T1" greeting.txt | tail -1)
 m5_tick
 M5_WT2=$(m5_work "$M5_T2" farewell.txt | tail -1)
+m5_tick
+M5_WT3=$(m5_work "$M5_T3" welcome.txt | tail -1)
 m5_tick
 check "M5: Cy's night finished" "$(m5_night status)" "finished"
 m5_config 1 && m5_tick
@@ -168,7 +174,8 @@ check "M5: one email delivered after SMTP login over STARTTLS" "$(curl -s "$M5_M
 M5_MAIL=$(curl -s "$M5_MP_API/message/$(curl -s "$M5_MP_API/messages" | json 'd.messages[0].ID')" | json 'd.Text' | tr -d '\r')
 M5_APPROVE1=$(echo "$M5_MAIL" | grep '^  Approve: ' | sed -n 1p | sed 's/^  Approve: //')
 M5_APPROVE2=$(echo "$M5_MAIL" | grep '^  Approve: ' | sed -n 2p | sed 's/^  Approve: //')
-check "M5: two Approve links" "$([ -n "$M5_APPROVE1" ] && [ -n "$M5_APPROVE2" ] && echo yes)" "yes"
+M5_APPROVE3=$(echo "$M5_MAIL" | grep '^  Approve: ' | sed -n 3p | sed 's/^  Approve: //')
+check "M5: three Approve links" "$([ -n "$M5_APPROVE1" ] && [ -n "$M5_APPROVE2" ] && [ -n "$M5_APPROVE3" ] && echo yes)" "yes"
 check "M5: the email says undecided tasks come back with fresh links" "$(echo "$M5_MAIL" | grep -c "comes back in your next handback email with fresh links")" "1"
 m5_post() { curl -s -X POST -H 'content-type: application/x-www-form-urlencoded' --data "${2:-}" "$1"; }
 
@@ -198,6 +205,25 @@ curl -s -X POST "$M5_GH/__control/protection?on=0" >/dev/null
 curl -s -X POST "$M5_GH/__control/merge/2" >/dev/null
 for _ in $(seq 1 45); do [ "$(m5_event "$M5_T2" outcome)" = "accepted" ] && break; sleep 2; done
 check "M5: after review, event log says accepted and ticket done" "$(m5_event "$M5_T2" outcome)/$(m5_issue "$M5_T2" status)" "accepted/done"
+
+echo "-- a crash mid-approval (spec gap 27): the email service dies while GitHub merges; the recovery finishes it"
+m5_gh_state() { curl -s -X POST "$M5_GH/__control/state" | json "$1"; }
+M5_BRANCH3=$(git -C "$M5_WT3" rev-parse --abbrev-ref HEAD); M5_HEAD3=$(git -C "$M5_WT3" rev-parse HEAD)
+curl -s -X POST "$M5_GH/__control/hold-merges?on=1" >/dev/null
+(m5_post "$M5_APPROVE3" >/dev/null 2>&1 &)
+for _ in $(seq 1 30); do [ "$(m5_gh_state 'd.held')" = "1" ] && break; sleep 1; done
+check "M5: the approval reached GitHub's merge step (branch pushed, pull request open)" "$(m5_gh_state "d.held+'/'+d.pulls.filter(p=>p.head==='$M5_BRANCH3'&&p.state==='open').length")" "1/1"
+kill -9 "$M5_ES_PID"; wait "$M5_ES_PID" 2>/dev/null || true
+curl -s -X POST "$M5_GH/__control/hold-merges?on=0" >/dev/null
+check "M5: after the crash the task is stuck in progress (decision held, nothing merged)" "$(m5_event "$M5_T3" outcome)/$([ -n "$(m5_event "$M5_T3" decision_action_id)" ] && echo held)/$(m5_gh_state "d.pulls.filter(p=>p.head==='$M5_BRANCH3').map(p=>p.merged).join()")" "/held/false"
+m5_es_start 1
+check "M5: the restarted service's link page says the approval is in progress" "$(curl -s "$M5_APPROVE3" | grep -c 'already used: in progress')" "1"
+for _ in $(seq 1 90); do [ "$(m5_event "$M5_T3" outcome)" = "accepted" ] && break; sleep 2; done
+check "M5: after the restart the recovery finished it: accepted, ticket done" "$(m5_event "$M5_T3" outcome)/$(m5_issue "$M5_T3" status)" "accepted/done"
+check "M5: merged once, through the same pull request, at exactly the approved commit" "$(m5_gh_state "d.pulls.filter(p=>p.head==='$M5_BRANCH3').map(p=>p.merged+':'+p.headSha).join()")" "true:$M5_HEAD3"
+check "M5: GitHub main has the change" "$(m5_gh_git show main:welcome.txt)" "change for welcome.txt"
+check "M5: the service's log says it finished an interrupted approval" "$(grep -c 'finished an interrupted approval: merged (merged)' "$LOG_DIR/email-service-m5.log")" "1"
+check "M5: nothing else is stuck" "$(api GET "/api/plugins/$PLUGIN_KEY/api/links/stuck?companyId=$M5_CID&olderThanMinutes=1" >/dev/null; echo "$API_BODY" | json 'd.approvals.length')" "0"
 
 echo "-- the GitHub token: only the email service has it"
 M5_GH_TOKEN=$(cat "$M5_GH_TOKEN_FILE")

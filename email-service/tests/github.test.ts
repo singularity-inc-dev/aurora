@@ -113,6 +113,58 @@ describe("publish to GitHub (Approve)", () => {
   });
 });
 
+// Spec gap 27: an approval interrupted (a crash) between the tap and the report back.
+describe("finishing an interrupted approval", () => {
+  it("nothing reached GitHub yet: it is published now (same commit, version check)", async () => {
+    const t = await setup();
+    expect(await t.client().resume(t.req)).toMatchObject({ result: "merged", number: 1 });
+    expect(t.fake.git("show", "main:greeting.txt")).toBe("hello\n");
+  });
+
+  it("GitHub already merged it: that is the result, and nothing is published again", async () => {
+    const t = await setup();
+    const first = await t.client().publish(t.req);
+    const main = t.fake.git("rev-parse", "main").trim();
+    const requests = t.fake.requests.length;
+    expect(await t.client().resume(t.req)).toEqual(first);
+    expect(t.fake.pulls).toHaveLength(1);
+    expect(t.fake.git("rev-parse", "main").trim()).toBe(main);
+    expect(t.fake.requests.slice(requests).map((r) => r.method)).toEqual(["GET"]);
+  });
+
+  it("pushed and opened but not merged: the same pull request is reused and merged (or waits for review)", async () => {
+    const t = await setup();
+    t.fake.protection = true;
+    expect(await t.client().publish(t.req)).toMatchObject({ result: "waiting", number: 1 });
+    expect(await t.client().resume(t.req)).toMatchObject({ result: "waiting", number: 1 });
+    t.fake.protection = false;
+    expect(await t.client().resume(t.req)).toMatchObject({ result: "merged", number: 1 });
+    expect(t.fake.pulls).toHaveLength(1);
+  });
+
+  it("its pull request was closed on GitHub: the approval is given up (the task comes back in the next email)", async () => {
+    const t = await setup();
+    t.fake.protection = true;
+    await t.client().publish(t.req);
+    t.fake.pulls[0]!.state = "closed";
+    expect(await t.client().resume(t.req)).toEqual({ result: "failed", message: "its pull request was closed on GitHub without merging" });
+  });
+
+  it("the branch moved after the email: nothing is published", async () => {
+    const t = await setup();
+    writeFileSync(path.join(t.worktree, "late.txt"), "late\n");
+    sh(t.worktree, "add", ".");
+    sh(t.worktree, "commit", "-q", "-m", "late");
+    expect(await t.client().resume(t.req)).toMatchObject({ result: "failed", message: expect.stringContaining("the branch changed after the email was sent") });
+    expect(t.fake.pulls).toHaveLength(0);
+  });
+
+  it("GitHub cannot be asked (wrong token): it throws, so the next round tries again", async () => {
+    const t = await setup();
+    await expect(t.client("wrong").resume(t.req)).rejects.toThrow("GitHub answered 401 when listing pull requests");
+  });
+});
+
 describe("the GitHub token stays secret", () => {
   it("never appears in any git command line (other users on the server can see command lines)", async () => {
     const t = await setup();

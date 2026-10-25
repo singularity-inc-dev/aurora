@@ -17,6 +17,7 @@ import { taskWorkspaceSettings } from "./workspace.js";
 import { agentProblems } from "./isolation.js";
 import { TOOL_PROPOSE } from "./tools.js";
 import { assertTier } from "./tiers.js";
+import { recoverInterruptedActions } from "./links.js";
 
 export { ProposalRefused };
 
@@ -58,6 +59,10 @@ export async function tickAll(ctx: PluginContext, now: Date): Promise<void> {
 }
 
 export async function tickCompany(ctx: PluginContext, companyId: string, settings: PluginSettings, now: Date): Promise<void> {
+  // Approve and Reject clicks that a crash interrupted (spec gap 27).
+  await recoverInterruptedActions(ctx, settings, companyId, now).catch((err) =>
+    ctx.logger.error("could not recover interrupted links", { companyId, error: err instanceof Error ? err.message : "unknown" }),
+  );
   for (const person of settings.people) {
     try {
       await tickPerson(ctx, companyId, settings, person, now);

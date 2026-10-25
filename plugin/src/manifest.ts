@@ -6,7 +6,7 @@ import { HANDOFF_TOOL, PROPOSE_TOOL, RUN_CHECKS_TOOL } from "./tools.js";
 const manifest: PaperclipPluginManifestV1 = {
   id: PLUGIN_ID,
   apiVersion: 1,
-  version: "0.9.0",
+  version: "0.10.0",
   displayName: "Vision and Tom",
   description:
     "One personal agent per teammate, working at each handover (scheduled or Hand over now). Agents use only their owner's keys, hand off via board tickets, and change nothing shared until the owner approves.",
@@ -62,6 +62,8 @@ const manifest: PaperclipPluginManifestV1 = {
     { routeKey: "link-preview", method: "POST", path: "/links/preview", auth: "board", capability: "api.routes.register", companyResolution: { from: "body", key: "companyId" } },
     { routeKey: "link-execute", method: "POST", path: "/links/execute", auth: "board", capability: "api.routes.register", companyResolution: { from: "body", key: "companyId" } },
     { routeKey: "link-publish-result", method: "POST", path: "/links/publish-result", auth: "board", capability: "api.routes.register", companyResolution: { from: "body", key: "companyId" } },
+    { routeKey: "links-stuck", method: "GET", path: "/links/stuck", auth: "board", capability: "api.routes.register", companyResolution: { from: "query", key: "companyId" } },
+    { routeKey: "link-recover", method: "POST", path: "/links/recover", auth: "board", capability: "api.routes.register", companyResolution: { from: "body", key: "companyId" } },
     { routeKey: "prs-waiting", method: "GET", path: "/prs/waiting", auth: "board", capability: "api.routes.register", companyResolution: { from: "query", key: "companyId" } },
     { routeKey: "pr-update", method: "POST", path: "/prs/update", auth: "board", capability: "api.routes.register", companyResolution: { from: "body", key: "companyId" } },
     { routeKey: "handover-start", method: "POST", path: "/handovers/start", auth: "board", capability: "api.routes.register", companyResolution: { from: "body", key: "companyId" } },
