@@ -2,7 +2,34 @@
 
 Updated after every phase. Newest phase first.
 
-## Thin version 1 for the pilot (in progress)
+## Ready for the first real run (spec gap 3, in progress)
+
+Five steps, one commit each. Nothing real was rented, signed up for or contacted.
+
+### Step 1. Dependency vulnerabilities (done)
+I could not open GitHub's Dependabot page from the cloud session, so I listed the same advisories (GitHub's Advisory Database) with `pnpm audit` / `npm audit` on the four lockfiles GitHub scans.
+
+| Where | Package (version) | Severity | Advisory | Fixed by |
+| --- | --- | --- | --- | --- |
+| plugin, email service (tests only) | vitest 3.2.4 | critical, moderate | GHSA-5xrq-8626-4rwp, GHSA-82fw-gwwq-j7x9 | vitest 4.1.12 |
+| plugin, email service (tests only) | @vitest/mocker 3.2.4 | moderate ×2 | GHSA-82fw-gwwq-j7x9, GHSA-qxg6-89mg-rqv8 | comes with vitest 4.1.12 |
+| plugin, email service (tests only) | tinypool 1.1.1 | critical ×2 | GHSA-5gmw-xhrv-c9v3, GHSA-85c8-ppgw-ccpr | no longer used by vitest 4 |
+| email service (server) | nodemailer 10.0.16 | moderate ×3 | GHSA-8c8m-p3m8-cjg8, GHSA-m943-m63m-w62w, GHSA-85x2-q946-cp5h | nodemailer 10.1.7 |
+| Paperclip on the server (inside paperclipai 2026.1012.0) | zod 4.1.11 | high | GHSA-mrhx-c7xc-m3w5 | override to 4.6.7 |
+| same | body-parser 2.3.0 | high | GHSA-27r3-jxmh-p828 | override to 2.4.0 |
+| same | multer 2.4.0 | high | GHSA-q7qp-rjg7-q26m | override to 2.5.0 |
+| same | uuid 10.0.0 | moderate | GHSA-w5hq-g745-h8pq | override to 11.1.1 |
+| Claude Code for the agents | (none) | | | |
+
+- **Paperclip stays pinned at 2026.1012.0.** The four packages inside it are replaced only in their vulnerable ranges (pnpm `overrides` in `deploy/paperclip/package.json`); the lockfile changed in those four packages only. uuid 11 is a new major version; Paperclip's only user of it (svix) calls `v4()`, which is unchanged.
+- I took the smallest jump that carries each fix. Most fixes are only 3 to 14 days old (body-parser and multer: 3 days).
+- After the fixes, all four audits report **no known vulnerabilities**.
+- **Not fixed:** nothing on the server. The local test bed still starts Paperclip with `npx` (without our overrides), so it runs the old inner packages; it listens on 127.0.0.1 only and holds test data only. The deployment rehearsal installs Paperclip from the patched lockfile, as the server does.
+- **Found by the live run and fixed:** the handover tick sometimes failed at once with "invalid invocation scope". Paperclip refuses a plugin call made outside any request (the tick loop's list of companies) while another request is in flight. The tick now retries that call and otherwise uses the last list that worked (2 unit tests). The merge-replay live test (v1e) also stops cleanly if a task gets no worktree, instead of writing its test files into the current folder.
+
+**Tests:** unit: plugin 369, email service 39. Full live run (cold start): **320 passed, 0 failed** (rehearsal 83 of them, which installs Paperclip from the patched lockfile).
+
+## Thin version 1 for the pilot (done)
 
 Milestone names now follow the spec (see CLAUDE.md, "Milestones" and "Built so far").
 

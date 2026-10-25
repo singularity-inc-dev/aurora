@@ -21,9 +21,32 @@ import { assertTier } from "./tiers.js";
 export { ProposalRefused };
 
 
+let lastCompanies: Array<{ id: string }> = [];
+
+/**
+ * The companies to tick. This call is made outside any host request (from the
+ * ticker loop), and Paperclip 2026.1012.0 refuses such a call while another
+ * request is in flight ("invalid invocation scope"; found by the live tests).
+ * So it is retried briefly, and otherwise the last list that worked is used.
+ */
+export async function listCompanies(ctx: PluginContext, pause = (ms: number) => new Promise((r) => setTimeout(r, ms))): Promise<Array<{ id: string }>> {
+  let failure: unknown;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      lastCompanies = (await ctx.companies.list()).map((c) => ({ id: c.id }));
+      return lastCompanies;
+    } catch (err) {
+      failure = err;
+      await pause(250 * attempt);
+    }
+  }
+  if (lastCompanies.length > 0) return lastCompanies;
+  throw failure;
+}
+
 /** Run one tick for every company that has valid plugin settings. */
 export async function tickAll(ctx: PluginContext, now: Date): Promise<void> {
-  const companies = await ctx.companies.list();
+  const companies = await listCompanies(ctx);
   for (const company of companies) {
     // Paperclip only lets the plugin read companies it is configured in; skip the rest.
     const raw = await ctx.config.get(company.id).catch(() => null);

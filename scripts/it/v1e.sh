@@ -22,6 +22,8 @@ check "v1e: the pre-handover check lets it through (it claimed notes.txt only)" 
 m4_approve_plan ana@example.com
 m4_tick; m4_tick
 V1E_WT=$(m4_worktree "$V1E_T")
+# Without a worktree the rest would write into the current folder: stop here instead.
+[ -n "$V1E_WT" ] && [ -d "$V1E_WT" ] || { fail "v1e: Ana's task got its own worktree"; return 0; }
 echo "release notes" >"$V1E_WT/notes.txt"
 echo "Ana's changelog" >"$V1E_WT/CHANGELOG.md"
 git -C "$V1E_WT" add notes.txt CHANGELOG.md && git -C "$V1E_WT" -c user.email=agent@example.com -c user.name=Agent commit -q -m "Release notes"
