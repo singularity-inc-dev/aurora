@@ -14,8 +14,8 @@ Milestone names now follow the spec (see CLAUDE.md, "Milestones" and "Built so f
 | C | Handover any time ("Hand over now") and night names renamed to handover | Done, live-tested (full run: 284 passed, 0 failed) |
 | D | Claims and the pre-handover check | Done, live-tested (v1d; M2 to M5 with claims in the full run) |
 | E | Merge replay at handback | Done, live-tested (v1e) |
-| F | Numbers from the event log, CSV export | Not started |
-| G | Collision audit (M0) | Not started |
+| F | Numbers from the event log, CSV export | Done, live-tested (v1f, rehearsal) |
+| G | Collision audit (M0) | Done, tested on a made-up team repository and on this repository |
 
 ### A. Agent isolation (done)
 Each person's agent runs as a system user of its own (`vt-a-...`), which Paperclip reaches over SSH on 127.0.0.1 (Paperclip's own "ssh" environment). That user is not in Paperclip's group. Paperclip puts run tokens on command lines, so nothing started over SSH can see other users' processes (`ProtectProc=invisible`). Checks (tests, lint) run as the owner's own agent user through `deploy/bin/vt-check-runner`, in a fresh folder each time, never as Paperclip's user. The plugin refuses to work for an agent that is not isolated.
@@ -81,6 +81,26 @@ Each person's agent runs as a system user of its own (`vt-a-...`), which Papercl
 **Unit tests:** plugin 354 (replay against real git branches, the notice sent once, own-branch conflicts, email text), email service 38.
 
 **Also fixed:** the deployment rehearsal's check "after the reboot: data is still there" ran before the plugin had started; it now waits up to a minute for the plugin to answer.
+
+### F. Numbers from the event log (done)
+- **Handover yield**: work orders approved (and merged) out of all work orders handed over (in a plan its owner approved). Approve merges only the exact version whose checks passed, so an approved work order was approved without edits.
+- **Minutes to approve**: from the handback email being sent to the owner's last decision on it (the median per handback). This is elapsed time, not the time spent reading: the event log cannot see that.
+- **Decisions per owner**: items that needed a decision, per handback email.
+- **Overlaps caught before** (the pre-handover check, piece D) and **conflicts found after** (the merge replay, piece E).
+- All of it per owner and for the team. The **CSV** has the playbook's measurement-sheet columns that the event log can fill, one line per work order. Agent-written titles that a spreadsheet would run as formulas get a leading apostrophe.
+- On the server: `sudo vt-numbers numbers.csv` writes the sheet (readable by root only) and prints the measures. Behind it are two board-only plugin routes, `/numbers` and `/numbers/csv`. Paperclip 2026.1012.0 sends plugin route bodies as JSON and drops their headers (found by the live test), so the CSV travels inside JSON and `vt-numbers` writes the file.
+
+**Checked live** (`scripts/it/v1f.sh`, 13 checks, on the M4 and v1e company: 5 work orders, 1 approved, 1 rejected, 3 undecided, 1 conflict; and v1d's company: 2 overlaps caught). The rehearsal runs `vt-numbers` as the admin.
+
+**Unit tests:** plugin 367, email service 39.
+
+### G. Collision audit (done)
+`tools/collision-audit/collision-audit PATH-TO-CLONE OWNER/NAME` runs the playbook's five steps on a team's own clone and writes `summary.md`, the one page for the team. The five scripts have the playbook's names and arguments (`measure_overlap.py`, `replay_pairs_v2.py`, `classify_overlap.py`, `conflict_rates.py`, `weekly_estimate.py`); they were not in the repository, so they were rebuilt from the playbook's method (see `tools/collision-audit/README.md`).
+- **Read-only.** Replays write to a temporary object folder that is deleted afterwards; the tests check that the clone's refs, index, files and objects are unchanged.
+- **Sends nothing.** There is no network code, and git runs with no global or system config and every remote protocol refused (tested).
+- **Method.** Same-day changes by two people to the same code file. Each is replayed as if done in parallel: the later change is moved onto the earlier one's base with `git merge-tree --write-tree`, then the two are merged. The pair counts as a conflict when that file conflicts; pairs that cannot be moved cleanly are left out. A "follow-up" (the later change edits lines the earlier one wrote, by `git blame`) is not independent. The output is the rate with a 95% Wilson interval, would-be conflicts a week, and the same at three days of work per handover and at three times the pace.
+
+**Tested:** 9 tests on a made-up team repository (three people on branches, a clash on one line, a far-away change, a bot, a README change, a follow-up, a change older than the window), on Python 3.11, 3.12 and 3.13; the code also parses as Python 3.9. A smoke run on this repository worked (no overlaps: one main author). **Not tested:** Python 3.9 itself (not installed here), and a real team's repository.
 
 ### Recorded as later (not built in thin version 1)
 - Approvals as each owner's own GitHub review (spec gap 13). The email Approve stays as it is for the pilot.

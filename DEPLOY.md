@@ -298,6 +298,27 @@ A task's claim ends when you decide it in the handback email, or when its plan e
 
 Before your handback email goes out, Vision and Tom test-merges each finished branch against everyone else's finished, undecided branches. It does this in git's memory only and merges nothing. If two branches change the same lines, both owners see it in their email (the other owner may get a short separate email), with the files involved. Agree who goes first, approve that one, and reject or redo the other.
 
+### The pilot's numbers
+
+Log in to the server (step 5) and type:
+
+```
+sudo vt-numbers numbers.csv
+```
+
+It prints the team's numbers and each person's (handover yield, minutes to approve, decisions per handback, overlaps caught before a handover, conflicts found after), and writes `numbers.csv`: one line per work order, in the measurement sheet's columns. Copy it to your computer with `scp root@YOUR-SERVER:numbers.csv .` and open it in any spreadsheet. "Minutes to approve" is the time from the email being sent to your last decision on it, not the time you spent reading.
+
+### Before the pilot: the collision audit
+
+Each pilot team can run this on its own computer, on its own copy of its repository. It reads the history, changes nothing and sends nothing anywhere. It needs git 2.38+ and Python 3.9+:
+
+```
+git clone https://github.com/OWNER/NAME.git team-repo
+tools/collision-audit/collision-audit team-repo OWNER/NAME
+```
+
+It writes a folder with `summary.md`, the one page to read with the team. `tools/collision-audit/README.md` explains what it counts.
+
 ### During the first real handover: measure memory
 
 The server sizes in step 1 are estimates. During your first real handover, while the agents work, log in (step 5) and type:

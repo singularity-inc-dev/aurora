@@ -192,6 +192,45 @@ The rehearsal needs Linux and root (it starts a private PostgreSQL 16 as the `po
 
 **B. On a real server:** follow [DEPLOY.md](DEPLOY.md).
 
+## How to test thin version 1 (pieces A to G)
+
+What each piece is, and what was checked, is in [PROGRESS.md](PROGRESS.md). On your laptop (Mac or Linux) you need Node 24 and pnpm (`scripts/cloud-setup.sh` shows the versions), git 2.38+, Python 3.9+ and, for the email checks, Mailpit (on a Mac: `brew install mailpit`).
+
+**1. Unit tests (about a minute)**
+
+```bash
+(cd plugin && pnpm install && pnpm test)            # 367 passed
+(cd email-service && pnpm install && pnpm test)     # 39 passed
+python3 -I tools/collision-audit/tests/test_audit.py   # 9 tests, OK
+```
+
+**2. The collision audit on a real repository (G)**
+
+```bash
+git clone https://github.com/OWNER/NAME.git /tmp/team-repo
+tools/collision-audit/collision-audit /tmp/team-repo OWNER/NAME
+```
+
+Open the `summary.md` it names at the end. It reads the history only and sends nothing anywhere. A busy repository with several people gives the most interesting result.
+
+**3. Live checks against a real Paperclip on your laptop (C, D, E, F)**
+
+```bash
+IT_ONLY=v1e scripts/integration-test.sh   # Hand over now, claims, the merge replay; about 10 minutes
+IT_ONLY=v1f scripts/integration-test.sh   # the numbers and the CSV; about 10 minutes
+```
+
+Each first runs the M4 checks it builds on (one handover for Ana and Bo, the handback emails, Approve and Reject), then:
+
+- **v1e:** Ana hands over now. Her agent claims only `notes.txt` but also changes `CHANGELOG.md`, which Bo's finished, undecided work changed too. Both get an email naming the conflict, and nothing is merged.
+- **v1f:** the numbers for that team: 5 work orders, 1 approved, 1 conflict, yield 20%, and the CSV file.
+
+Every check prints PASS or FAIL, with a total at the end.
+
+**4. Only on Linux as root (the cloud test machine)**
+
+`scripts/integration-test.sh` with no `IT_ONLY` runs everything. That includes v1a and v1b (agents as their own system users over SSH, and each owner's own Claude access, with stand-ins for real accounts), v1c, v1d (the pre-handover check with a real CODEOWNERS file) and the deployment rehearsal. These create system users and start an SSH server, so they are not for your laptop; their results are in PROGRESS.md.
+
 ## Cloud environment setup
 
 `scripts/cloud-setup.sh` installs Node 24 (via nvm) and pnpm 10.28.0. Paste it into the cloud environment's setup script setting so every new session starts with both.
