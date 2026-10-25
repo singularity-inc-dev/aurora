@@ -80,6 +80,8 @@ If a step does not happen within about 15 minutes, stop there and send me `sudo 
 
 ☐ Send me: what you saw at each step (a tick, or what was different), the memory numbers, and `sudo vt-numbers`.
 
+☐ Updating later: `sudo vt-update` brings the server to the newest version of its branch without a reinstall. It makes a backup first and refuses while a handover is running. To go back, type the line it prints at the end (`sudo vt-update` and the old version).
+
 
 ## 7. Stop everything at once
 

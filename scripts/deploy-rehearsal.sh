@@ -99,10 +99,14 @@ check "stand-ins are up" "$(curl -s "$MP_API/messages" | json 'd.total')/$([ -f 
 
 echo "== 3. The owner's steps before installing: the app, install.conf, secrets"
 mkdir -p "$VT_ROOT/opt/vision-and-tom" "$VT_ROOT/etc/vision-and-tom"
-# The app as the owner downloads it (a copy of this checkout, without local build output).
-mkdir -p "$VT_ROOT/opt/vision-and-tom/app"
+# The app as the owner downloads it (DEPLOY.md step 6, git clone): this checkout without
+# local build output, committed to a stand-in for the app's repository on GitHub.
+mkdir -p "$R/app-src"
 tar -C "$ROOT" --exclude=./.git --exclude=./.paperclip-data --exclude=./.vendor --exclude=./.test-logs --exclude=node_modules --exclude=dist -cf - . |
-  tar -C "$VT_ROOT/opt/vision-and-tom/app" -xf -
+  tar -C "$R/app-src" -xf -
+git -C "$R/app-src" init -q -b main && git -C "$R/app-src" add -A && git -C "$R/app-src" -c user.email=t@example.com -c user.name=T commit -q -m "the version under test"
+git clone -q --bare "$R/app-src" "$R/app-origin.git"
+git clone -q "$R/app-origin.git" "$VT_ROOT/opt/vision-and-tom/app"
 sed -e "s/^DOMAIN=.*/DOMAIN=$DOMAIN/" -e "s/^ACME_EMAIL=.*/ACME_EMAIL=owner@example.com/" \
   -e "s/^SMTP_HOST=.*/SMTP_HOST=127.0.0.1/" -e "s/^SMTP_PORT=.*/SMTP_PORT=1028/" -e "s/^SMTP_USER=.*/SMTP_USER=owner@example.com/" \
   -e 's/^MAIL_FROM=.*/MAIL_FROM="Vision and Tom <owner@example.com>"/' -e "s#^GITHUB_REPO=.*#GITHUB_REPO=acme/app#" \
@@ -357,6 +361,38 @@ check "the agent's leftover program was ended" "$(ps -u vt-agent-ana -o stat= | 
 START_OUT=$(VT_CHECK_URL="$URL" VT_CHECK_CACERT="$CA" VT_CHECK_MIN_CERT_DAYS=0 bash "$KIT_BIN/vt-start" 2>&1)
 for _ in $(seq 1 60); do [ "$(people | json 'd.data.people.length' 2>/dev/null)" = "3" ] && break; sleep 1; done
 check "vt-start brings it back and vt-check passes" "$(echo "$START_OUT" | grep -c '^All good')/$("${HTTPS[@]}" "$URL/vt/health")/$(people | json 'd.data.people.length')" "1/ok/3"
+
+echo "== 15. vt-update: a new version without a full reinstall, then back again"
+APP_DIR="$VT_ROOT/opt/vision-and-tom/app"
+UPD=(env VT_CHECK_URL="$URL" VT_CHECK_CACERT="$CA" VT_CHECK_MIN_CERT_DAYS=0 bash "$KIT_BIN/vt-update")
+backups() { ls "$VT_ROOT/var/backups/vision-and-tom"/vt-backup-*.tar | wc -l | tr -d ' '; }
+installed() { board "$PC/api/plugins" | json 'd.filter(p=>(p.pluginKey||p.key)==="vision-and-tom.night-agents").map(p=>p.version+"/"+p.status).join()'; }
+OLD_COMMIT=$(git -C "$APP_DIR" rev-parse HEAD)
+OLD_V=$(node -p "require('$APP_DIR/plugin/package.json').version")
+NEW_V=$(node -p "const [a,b,c]='$OLD_V'.split('.').map(Number);[a,b,c+1].join('.')")
+N=$(backups)
+check "nothing new: vt-update says so, makes no backup and changes nothing" "$("${UPD[@]}" 2>&1 | grep -c 'Nothing to do')/$(backups)" "1/$N"
+echo "# changed by hand" >>"$APP_DIR/README.md"
+check "a hand-changed app folder is refused before anything changes" "$("${UPD[@]}" 2>&1 | grep -c 'changed by hand')/$(backups)" "1/$N"
+git -C "$APP_DIR" checkout -q -- README.md
+# The next version on "GitHub": the plugin's version goes up, so Paperclip must take it in again.
+sed -i "s/\"version\": \"$OLD_V\"/\"version\": \"$NEW_V\"/" "$R/app-src/plugin/package.json"
+sed -i "s/version: \"$OLD_V\"/version: \"$NEW_V\"/" "$R/app-src/plugin/src/manifest.ts"
+# ...and Paperclip's service file changes too, so Paperclip itself must restart (as when its version changes).
+sed -i '0,/^\[Service\]$/s//[Service]\n# rehearsal: the next version/' "$R/app-src/deploy/systemd/paperclip.service"
+git -C "$R/app-src" -c user.email=t@example.com -c user.name=T commit -qam "the next version" && git -C "$R/app-src" push -q "$R/app-origin.git" main
+NEW_COMMIT=$(git -C "$R/app-src" rev-parse HEAD)
+OUT=$("${UPD[@]}" 2>&1); echo "$OUT" >"$LOGS/update.log"
+check "vt-update finished, checked by vt-check" "$(echo "$OUT" | grep -c "^==> Updated to main ($(echo "$NEW_COMMIT" | cut -c1-7))")/$(echo "$OUT" | grep -c '^All good')" "1/1"
+check "it said what changes (plugin version; Node, Caddy and Paperclip unchanged)" "$(echo "$OUT" | grep -c "plugin $OLD_V -> $NEW_V")/$(echo "$OUT" | grep -c 'Node, Caddy and Paperclip versions: unchanged')" "1/1"
+check "it made a backup first" "$(backups)" "$((N + 1))"
+check "the app is at the new version" "$(git -C "$APP_DIR" rev-parse HEAD)" "$NEW_COMMIT"
+check "Paperclip runs the new plugin version, ready; Paperclip restarted (its service changed), Caddy kept running" "$(installed)/$(echo "$OUT" | grep -c 'Paperclip restarted')/$(echo "$OUT" | grep -c 'Caddy: unchanged, kept running')/$(grep -c 'rehearsal: the next version' "$UNITS/paperclip.service")" "$NEW_V/ready/1/1/1"
+check "settings and data were kept: three people, Dee's used invite still refused (signature checked, plugin tables read)" "$(people | json 'd.data.people.length')/$("${HTTPS[@]}" "$LINK" | grep -oE '<h1>[^<]*</h1>')" "3/<h1>Invite already used</h1>"
+check "Fay can still sign in and sees the company" "$("${HTTPS[@]}" -H "cookie: $(signin fay@example.com "$FAY_PW")" "$URL/api/companies" | json '(Array.isArray(d)?d:d.items).length')" "1"
+OUT=$("${UPD[@]}" "$(echo "$OLD_COMMIT" | cut -c1-12)" 2>&1); echo "$OUT" >"$LOGS/update-back.log"
+check "going back: vt-update to the earlier version" "$(echo "$OUT" | grep -c '^==> Updated to')/$(git -C "$APP_DIR" rev-parse HEAD)/$(installed)" "1/$OLD_COMMIT/$OLD_V/ready"
+check "after going back the data is still there" "$(people | json 'd.data.people.length')/$("${HTTPS[@]}" "$LINK" | grep -oE '<h1>[^<]*</h1>')" "3/<h1>Invite already used</h1>"
 
 echo
 echo "Result: $PASS passed, $FAIL failed"

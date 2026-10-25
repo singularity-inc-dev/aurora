@@ -2,9 +2,34 @@
 
 Updated after every phase. Newest phase first.
 
-## Ready for the first real run (spec gap 3, in progress)
+## Ready for the first real run (spec gap 3): steps 1 to 5 done
 
-Five steps, one commit each. Nothing real was rented, signed up for or contacted.
+Five steps, one commit each. Nothing real was rented, signed up for or contacted. Your next step is **FIRST-REAL-RUN.md**.
+
+**Final full live run** (cold start, all five steps): **356 passed, 0 failed** (basic 20, M2 30, M3 33, M4 39, M5 39, deployment rehearsal 109, v1a 24, v1b 13, v1c 12, v1d 15, v1e 10, v1f 12; it was 320 before these steps). Unit tests: plugin 388, email service 51, collision audit 9. All four lockfiles audit clean.
+
+**Works live** (against real Paperclip 2026.1012.0, real git, real SMTP with STARTTLS, Caddy HTTPS, PostgreSQL 16 and the real deploy kit, with stand-ins for GitHub and Claude):
+- The patched Paperclip install, from the lockfile.
+- A crash mid-approval: the email service was killed while GitHub merged, and the recovery finished it after a restart.
+- A join failing halfway, then finishing with the same account and one agent.
+- The CODEOWNERS team warning, in `vt-check`.
+- `vt-stop` / `vt-start`.
+- `vt-update` forward and back.
+
+**Unit-tested only:**
+- An invite try taken over after 10 minutes, and the five-try limit.
+- "Saved but not reported" joins.
+- The tick finishing an interrupted local merge, and releasing an interrupted Reject or a GitHub approval older than a day.
+- Recovery when the pull request was closed or the branch moved.
+- The team warning on a plan (live: the plugin's view of it).
+- `vt-update` refusing during a running handover.
+
+**Unverified** (needs a real server or real accounts, FIRST-REAL-RUN.md):
+- Real GitHub (branch protection with a second person's review), a real email provider, a real Claude sign-in and agent run.
+- systemd, a real reboot, and `vt-stop` holding across it.
+- `vt-update` downloading from the real GitHub with the `vt-download` token.
+- An update that changes the Node, Caddy or Paperclip versions (rehearsed: a Paperclip restart caused by a changed service file).
+- The 7 Dependabot alerts the audit here does not show (step 1).
 
 ### Step 1. Dependency vulnerabilities (done)
 I could not open GitHub's Dependabot page from the cloud session, so I listed the same advisories (GitHub's Advisory Database) with `pnpm audit` / `npm audit` on the four lockfiles GitHub scans.
@@ -62,6 +87,30 @@ A GitHub team entry (`@org/team`) matches nobody, because Aurora cannot see who 
 - **`sudo vt-stop`** stops everything at once: Paperclip, every agent (including programs an agent left running under its own user) and the email service, so Approve, Reject and invite links do nothing. It stays stopped after a restart of the server, until **`sudo vt-start`**, which ends with `vt-check`. Nothing is deleted; Caddy and the backups keep running. The guide also lists the outside stops only you can do: revoke the `vt-push` token on GitHub, power the server off.
 
 **Tests:** rehearsal **98 passed, 0 failed** (4 new: an agent's leftover program is ended, Paperclip and the email links answer 502, everything comes back with `vt-start` and `vt-check` passes). Found while testing: right after a program is ended it can still be listed for a moment, so `vt-stop` once reported a leftover that was already gone; it now re-checks for up to 10 seconds and does not count such ended programs.
+
+### Step 5. Updating a running server: `sudo vt-update` (done)
+`vt-update` (or `vt-update NAME` for a branch, tag or commit) changes the version without a full reinstall:
+1. Downloads the new version and shows what changes: the old and new commit, the plugin's version, and whether Node, Caddy or Paperclip change.
+2. Refuses a folder changed by hand, and refuses while a handover is running (`--now` overrides).
+3. Makes a backup.
+4. Stops the email service and the plugin, then runs `install.sh` from the new version, which only changes what is different.
+5. Restarts Paperclip and Caddy only if what they run changed.
+6. Takes the plugin back into Paperclip: a new version is reinstalled (its settings and data are kept), the same version is restarted.
+7. Starts the email service again and ends with `vt-check`.
+
+If any step fails, it prints the line that goes back (`vt-update <old version>`) and the backup made in step 3.
+
+**Found by the rehearsal and fixed:**
+- Paperclip watches the plugin's folder, so it restarted the half-built plugin during the update and then refused the new version ("Worker already registered"). The plugin is now stopped before its files change.
+- Paperclip's settings file got a new timestamp on every install, which would have restarted Paperclip on every update. It is now rewritten only when a setting changes.
+- The rehearsal's stand-in for systemd started a second copy of a service that was already running; like systemd, it now does nothing.
+
+The rehearsal now installs the app with `git clone`, as DEPLOY.md step 6 does.
+
+**Tests:** rehearsal **109 passed, 0 failed** (11 new):
+- "nothing new" makes no backup and changes nothing; a hand-changed folder is refused.
+- An update to a new version (plugin 0.10.0 to 0.10.1, and a changed Paperclip service file, so Paperclip restarts while Caddy keeps running): backup first, the app at the new commit, the new plugin ready in Paperclip, three people and their used invite links kept, Fay still signs in, `vt-check` passes.
+- Going back to the old commit: plugin 0.10.0 ready again, the data still there.
 
 ## Thin version 1 for the pilot (done)
 

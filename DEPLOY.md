@@ -379,6 +379,26 @@ Run `vt-check` afterwards. Delete the `before-restore-...` folder only once you'
    vt-restore /root/vt-backup-XXXX.tar && vt-check
    ```
 
+### Update to a new version
+
+```
+vt-update
+```
+
+It brings the server to the newest version of the branch it runs (from step 6), without a reinstall. When GitHub asks, use your GitHub user name and the `vt-download` token. In order, it:
+
+1. Shows what changes: the old and new version, the plugin's version, and whether Node, Caddy or Paperclip change.
+2. Refuses while a handover is running (run it after the handover, or add `--now` to stop it mid-task).
+3. Makes a backup.
+4. Installs the new version, changing only what is different.
+5. Restarts only what changed.
+6. Takes the new plugin into Paperclip. Its settings and data are kept.
+7. Ends with `vt-check`.
+
+A folder changed by hand is refused before anything changes.
+
+To go back, type the line it prints at the end, for example `vt-update 1a2b3c4d5e6f`. If something fails halfway, it stops and prints that same line, plus the backup to restore if Paperclip's data looks wrong (`vt-restore`). To go to another branch or a tag: `vt-update NAME`.
+
 ### If something is wrong
 
 - **Stop everything at once:** `vt-stop`. It stops Paperclip, every agent (also programs they left running) and the email service; links stop working, and it stays stopped after a restart, until `vt-start`. Nothing is deleted.
@@ -412,7 +432,6 @@ All versions are listed in `deploy/versions.env` and in the lockfiles next to it
 - **What an agent can still do.** It can use Paperclip's API as itself (with the run token Paperclip gives it), read and change its own working copy, and run its owner's own checks. Checks run as the agent's own user, so an agent could interfere with its own checks; Hardy's separate, locked sandbox for checks comes in a later milestone (M4). Your branch protection (step 4) stays the backstop for anything it merges.
 - **Never run real agents on Paperclip's built-in database** (the laptop "quickstart" setup): its password is a fixed, well-known one. This server uses PostgreSQL with a random password.
 - **Two plans at the very same moment.** If two people's agents propose overlapping tasks within the same second or so, both can pass the pre-handover check. The merge replay at handback is the backstop.
-- **Updating a server that is already running** is not scripted yet. A version that needs new Paperclip permissions (0.8.0 needs read-only access to the project's folder) has to be reinstalled in Paperclip; uninstalling without `--force` keeps its settings. Until this is scripted, install fresh with this version.
 - **CODEOWNERS teams.** Entries like `@org/team` are not matched to people (Aurora cannot see who is in a team), so nobody is protected in those areas. `vt-check` and every plan name each team and its line; list people by email or login instead.
 - **Email account approval power.** Anyone who can read your email can use its links. There is no second step before Approve or Reject applies (your decision, M4).
 - **Not tested for real:**
