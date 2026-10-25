@@ -294,6 +294,10 @@ When an agent proposes its tasks, each task has to list the files and folders it
 
 A task's claim ends when you decide it in the handback email, or when its plan expires without approval.
 
+### At handback: the merge replay
+
+Before your handback email goes out, Vision and Tom test-merges each finished branch against everyone else's finished, undecided branches. It does this in git's memory only and merges nothing. If two branches change the same lines, both owners see it in their email (the other owner may get a short separate email), with the files involved. Agree who goes first, approve that one, and reject or redo the other.
+
 ### During the first real handover: measure memory
 
 The server sizes in step 1 are estimates. During your first real handover, while the agents work, log in (step 5) and type:
@@ -380,7 +384,7 @@ All versions are listed in `deploy/versions.env` and in the lockfiles next to it
 
 - **What an agent can still do.** It can use Paperclip's API as itself (with the run token Paperclip gives it), read and change its own working copy, and run its owner's own checks. Checks run as the agent's own user, so an agent could interfere with its own checks; Hardy's separate, locked sandbox for checks comes in a later milestone (M4). Your branch protection (step 4) stays the backstop for anything it merges.
 - **Never run real agents on Paperclip's built-in database** (the laptop "quickstart" setup): its password is a fixed, well-known one. This server uses PostgreSQL with a random password.
-- **Two plans at the very same moment.** If two people's agents propose overlapping tasks within the same second or so, both can pass the pre-handover check. The merge replay at handback (coming next) is the backstop.
+- **Two plans at the very same moment.** If two people's agents propose overlapping tasks within the same second or so, both can pass the pre-handover check. The merge replay at handback is the backstop.
 - **Updating a server that is already running** is not scripted yet. A version that needs new Paperclip permissions (0.8.0 needs read-only access to the project's folder) has to be reinstalled in Paperclip; uninstalling without `--force` keeps its settings. Until this is scripted, install fresh with this version.
 - **CODEOWNERS teams.** Entries like `@org/team` are not matched to people; name people by email or login.
 - **Email account approval power.** Anyone who can read your email can use its links. There is no second step before Approve or Reject applies (your decision, M4).

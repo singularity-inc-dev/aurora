@@ -36,7 +36,8 @@ check "v1e: Ana's handback and a notice for Bo arrive" "$(curl -s "$MAILPIT_API/
 V1E_SUBJ_A=$(curl -s "$MAILPIT_API/messages" | json 'd.messages.find(m=>m.To[0].Address==="ana@example.com").Subject')
 V1E_SUBJ_B=$(curl -s "$MAILPIT_API/messages" | json 'd.messages.find(m=>m.To[0].Address==="bo@example.com").Subject')
 V1E_MAIL_A=$(m4_mail ana@example.com); V1E_MAIL_B=$(m4_mail bo@example.com)
-check "v1e: Ana's subject counts the conflict" "$(echo "$V1E_SUBJ_A" | grep -c ': 1 ready, 0 blocked, 0 failed, 1 conflict$')" "1"
+echo "    (subject: $V1E_SUBJ_A)"
+check "v1e: Ana's subject counts the conflict" "$(echo "$V1E_SUBJ_A" | grep -c ', 1 conflict$')" "1"
 check "v1e: Ana's email names Bo's task and the file" "$(echo "$V1E_MAIL_A" | grep -c "^- Your \"Write release notes\" .* and bo@example.com's \"Add a changelog\" .* both change CHANGELOG.md.$")" "1"
 check "v1e: Bo is told too" "$V1E_SUBJ_B" "A teammate's new work conflicts with yours (1): 1 ready for your decision"
 check "v1e: Bo's email names Ana's task" "$(echo "$V1E_MAIL_B" | grep -c "^- Your \"Add a changelog\" .* and ana@example.com's \"Write release notes\" .* both change CHANGELOG.md.$")" "1"

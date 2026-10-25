@@ -12,8 +12,8 @@ Milestone names now follow the spec (see CLAUDE.md, "Milestones" and "Built so f
 | A | Agent isolation (spec gap 1) | Done, live-tested |
 | B | Each owner's agent on their own Claude subscription or API key (gap 2) | Done, live-tested with stand-ins |
 | C | Handover any time ("Hand over now") and night names renamed to handover | Done, live-tested (full run: 284 passed, 0 failed) |
-| D | Claims and the pre-handover check | Done; v1d live-tested, full live run in progress |
-| E | Merge replay at handback | Not started |
+| D | Claims and the pre-handover check | Done, live-tested (v1d; M2 to M5 with claims in the full run) |
+| E | Merge replay at handback | Done, live-tested (v1e) |
 | F | Numbers from the event log, CSV export | Not started |
 | G | Collision audit (M0) | Not started |
 
@@ -69,6 +69,18 @@ Each person's agent runs as a system user of its own (`vt-a-...`), which Papercl
 **Unit tests:** plugin 340 (claims matching, CODEOWNERS reading, the check, the questions, the runner with a real git repository), email service 38.
 
 **Known gaps:** two proposals at the very same moment can both pass (the merge replay in E is the backstop); CODEOWNERS team entries (`@org/team`) are not matched to people; "fixes the order" (dependencies between work orders) waits for work orders with dependencies.
+
+### E. Merge replay at handback (done)
+- When a handback email is built, every ready branch in it is test-merged with `git merge-tree --write-tree` against the owner's other ready branches and against every other owner's ready, undecided branch. This works on git's stored objects only: no branch, working folder or file changes, and nothing is merged.
+- Conflicts are listed at the top of the email ("CONFLICTS FOUND BY THE MERGE REPLAY"), with the files both change, and counted in the subject. Approve and Reject stay as they were: the owners decide which goes first.
+- The other owner hears about it too. If their task was already handed back to them, they get a short email right away ("A teammate's new work conflicts with yours") with fresh links; otherwise their own handback email shows it. Each conflict is announced once (table `conflicts`, one row per pair of branch versions), but is listed in every email while both are undecided.
+- Pairs that cannot be replayed (for example, a missing commit) are reported as a note, never called clean.
+
+**Checked live** (`scripts/it/v1e.sh`, 10 checks, after M4 in the same company): Ana's agent claims only `notes.txt`, so the pre-handover check lets it through, but it also writes `CHANGELOG.md`, which Bo's ready branch adds too. Ana's email lists the conflict with Bo's task and the file, and counts it in the subject; Bo gets the notice naming Ana's task; both still have their Approve links; `main` and both worktrees are unchanged.
+
+**Unit tests:** plugin 354 (replay against real git branches, the notice sent once, own-branch conflicts, email text), email service 38.
+
+**Also fixed:** the deployment rehearsal's check "after the reboot: data is still there" ran before the plugin had started; it now waits up to a minute for the plugin to answer.
 
 ### Recorded as later (not built in thin version 1)
 - Approvals as each owner's own GitHub review (spec gap 13). The email Approve stays as it is for the pilot.
