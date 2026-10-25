@@ -6,6 +6,8 @@ Updated after every phase. Newest phase first.
 
 Milestone names now follow the spec (see CLAUDE.md, "Milestones" and "Built so far").
 
+**Full live run on 25 October** (`scripts/integration-test.sh`, cold start): **320 passed, 0 failed**. By part: basic 20, M2 30, M3 33, M4 39, M5 31, deployment rehearsal 83, v1a 24, v1b 13, v1c 12, v1d 13, v1e 10, v1f 12. Unit tests: plugin 367, email service 39, collision audit 9.
+
 | Piece | What | Status |
 | --- | --- | --- |
 | Step 1 | Project files realigned with the spec; decision register and the M5 answers in CLAUDE.md | Done |
@@ -90,7 +92,7 @@ Each person's agent runs as a system user of its own (`vt-a-...`), which Papercl
 - All of it per owner and for the team. The **CSV** has the playbook's measurement-sheet columns that the event log can fill, one line per work order. Agent-written titles that a spreadsheet would run as formulas get a leading apostrophe.
 - On the server: `sudo vt-numbers numbers.csv` writes the sheet (readable by root only) and prints the measures. Behind it are two board-only plugin routes, `/numbers` and `/numbers/csv`. Paperclip 2026.1012.0 sends plugin route bodies as JSON and drops their headers (found by the live test), so the CSV travels inside JSON and `vt-numbers` writes the file.
 
-**Checked live** (`scripts/it/v1f.sh`, 13 checks, on the M4 and v1e company: 5 work orders, 1 approved, 1 rejected, 3 undecided, 1 conflict; and v1d's company: 2 overlaps caught). The rehearsal runs `vt-numbers` as the admin.
+**Checked live** (`scripts/it/v1f.sh`, 12 checks, on the M4 and v1e company: 5 work orders, 1 approved, 1 rejected, 3 undecided, 1 conflict; and v1d's company: 2 overlaps caught). The rehearsal runs `vt-numbers` as the admin.
 
 **Unit tests:** plugin 367, email service 39.
 
