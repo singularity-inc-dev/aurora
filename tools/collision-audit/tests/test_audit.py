@@ -15,6 +15,8 @@ sys.path.insert(0, TOOL)
 import _audit  # noqa: E402
 import classify_overlap  # noqa: E402
 import replay_pairs_v2  # noqa: E402
+import report  # noqa: E402
+import batch_summary  # noqa: E402
 
 DAY = 86400
 
@@ -183,6 +185,86 @@ class AuditTest(unittest.TestCase):
         with self.assertRaises(SystemExit):
             _audit.repo_path(self.out, "../etc")
         self.assertEqual(replay_pairs_v2.replay(self.clone, {"a": {"commit": "--help"}, "b": {"commit": self.b}}, {})["status"], "error")
+
+    def test_report_md_hides_paths_by_default(self):
+        overlap = self.overlap
+        rates = self.rates
+        weekly = self.weekly
+        md = report.render_md(overlap, rates, weekly, show_paths=False)
+        self.assertIn("# Collision audit: acme/app", md)
+        self.assertIn("Active people:", md)
+        self.assertIn("Method:", md)
+        self.assertIn("Limits:", md)
+        self.assertIn("historical rate for humans", md)
+        self.assertNotIn("app.py", md)  # paths hidden
+
+    def test_report_md_shows_paths_when_requested(self):
+        md = report.render_md(self.overlap, self.rates, self.weekly, show_paths=True)
+        self.assertIn("app.py", md)
+
+    def test_report_html_is_valid_and_self_contained(self):
+        html = report.render_html(self.overlap, self.rates, self.weekly, show_paths=False)
+        self.assertIn("<!doctype html>", html)
+        self.assertIn("acme/app", html)
+        self.assertIn("<table>", html)
+        # No external scripts or stylesheets
+        self.assertNotIn("src=", html)
+        self.assertNotIn("href=", html)
+        # No file paths in default mode
+        self.assertNotIn("app.py", html)
+
+    def test_report_html_shows_paths_when_requested(self):
+        html = report.render_html(self.overlap, self.rates, self.weekly, show_paths=True)
+        self.assertIn("app.py", html)
+
+    def test_report_script_writes_files(self):
+        report.main(["report.py", self.out])
+        self.assertTrue(os.path.exists(os.path.join(self.out, "report.md")))
+        self.assertTrue(os.path.exists(os.path.join(self.out, "report.html")))
+        md_text = open(os.path.join(self.out, "report.md")).read()
+        self.assertIn("# Collision audit:", md_text)
+        html_text = open(os.path.join(self.out, "report.html")).read()
+        self.assertIn("<!doctype html>", html_text)
+
+    def test_batch_summary_table(self):
+        import io
+        # Build a fake batch dir with one workdir
+        batch_dir = os.path.join(self.tmp, "batch")
+        workdir = os.path.join(batch_dir, "acme_app")
+        os.makedirs(workdir)
+        for name in ("overlap.json", "rates.json", "weekly.json"):
+            src = os.path.join(self.out, name)
+            import shutil as _shutil
+            _shutil.copy(src, workdir)
+        table = batch_summary.render(batch_dir, ["acme/app"])
+        self.assertIn("acme/app", table)
+        self.assertIn("People", table)
+        # No percentages in the table
+        self.assertNotIn("%", table)
+
+    def test_batch_summary_missing_repo_shows_failed(self):
+        batch_dir = os.path.join(self.tmp, "batch2")
+        os.makedirs(batch_dir)
+        table = batch_summary.render(batch_dir, ["missing/repo"])
+        self.assertIn("FAILED", table)
+
+    def test_collision_audit_report_flag(self):
+        out2 = os.path.join(self.tmp, "out-report")
+        p = subprocess.run(
+            [os.path.join(TOOL, "collision-audit"), self.clone, "acme/app", "--out", out2, "--report"],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        )
+        self.assertEqual(p.returncode, 0, p.stdout.decode())
+        self.assertTrue(os.path.exists(os.path.join(out2, "report.md")))
+        self.assertTrue(os.path.exists(os.path.join(out2, "report.html")))
+
+    def test_sends_nothing_report_and_batch(self):
+        for name in ("report.py", "batch_summary.py", "collision-audit-batch"):
+            src = open(os.path.join(TOOL, name)).read()
+            self.assertIsNone(
+                re.search(r"\b(socket|urllib|http\.client|requests|curl|wget|ssh|ftplib|smtplib)\b", src),
+                "%s contains network code" % name,
+            )
 
 
 if __name__ == "__main__":
