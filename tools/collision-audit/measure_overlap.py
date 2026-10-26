@@ -21,6 +21,7 @@ def main(argv):
     _, repos, out, name = argv
     repo = _audit.repo_path(repos, name)
     since, until = _audit.window(WINDOW_DAYS)
+    _audit.check_history_depth(repo, since)
     rows = _audit.commits(repo, since, until)
     overlaps = _audit.same_day_overlaps(rows)
     people = {email for _, email, n, _, _ in rows if not _audit.is_bot(email, n)}

@@ -135,6 +135,36 @@ def same_day_overlaps(rows, bucket=None):
     return overlaps
 
 
+def check_history_depth(repo, since):
+    """Refuse if the clone is shallow and does not cover the window start.
+
+    A shallow clone cut off inside the window silently understates counts.
+    This fails fast with the exact re-clone command needed to fix it.
+    """
+    _, shallow = git(repo, ["rev-parse", "--is-shallow-repository"], ok=(0, 1))
+    if shallow.strip() != "true":
+        return  # full clone (or git too old to report it): trust it
+    # Any commit before the window start means the history covers the window.
+    _, pre = git(repo, [
+        "log", "HEAD", "--format=%H",
+        "--before=%s" % since.isoformat(),
+        "--max-count=1",
+    ])
+    if pre.strip():
+        return
+    # No commit before the window start: the clone is truncated.
+    _, first_out = git(repo, [
+        "log", "HEAD", "--no-merges", "--format=%aI", "--reverse", "--max-count=1",
+    ])
+    first_date = first_out.strip()[:10] if first_out.strip() else "unknown"
+    fail(
+        "shallow clone is truncated: oldest commit (%s) is inside the window "
+        "(window starts %s); re-clone with:\n"
+        "  git clone --shallow-since=%s -- <url> <dir>"
+        % (first_date, since.isoformat()[:10], since.isoformat()[:10])
+    )
+
+
 def wilson(k, n, z=1.96):
     """95% Wilson interval for k successes out of n."""
     if n == 0:
