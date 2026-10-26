@@ -87,6 +87,12 @@ def build(path):
     # Day D+1: Bo edits lines Ana has just written (a follow-up, on main).
     r.commit(ANA, d + DAY, "ana: lib", {"lib.py": ["ana 1", "ana 2", "c"]})
     r.commit(BO, d + DAY + 600, "bo: fix ana's lib lines", {"lib.py": ["bo 1", "ana 2", "c"]})
+    # Extra commits so each of ANA, BO, CY reaches the ≥3-commit threshold.
+    # Different files / different days: no new same-day overlaps introduced.
+    r.commit(ANA, d + 2 * DAY, "ana: notes", {"notes.py": ["note 1"]})
+    r.commit(BO, d + 3 * DAY, "bo: notes", {"notes.py": ["note 2"]})
+    r.commit(CY, d + 3 * DAY + 3600, "cy: util", {"util.py": ["util 1"]})
+    r.commit(CY, d + 4 * DAY, "cy: util v2", {"util.py": ["util 2"]})
     return r, a, b, c
 
 
@@ -192,7 +198,7 @@ class AuditTest(unittest.TestCase):
         weekly = self.weekly
         md = report.render_md(overlap, rates, weekly, show_paths=False)
         self.assertIn("# Collision audit: acme/app", md)
-        self.assertIn("Active people:", md)
+        self.assertIn("Active people (≥3 commits):", md)
         self.assertIn("Method:", md)
         self.assertIn("Limits:", md)
         self.assertIn("historical rate for humans", md)
@@ -238,7 +244,7 @@ class AuditTest(unittest.TestCase):
             _shutil.copy(src, workdir)
         table = batch_summary.render(batch_dir, ["acme/app"])
         self.assertIn("acme/app", table)
-        self.assertIn("People", table)
+        self.assertIn("People (≥3c)", table)
         # No percentages in the table
         self.assertNotIn("%", table)
 
@@ -265,6 +271,37 @@ class AuditTest(unittest.TestCase):
                 re.search(r"\b(socket|urllib|http\.client|requests|curl|wget|ssh|ftplib|smtplib)\b", src),
                 "%s contains network code" % name,
             )
+
+    def test_refuses_shallow_clone_truncated_inside_window(self):
+        """A shallow clone whose history doesn't reach the window start is refused."""
+        with tempfile.TemporaryDirectory() as tmp:
+            shallow = os.path.join(tmp, "shallow")
+            os.mkdir(shallow)
+            r = Repo(shallow)
+            # One commit made 5 days ago — inside any 90-day window.
+            r.commit(ANA, int(time.time()) - 5 * DAY, "recent commit", {"main.py": ["line 1"]})
+            root_sha = r.git("rev-parse", "HEAD")
+            # Write .git/shallow to mark this repo as shallow with no history before root.
+            with open(os.path.join(shallow, ".git", "shallow"), "w") as f:
+                f.write(root_sha + "\n")
+            out_dir = os.path.join(tmp, "out")
+            p = subprocess.run(
+                [os.path.join(TOOL, "collision-audit"), shallow, "acme/test", "--out", out_dir],
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            )
+            self.assertNotEqual(p.returncode, 0)
+            output = p.stdout.decode()
+            self.assertIn("truncated", output)
+            self.assertIn("shallow-since", output)
+
+    def test_full_clone_not_refused(self):
+        """A full clone (no .git/shallow) is never refused on depth grounds."""
+        p = subprocess.run(
+            [os.path.join(TOOL, "collision-audit"), self.clone, "acme/app", "--out",
+             os.path.join(self.tmp, "out2")],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        )
+        self.assertEqual(p.returncode, 0, p.stdout.decode())
 
 
 if __name__ == "__main__":

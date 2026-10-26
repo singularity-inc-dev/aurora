@@ -51,7 +51,7 @@ def render(batch_dir, names):
             _num(would.get("threeDay")),
         ))
 
-    header = ("Repo", "Window", "People", "Overlaps/wk (same-day)", "Overlaps/wk (3-day)", "Would-be conflicts/wk (3-day)")
+    header = ("Repo", "Window", "People (≥3c)", "Overlaps/wk (same-day)", "Overlaps/wk (3-day)", "Would-be conflicts/wk (3-day)")
     widths = [max(len(h), max(len(r[i]) for r in rows)) for i, h in enumerate(header)]
 
     def fmt(cells):
