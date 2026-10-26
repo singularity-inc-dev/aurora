@@ -12,7 +12,7 @@ The collision audit reads the default branch of a git repository and counts **sa
 
 ### Batch results (all 5 repos ran, all reported)
 
-| Repo | Window | People | Overlaps/wk (same-day) | Overlaps/wk (3-day) | Would-be conflicts/wk (3-day) |
+| Repo | Window | People (≥3c) | Overlaps/wk (same-day) | Overlaps/wk (3-day) | Would-be conflicts/wk (3-day) |
 | --- | --- | --- | --- | --- | --- |
 | astral-sh/ruff | 2026-08-31 – 2026-10-26 | 28 | 3.38 | 11.38 | 0 |
 | biomejs/biome | 2026-08-31 – 2026-10-26 | 21 | 2.62 | 5.5 | 0 |
@@ -20,26 +20,30 @@ The collision audit reads the default branch of a git repository and counts **sa
 | pydantic/pydantic | 2026-08-31 – 2026-10-26 | 25 | 0 | 0 | n/a |
 | zed-industries/zed | 2026-08-31 – 2026-10-26 | 67 | 5.88 | 20.38 | 0 |
 
+People (≥3c) = distinct non-bot authors with ≥3 commits in the window (2026-08-31 – 2026-10-26).
+
+**Note on clones used for this run:** ruff, biome and zed were cloned with `--depth 200`. Post-run check (Oct 2026): all three were truncated — their 200-commit history covered only part of the 56-day window. The overlap counts for those repos may undercount events near the window start. The tool now refuses truncated clones and requires `--shallow-since` (collision-audit step 1 on this branch).
+
 **Odd results reported honestly:**
-- `pydantic/pydantic`: zero overlaps in 56 days despite 25 contributors and 138 commits. Likely explanation: contributors work serially (each PR merged before the next starts), or each person owns clearly separate files. This is a genuine negative result, not a failure of the tool.
+- `pydantic/pydantic`: zero overlaps in 56 days despite 25 people and 138 commits. Hypothesis: contributors work serially (each PR merged before the next starts) or each person owns clearly separate files. This is a genuine negative result, not a failure of the tool.
 - All five repos had **0% textual conflict rate** (0 conflicts across 88 clean replays). See the caveat below.
 
 ### What these numbers do and don't prove
 
 **What they prove:**
 - The tool works on real public repositories and produces reproducible counts.
-- Active teams already have 2–6 same-day file-overlap opportunities per week, and 2–20 per week within a 3-day agent handover window. That is the **collision surface** Aurora needs to manage.
+- These five open-source teams had 2–6 same-day file-overlap opportunities per week (window: 2026-08-31 – 2026-10-26). The 3-day column in the table shows counts under a wider window assumption.
 - The audit runs in minutes on a fresh clone, with no setup and no network access after cloning.
 
 **What they don't prove:**
 - **Not an agent conflict rate.** This measures human commit patterns, not agent behaviour. Agents can produce more changes per day across more files, and they don't naturally wait for each other the way humans do.
 - **Not a semantic conflict rate.** A git merge that succeeds cleanly can still break behaviour. The tool counts only textual git conflicts.
-- **Why 0% here vs 33% in the spec.** The spec's 33% same-day textual conflict rate came from our own replay of 20 internal product teams (2–10 people each). Open-source contributors on repos like ruff, biome and zed rarely work on the same file the same day — each person tends to own a subsystem and code review slows parallel landings. Internal teams building a shared product (Aurora's target) overlap more. The spec measurement is the relevant comparison; these five repos confirm the tool is correct and give a baseline for teams that are already well-organised.
+- **Why 0% here vs 33% in the spec.** The spec's 33% rate came from a separate replay: 20 open-source product teams, 2–10 people each, 22 Oct 2025 – 22 Oct 2026 (see Sources in `aurora-v1-spec.md`). Independent pairs conflicted 34 of 103 times (33%, 95% interval 25%–43%). These five repos had 0 conflicts across 88 clean replays. Hypothesis: the repos in this batch may differ from the spec's set in team structure or review process; or the truncated clones (ruff, biome, zed — see note above) may have missed events. The pilot will measure whether internal product teams differ.
 - **Not a causal claim.** These numbers say the collision surface exists; they don't prove Aurora reduces it. That proof requires a pilot.
 
 ### Exact wording you may use in applications
 
-> "We built a history-based collision audit tool and ran it on five active public repos (ruff, biome, trpc, pydantic, zed). Teams of 21–67 active contributors had 2–6 same-day file-overlap opportunities per week, rising to 2–20 per week within a three-day agent handover window. Across 88 clean replays, the textual conflict rate was 0% — these open-source teams rarely land parallel changes to the same file. Our earlier measurement on 20 internal product teams found a 33% textual conflict rate (cited in the spec). Internal product teams are Aurora's target; the open-source baseline confirms the tool is working correctly."
+> "We built a history-based collision audit tool and ran it on five active public repos (ruff, biome, trpc, pydantic, zed) over a 56-day window ending Oct 2026. Teams of 21–67 active contributors (≥3 commits each) had 2–6 same-day file-overlap opportunities per week. Across 88 clean replays, the textual conflict rate was 0%. A separate replay of 20 open-source product teams (2–10 people each, Oct 2025 – Oct 2026) found a 33% textual conflict rate — cited in the spec with a 95% interval of 25%–43%. We don't yet know whether internal product teams differ; the pilot will measure it."
 
 **Do not say:** "Aurora reduces conflicts by X%" (unproven), "agents would hit X conflicts" (not measured), or use these counts as evidence of an agent problem without the qualifying sentence about human vs agent rates.
 
