@@ -13,6 +13,8 @@ import _audit  # noqa: E402
 
 # The time window: the last WINDOW_DAYS days (the playbook uses 90).
 WINDOW_DAYS = int(os.environ.get("COLLISION_AUDIT_DAYS", "90"))
+# People column: distinct non-bot authors with at least this many commits in the window.
+PEOPLE_MIN_COMMITS = int(os.environ.get("COLLISION_AUDIT_MIN_COMMITS", "3"))
 
 
 def main(argv):
@@ -24,7 +26,10 @@ def main(argv):
     _audit.check_history_depth(repo, since)
     rows = _audit.commits(repo, since, until)
     overlaps = _audit.same_day_overlaps(rows)
-    people = {email for _, email, n, _, _ in rows if not _audit.is_bot(email, n)}
+    commit_counts = collections.Counter(
+        email for _, email, n, _, _ in rows if not _audit.is_bot(email, n)
+    )
+    people = {email for email, cnt in commit_counts.items() if cnt >= PEOPLE_MIN_COMMITS}
     code_files = {f for *_, files in rows for f in files if _audit.is_code(f)}
     top = collections.Counter(o["file"] for o in overlaps).most_common(10)
     weeks = WINDOW_DAYS / 7.0
@@ -33,12 +38,13 @@ def main(argv):
         "window": {"since": since.isoformat(), "until": until.isoformat(), "days": WINDOW_DAYS},
         "commits": len(rows),
         "people": len(people),
+        "peopleMinCommits": PEOPLE_MIN_COMMITS,
         "codeFilesChanged": len(code_files),
         "overlaps": overlaps,
         "overlapsPerWeek": round(len(overlaps) / weeks, 2),
         "topFiles": top,
     })
-    print("%s: %d commits by %d people; %d same-day overlaps on code files (%.2f a week)" % (name, len(rows), len(people), len(overlaps), len(overlaps) / weeks))
+    print("%s: %d commits by %d people (≥%d commits); %d same-day overlaps on code files (%.2f a week)" % (name, len(rows), len(people), PEOPLE_MIN_COMMITS, len(overlaps), len(overlaps) / weeks))
 
 
 if __name__ == "__main__":

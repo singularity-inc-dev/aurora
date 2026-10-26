@@ -36,7 +36,7 @@ def render_md(overlap, rates, weekly, show_paths=False):
         "# Collision audit: %s" % repo,
         "",
         "**Window:** %s to %s (%d days)  " % (w["since"][:10], w["until"][:10], w["days"]),
-        "**Active people:** %d  " % overlap["people"],
+        "**Active people (≥%d commits):** %d  " % (overlap.get("peopleMinCommits", 3), overlap["people"]),
         "**Commits:** %d" % overlap["commits"],
         "",
         "| Measure | Per week |",
@@ -117,7 +117,7 @@ ul{line-height:1.7}
 <body>
 <h1>Collision audit: %s</h1>
 <p class="meta"><strong>Window:</strong> %s to %s (%d days) &nbsp;|&nbsp;
-<strong>Active people:</strong> %d &nbsp;|&nbsp;
+<strong>Active people (≥%d commits):</strong> %d &nbsp;|&nbsp;
 <strong>Commits:</strong> %d</p>
 <table>
 <tr><th>Measure</th><th>Per week</th></tr>
@@ -134,7 +134,7 @@ conflict rate.</p>
 """ % (
         _esc(repo), _esc(repo),
         _esc(w["since"][:10]), _esc(w["until"][:10]), w["days"],
-        overlap["people"], overlap["commits"],
+        overlap.get("peopleMinCommits", 3), overlap["people"], overlap["commits"],
         table_rows,
         top_files,
     )

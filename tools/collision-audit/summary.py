@@ -29,8 +29,8 @@ def render(overlap, rates, weekly):
     lines = [
         "# Collision audit: %s" % overlap["repo"],
         "",
-        "The last %d days of the default branch (%s to %s): %d commits by %d people. Read-only; nothing was sent anywhere." % (
-            overlap["window"]["days"], overlap["window"]["since"][:10], overlap["window"]["until"][:10], overlap["commits"], overlap["people"]),
+        "The last %d days of the default branch (%s to %s): %d commits by %d people (≥%d commits each). Read-only; nothing was sent anywhere." % (
+            overlap["window"]["days"], overlap["window"]["since"][:10], overlap["window"]["until"][:10], overlap["commits"], overlap["people"], overlap.get("peopleMinCommits", 3)),
         "",
         "| Measure | Result |",
         "| --- | --- |",
