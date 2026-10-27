@@ -1,4 +1,6 @@
 # Milestone 4 live checks. Sourced by scripts/integration-test.sh (uses its helpers).
+# Agents here run as Paperclip's own user, so isolation is off ("isolation":{"required":false});
+# the isolation itself is proven in scripts/it/v1a.sh.
 # Morning briefing email (caught by Mailpit, nothing is really sent) and its
 # signed, expiring, one-time Approve / Reject links served by email-service/.
 
@@ -69,7 +71,7 @@ check "M4: store the link signing key as a Paperclip secret" "$API_STATUS" "201"
 M4_SID=$(echo "$API_BODY" | json 'd.id')
 
 m4_config() { # nightStartHour for both
-  api POST "/api/plugins/$PLUGIN_ID/config" "{\"companyId\":\"$M4_CID\",\"configJson\":{
+  api POST "/api/plugins/$PLUGIN_ID/config" "{\"companyId\":\"$M4_CID\",\"configJson\":{\"isolation\":{\"required\":false},
     \"links\":{\"baseUrl\":\"$M4_LINKS\",\"signingSecret\":{\"type\":\"secret_ref\",\"secretId\":\"$M4_SID\"},\"expiresMinutes\":$M4_EXPIRES_MINUTES},
     \"night\":{\"projectId\":\"$M4_PID\"},\"checks\":{\"testCommand\":\"test -f README.md\"},\"people\":[
     {\"email\":\"ana@example.com\",\"agentId\":\"$M4_A\",\"timezone\":\"$M4_TZ\",\"nightStartHour\":$1,\"nightBudgetCapCents\":1000},
@@ -85,7 +87,7 @@ for _ in $(seq 1 20); do curl -s -m 1 "$M4_LINKS/health" >/dev/null 2>&1 && brea
 check "M4: email service is up" "$(curl -s "$M4_LINKS/health")" "ok"
 
 api GET "/api/plugins/$PLUGIN_ID/jobs"
-M4_JOB=$(echo "$API_BODY" | json 'd.find(j=>j.jobKey==="night-tick").id')
+M4_JOB=$(echo "$API_BODY" | json 'd.find(j=>j.jobKey==="handover-tick").id')
 m4_tick() {
   api POST "/api/plugins/$PLUGIN_ID/jobs/$M4_JOB/trigger" '{}'
   local run; run=$(echo "$API_BODY" | json 'd.runId')
@@ -95,7 +97,7 @@ m4_tick() {
     sleep 1
   done
 }
-m4_night() { api POST "/api/plugins/$PLUGIN_ID/data/night-status" "{\"companyId\":\"$M4_CID\",\"params\":{}}"; echo "$API_BODY" | json "(d.data.find(r=>r.owner==='$1')||{}).$2"; }
+m4_night() { api POST "/api/plugins/$PLUGIN_ID/data/handover-status" "{\"companyId\":\"$M4_CID\",\"params\":{}}"; echo "$API_BODY" | json "(d.data.find(r=>r.owner==='$1')||{}).$2"; }
 m4_issue() { api GET "/api/issues/$1"; echo "$API_BODY" | json "d.$2"; }
 m4_event() { api POST "/api/plugins/$PLUGIN_ID/data/task-event" "{\"companyId\":\"$M4_CID\",\"params\":{\"taskId\":\"$1\"}}"; echo "$API_BODY" | json "d.data.$2"; }
 m4_run_of() {
@@ -139,10 +141,10 @@ m4_work() { # taskId agentId file -> the "agent" commits a change and runs the c
 
 echo "-- a night's work for Ana (3 tasks) and Bo (1 task)"
 m4_tick
-m4_tool propose_tonight "$M4_A" '{"tasks":[{"title":"Add greeting"},{"title":"Add farewell"},{"title":"Refactor everything"}]}'
+m4_tool propose_handover "$M4_A" '{"tasks":[{"title":"Add greeting","claims":["greeting.txt"]},{"title":"Add farewell","claims":["farewell.txt"]},{"title":"Refactor everything","claims":["src/"]}]}'
 [ -n "${IT_DEBUG:-}" ] && echo "    debug propose: $(echo "$API_BODY" | head -c 300) | night: $(m4_night ana@example.com status)"
 M4_T1=$(echo "$API_BODY" | json 'd.result.data.taskIds[0]'); M4_T2=$(echo "$API_BODY" | json 'd.result.data.taskIds[1]'); M4_T3=$(echo "$API_BODY" | json 'd.result.data.taskIds[2]')
-m4_tool propose_tonight "$M4_B" '{"tasks":[{"title":"Add a changelog"}]}'
+m4_tool propose_handover "$M4_B" '{"tasks":[{"title":"Add a changelog","claims":["CHANGELOG.md"]}]}'
 M4_TB=$(echo "$API_BODY" | json 'd.result.data.taskIds[0]')
 m4_approve_plan ana@example.com; m4_approve_plan bo@example.com
 m4_tick
@@ -174,11 +176,11 @@ m4_mail() { # address -> plain text of their email
   curl -s "$MAILPIT_API/message/$id" | json 'd.Text' | tr -d '\r'
 }
 M4_MAIL_A=$(m4_mail ana@example.com); M4_MAIL_B=$(m4_mail bo@example.com)
-check "subject counts Ready, Blocked and Failed" "$(curl -s "$MAILPIT_API/messages" | json 'd.messages.find(m=>m.To[0].Address==="ana@example.com").Subject')" "Your night of $(m4_night ana@example.com nightDate): 2 ready, 1 blocked, 0 failed"
+check "subject counts Ready, Blocked and Failed" "$(curl -s "$MAILPIT_API/messages" | json 'd.messages.find(m=>m.To[0].Address==="ana@example.com").Subject')" "Your handover of $(m4_night ana@example.com handoverKey): 2 ready, 1 blocked, 0 failed"
 check "email has Ready, Blocked and Failed sections" "$(echo "$M4_MAIL_A" | grep -cE '^(READY \(2\)|BLOCKED \(1\)|FAILED \(0\))$')" "3"
 check "each task says what changed in one line" "$(echo "$M4_MAIL_A" | grep -c 'Add greeting: 1 file changed, 1 insertion(+)')" "1"
 check "each task shows its checks result" "$(echo "$M4_MAIL_A" | grep -c 'checks passed on ')" "2"
-check "blocked task says why" "$(echo "$M4_MAIL_A" | grep -c 'stopped by the night routine')" "1"
+check "blocked task says why" "$(echo "$M4_MAIL_A" | grep -c 'stopped by the handover')" "1"
 check "Approve links only for Ready tasks, Reject for every task" "$(echo "$M4_MAIL_A" | grep -c '^  Approve: ')/$(echo "$M4_MAIL_A" | grep -c '^  Reject: ')" "2/3"
 m4_link() { echo "$1" | grep "^  $2: " | sed -n "${3}p" | sed "s/^  $2: //"; } # mail kind n
 M4_APPROVE1=$(m4_link "$M4_MAIL_A" Approve 1); M4_APPROVE2=$(m4_link "$M4_MAIL_A" Approve 2)

@@ -1,0 +1,17 @@
+#!/bin/sh
+# Stand-in for Claude Code's "auth" commands in the live tests (no account, no network).
+# "auth login" reads one line (as if the owner pasted the code from the sign-in page)
+# and saves a stand-in login in the user's own ~/.claude, the way Claude Code keeps its
+# own; fake-claude reads only that stand-in file.
+set -u
+case "$1 $2" in
+  "auth login")
+    printf 'Open the sign-in page and paste the code: '
+    read -r code
+    mkdir -p "$HOME/.claude" && chmod 700 "$HOME/.claude"
+    (umask 077 && printf '%s\n' "$(id -un)-subscription-$code" >"$HOME/.claude/.vt-standin-login")
+    echo "Login successful." ;;
+  "auth status") [ -f "$HOME/.claude/.vt-standin-login" ] && echo "Logged in (stand-in)" || { echo "Not logged in"; exit 1; } ;;
+  "auth logout") rm -f "$HOME/.claude/.vt-standin-login"; echo "Logged out." ;;
+  *) exit 2 ;;
+esac

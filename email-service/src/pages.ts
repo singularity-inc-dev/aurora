@@ -1,4 +1,4 @@
-import type { InviteCheck, LinkCheck, LinkOutcome } from "./paperclip.ts";
+import type { HandoverStatus, InviteCheck, LinkCheck, LinkOutcome } from "./paperclip.ts";
 import type { JoinOutcome } from "./join.ts";
 import { MAX_PASSWORD, MIN_PASSWORD } from "./join.ts";
 
@@ -61,7 +61,7 @@ export function joinPage(check: InviteCheck, error: string | null = null, values
   const err = error ? `<p><strong>${esc(error)}</strong></p>` : "";
   return page(
     "Join your team",
-    `<p>You were invited as <strong>${esc(check.email ?? "")}</strong>. This creates your account and your personal night agent.</p>${err}
+    `<p>You were invited as <strong>${esc(check.email ?? "")}</strong>. This creates your account and your personal agent.</p>${err}
 ${form(`<label for="name">Your name</label><input id="name" name="name" maxlength="80" required autofocus value="${esc(values.name ?? "")}">
 <label for="password">Choose a password (${MIN_PASSWORD}+ characters)</label><input id="password" name="password" type="password" minlength="${MIN_PASSWORD}" maxlength="${MAX_PASSWORD}" required autocomplete="new-password">
 <label for="timezone">Your timezone</label><input id="timezone" name="timezone" maxlength="64" value="${esc(values.timezone ?? check.timezone ?? "")}">
@@ -81,6 +81,38 @@ export function joinResultPage(outcome: JoinOutcome, signInUrl: string): string 
     failed: "Something went wrong",
   };
   return page(titles[outcome.status], `<p>${esc(outcome.message)}</p>`);
+}
+
+const STATUS_WORDS: Record<string, string> = {
+  proposing: "your agent is planning",
+  awaiting_approval: "the plan waits for your approval in Paperclip",
+  approved: "approved, starting",
+  running: "your agent is working",
+  finished: "finished",
+  budget_stopped: "stopped at its budget cap",
+  rejected: "plan rejected",
+  expired: "ended without work",
+};
+
+/** Hand over now: the signed-in owner's own page. */
+export function handoverPage(status: HandoverStatus, note: string | null = null): string {
+  if (!status.ok) return page("Hand over now", `<p>${esc(status.message ?? "You are not on the team.")}</p>`);
+  const open = (status.handovers ?? []).find((h) => ["proposing", "awaiting_approval", "approved", "running"].includes(h.status));
+  const recent = (status.handovers ?? [])
+    .map((h) => `<li>${esc(h.handoverKey.replace("T", " "))}${h.kind === "now" ? " UTC (hand over now)" : " (scheduled)"}: ${esc(STATUS_WORDS[h.status] ?? h.status)}</li>`)
+    .join("");
+  const hour = String(status.handoverStartHour ?? 0).padStart(2, "0");
+  return page(
+    "Hand over now",
+    `${note ? `<p><strong>${esc(note)}</strong></p>` : ""}<p>Signed in as <strong>${esc(status.email ?? "")}</strong>. Your scheduled handover is at ${hour}:00 (${esc(status.timezone ?? "")}).</p>
+${open ? `<p>A handover is in progress: ${esc(STATUS_WORDS[open.status] ?? open.status)}.</p>` : form(`<p><button type="submit">Hand over now</button></p>`)}
+<p class="muted">Your agent plans up to three tasks right away; nothing runs until you approve the plan in Paperclip, and nothing shared changes until you approve each result.</p>
+${recent ? `<h2>Recent handovers</h2><ul>${recent}</ul>` : ""}`,
+  );
+}
+
+export function signInFirstPage(signInUrl: string): string {
+  return page("Hand over now", `<p>Please <a href="${esc(signInUrl)}">sign in to Paperclip</a> first, then open this page again.</p>`);
 }
 
 export function errorPage(message: string): string {
