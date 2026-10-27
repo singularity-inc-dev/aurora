@@ -47,6 +47,30 @@ People (≥3c) = distinct non-bot authors with ≥3 commits in the window (2026-
 
 **Do not say:** "Aurora reduces conflicts by X%" (unproven), "agents would hit X conflicts" (not measured), or use these counts as evidence of an agent problem without the qualifying sentence about human vs agent rates.
 
+### Corrected and extended run (Oct 2026, fixed --shallow-since fetch)
+
+The three repos cloned with `--depth 200` (ruff, biome, zed) were re-run with `--shallow-since 2026-09-01` after fixing a bug in `check_history_depth`: `git log --reverse --max-count=1` returns the newest commit (max-count applies before reverse), so the guard falsely rejected every `--shallow-since` clone as truncated. The fix reads all dates and takes the actual oldest. Five near-miss repos from the candidate screening were also audited. All runs used the same 56-day window and the same `collision-audit-batch --fetch` command.
+
+**33% figure — cannot be reproduced.** The spec (Sources section) says the 20-team replay was "re-run on 23 October 2026 with the collision-audit scripts." Investigation of the git history shows the collision-audit scripts were committed on 25 October 2026, two days after the spec was written, and the notes in PROGRESS.md (piece G) confirm "they were not in the repository, so they were rebuilt from the playbook's method." No list of the 20 teams exists anywhere in the repo. The 33% figure is a hypothesis from the spec, not a number reproducible from this codebase.
+
+**Candidate screening.** About 45 active public repos were checked using the GitHub commit search API (read-only, no clone) over the same 56-day window. Bots were filtered by login heuristics (`[bot]`, `-bot` suffix, known bot names). Qualifying criteria: 7–10 non-bot authors with ≥3 commits AND ≥40 distinct commit-days (≈5/week). Only **hashicorp/nomad** met both criteria. All five near-miss repos fall short on commit-days. This was a sample of GitHub search results, roughly 45 repos, not an exhaustive survey of all qualifying open-source teams. See `tools/collision-audit/step5-candidates.md` for the full list of repos screened and eliminated.
+
+| Repo | Window | Commits | People (≥3c) | Overlaps/wk (same-day) | Replays | Clean replays | Conflicts | Commit-days | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 20 open-source teams (spec, 2–10 people) | 2025-10-22 – 2026-10-22 | — | — | — | 103 | — | 34 (33%) | — | hypothesis |
+| astral-sh/ruff | 2026-09-01 – 2026-10-27 | 811 | 22 | 34.62 | 60 | 40 | 0 | — | measured |
+| biomejs/biome | 2026-09-01 – 2026-10-27 | 659 | 14 | 14.12 | 60 | 46 | 1 | — | measured |
+| zed-industries/zed | 2026-09-01 – 2026-10-27 | 835 | 47 | 35.75 | 60 | 38 | 0 | — | measured |
+| hashicorp/nomad | 2026-09-01 – 2026-10-27 | 125 | 9 | 4.12 | 33 | 7 | 0 | 48 | measured |
+| grafana/tempo | FAILED (clone truncated) | — | — | — | — | — | — | 36 | measured |
+| firecracker-microvm/firecracker | 2026-09-01 – 2026-10-27 | 209 | 10 | 0.75 | 6 | 0 | 0 | 33 | measured |
+| kubernetes-sigs/karpenter | 2026-09-01 – 2026-10-27 | 94 | 8 | 6.25 | 50 | 13 | 0 | 28 | measured |
+| thanos-io/thanos | 2026-09-01 – 2026-10-27 | 50 | 9 | 0.38 | 3 | 0 | 0 | 27 | measured |
+
+Commit-days = distinct calendar days with ≥1 non-bot commit in the 56-day window, from the GitHub commit search (screening pass, not the clone). grafana/tempo failed because GitHub's shallow clone for that repo only went back to 2026-09-08 (7 days into the 56-day window), not to the requested window start; 36 commit-days is from the screening pass. The four near-miss repos (tempo, firecracker, karpenter, thanos) each fall short of the ≥40 commit-days threshold; their overlap rates reflect lower activity.
+
+**Results across the corrected run (measured rows only, excluding the failed clone):** 212 total replays, 104 clean replays, 1 conflict (biome, 1%). The 33% figure from the spec could not be reproduced — no list of the 20 teams and no earlier version of the scripts exist in this repo.
+
 ## Ready for the first real run (spec gap 3): steps 1 to 5 done
 
 Five steps, one commit each. Nothing real was rented, signed up for or contacted. Your next step is **FIRST-REAL-RUN.md**.
