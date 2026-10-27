@@ -152,16 +152,26 @@ def check_history_depth(repo, since):
     ])
     if pre.strip():
         return
-    # No commit before the window start: the clone is truncated.
-    _, first_out = git(repo, [
-        "log", "HEAD", "--no-merges", "--format=%aI", "--reverse", "--max-count=1",
+    # No commit before the window start: check the actual oldest commit's
+    # author date.  A clone made with --shallow-since=WINDOW_START has no
+    # commits before that date (that is the definition of --shallow-since),
+    # but if its oldest commit is dated on or before the window start the
+    # clone covers the full window and should be accepted.
+    #
+    # NOTE: --max-count applies before --reverse, so --reverse --max-count=1
+    # returns the newest commit.  Read all dates, take the first line after
+    # reversing.
+    _, all_dates = git(repo, [
+        "log", "HEAD", "--no-merges", "--format=%aI", "--reverse",
     ])
-    first_date = first_out.strip()[:10] if first_out.strip() else "unknown"
+    oldest_date = all_dates.strip().split("\n")[0][:10] if all_dates.strip() else "unknown"
+    if oldest_date != "unknown" and oldest_date <= since.isoformat()[:10]:
+        return  # shallow-since set to window start; clone covers the window
     fail(
         "shallow clone is truncated: oldest commit (%s) is inside the window "
         "(window starts %s); re-clone with:\n"
         "  git clone --shallow-since=%s -- <url> <dir>"
-        % (first_date, since.isoformat()[:10], since.isoformat()[:10])
+        % (oldest_date, since.isoformat()[:10], since.isoformat()[:10])
     )
 
 
