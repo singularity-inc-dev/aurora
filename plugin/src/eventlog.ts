@@ -1,7 +1,7 @@
 import type { PluginDatabaseClient } from "@paperclipai/plugin-sdk";
 
 export type TaskOutcome = "accepted" | "rejected" | "blocked" | "failed";
-export type ChecksResult = "passed" | "failed";
+export type ChecksResult = "passed" | "failed" | "not-tested" | "no-changes";
 
 export interface TaskEventRow {
   taskId: string;

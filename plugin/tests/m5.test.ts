@@ -4,7 +4,7 @@ import type { Agent, Company, Issue, PluginApiRequestInput, PluginExecutionWorks
 import manifest from "../src/manifest.js";
 import plugin from "../src/worker.js";
 import { parseSettings } from "../src/config.js";
-import { previousDate, tickPerson } from "../src/nightrunner.js";
+import { previousDate, tickCompany, tickPerson } from "../src/handoverrunner.js";
 import { baseBranchName } from "../src/links.js";
 import { FORBIDDEN_CAPABILITIES } from "../src/routes.js";
 import { createFakeDb } from "./fakedb.js";
@@ -17,7 +17,7 @@ const baseConfig = {
   links: { baseUrl: "http://mail.test", signingSecret: { type: "secret_ref", secretId: "sig" }, expiresMinutes: 60 },
   github: { repo: "acme/app" },
   invites: { expiresMinutes: 30, agentAdapterType: "process", agentAdapterConfig: { command: "pwd" } },
-  people: [{ email: "ana@example.com", agentId: "agent-ana", timezone: "UTC", nightStartHour: 22, nightBudgetCapCents: 500 }],
+  people: [{ email: "ana@example.com", agentId: "agent-ana", timezone: "UTC", handoverStartHour: 22, handoverBudgetCapCents: 500 }],
 };
 
 function settingsOf(config: unknown) {
@@ -63,19 +63,20 @@ async function setup(config: Record<string, unknown> = baseConfig) {
     });
     db.tables.task_events.push({ task_id: id, company_id: CO, owner: "ana@example.com", agent: "agent-ana", task_kind: "task", started_at: "2026-10-21T22:05:00Z", checks_result: "passed", checks_head: heads[id], outcome: null, decision_action_id: null });
   }
-  db.tables.night_runs.push({ company_id: CO, owner: "ana@example.com", agent_id: "agent-ana", night_date: "2026-10-21", status: "finished", task_ids: JSON.stringify(["t1", "t2"]), current_index: 1, current_attempt: 1 });
+  db.tables.handover_runs.push({ company_id: CO, owner: "ana@example.com", agent_id: "agent-ana", handover_key: "2026-10-21", status: "finished", task_ids: JSON.stringify(["t1", "t2"]), current_index: 1, current_attempt: 1 });
   const tick = (now: Date) => tickPerson(h.ctx, CO, settingsOf(current), settingsOf(current).people[0]!, now);
+  const tickAll = (now: Date) => tickCompany(h.ctx, CO, settingsOf(current), now);
   await tick(MORNING);
 
-  const api = async (routeKey: string, body: Record<string, unknown> = {}) =>
-    (await plugin.definition.onApiRequest!({ routeKey, method: "POST", path: "", params: {}, query: {}, body, actor: { actorType: "user", actorId: "board" }, companyId: CO, headers: {} } as PluginApiRequestInput)) as {
+  const api = async (routeKey: string, body: Record<string, unknown> = {}, query: Record<string, string> = {}) =>
+    (await plugin.definition.onApiRequest!({ routeKey, method: "POST", path: "", params: {}, query, body, actor: { actorType: "user", actorId: "board" }, companyId: CO, headers: {} } as PluginApiRequestInput)) as {
       status: number;
       body: Record<string, any>;
     };
   const pending = async () => (await api("briefings-pending")).body.emails as Array<{ briefingId: string; to: string; subject: string; text: string }>;
   const linkIn = (text: string, kind: "Approve" | "Reject", n = 0) => [...text.matchAll(new RegExp(`${kind}: http://mail\\.test/l/(\\S+)`, "g"))][n]?.[1];
   const event = (id: string) => db.tables.task_events.find((r) => r.task_id === id)!;
-  return { h, db, api, pending, linkIn, event, heads, worktrees, tick, setConfig };
+  return { h, db, api, pending, linkIn, event, heads, worktrees, tick, tickAll, setConfig };
 }
 
 describe("Approve in GitHub mode", () => {
@@ -133,7 +134,7 @@ describe("Approve in GitHub mode", () => {
     vi.setSystemTime(NEXT_MORNING);
     await t.tick(NEXT_MORNING);
     const [next] = await t.pending();
-    expect(next!.subject).toBe("Your night of 2026-10-22: 1 ready, 0 blocked, 0 failed, 1 waiting for review");
+    expect(next!.subject).toBe("Your handover of 2026-10-22: 1 ready, 0 blocked, 0 failed, 1 waiting for review");
     expect(next!.text).toContain("WAITING FOR REVIEW (1)");
     expect(next!.text).toContain("Pull request: https://github.com/acme/app/pull/8");
     expect(next!.text.match(/^ {2}Approve: /gm)).toHaveLength(1); // only t2
@@ -212,8 +213,13 @@ describe("undecided tasks carry over", () => {
 });
 
 describe("invite links", () => {
+  // What vt-invite makes (as root) before the link: the new agent's own user and environment.
+  const agentFor = (email: string) => {
+    const n = email.split("@")[0]!;
+    return { agentEnvironmentId: `env-${n}`, agentUser: `vt-a-${n}`, checksKey: { type: "secret_ref", secretId: `ck-${n}` } };
+  };
   async function invite(t: Awaited<ReturnType<typeof setup>>, email = "cy@example.com") {
-    const res = await t.api("invite-create", { email, timezone: "Europe/Berlin" });
+    const res = await t.api("invite-create", { email, timezone: "Europe/Berlin", agent: agentFor(email) });
     expect(res.status).toBe(201);
     return { ...res.body, url: res.body.url as string, token: (res.body.url as string).split("/join/")[1]! };
   }
@@ -222,11 +228,13 @@ describe("invite links", () => {
     const t = await setup();
     const inv = await invite(t);
     expect(inv.url).toMatch(/^http:\/\/mail\.test\/join\//);
-    expect((await t.api("invite-preview", { token: inv.token })).body).toMatchObject({ ok: true, email: "cy@example.com", timezone: "Europe/Berlin" });
+    const preview = (await t.api("invite-preview", { token: inv.token })).body;
+    expect(preview).toMatchObject({ ok: true, email: "cy@example.com", timezone: "Europe/Berlin" });
+    expect(JSON.stringify(preview)).not.toContain("vt-a-cy");
     const [a, b] = await Promise.all([t.api("invite-claim", { token: inv.token }), t.api("invite-claim", { token: inv.token })]);
     expect([a.body.status, b.body.status].sort()).toEqual(["already-used", "claimed"]);
     const plan = (a.body.status === "claimed" ? a : b).body.plan;
-    expect(plan).toMatchObject({ email: "cy@example.com", timezone: "Europe/Berlin", defaults: { agentAdapterType: "process", nightBudgetCapCents: 300, maxTasksPerNight: 3 } });
+    expect(plan).toMatchObject({ email: "cy@example.com", timezone: "Europe/Berlin", defaults: { agentAdapterType: "process", handoverBudgetCapCents: 300, maxTasksPerHandover: 3 }, agent: agentFor("cy@example.com") });
     expect((await t.api("invite-preview", { token: inv.token })).body.status).toBe("already-used");
   });
 
@@ -234,12 +242,20 @@ describe("invite links", () => {
     const t = await setup();
     const inv = await invite(t);
     const { plan } = (await t.api("invite-claim", { token: inv.token })).body;
-    expect((await t.api("invite-finish", { inviteId: plan.inviteId, ok: true, agentId: "agent-cy" })).body).toEqual({ ok: false, message: "the settings row for this person was not saved" });
+    expect((await t.api("invite-finish", { inviteId: plan.inviteId, ok: true, agentId: "agent-cy" })).body).toMatchObject({ ok: false, message: "the settings row for this person was not saved" });
 
     const inv2 = await invite(t, "dee@example.com");
     const plan2 = (await t.api("invite-claim", { token: inv2.token })).body.plan;
-    t.setConfig({ ...baseConfig, people: [...baseConfig.people, { email: "dee@example.com", agentId: "agent-dee", timezone: "UTC", nightStartHour: 22, nightBudgetCapCents: 300 }] });
-    expect((await t.api("invite-finish", { inviteId: plan2.inviteId, ok: true, agentId: "agent-dee", userId: "u1" })).body).toEqual({ ok: true, message: "joined" });
+    const inv3 = await invite(t, "dee@example.com");
+    const plan3 = (await t.api("invite-claim", { token: inv3.token })).body.plan;
+    const dee = { email: "dee@example.com", agentId: "agent-dee", timezone: "UTC", handoverStartHour: 22, handoverBudgetCapCents: 300 };
+    // Bound to the agent but not to the agent's own user: not a join.
+    t.setConfig({ ...baseConfig, people: [...baseConfig.people, dee] });
+    expect((await t.api("invite-finish", { inviteId: plan2.inviteId, ok: true, agentId: "agent-dee", userId: "u1" })).body.ok).toBe(false);
+    const { agentEnvironmentId, agentUser, checksKey } = agentFor("dee@example.com");
+    t.setConfig({ ...baseConfig, people: [...baseConfig.people, { ...dee, agentEnvironmentId, agentUser, checksKey }] });
+    expect((await t.api("invite-finish", { inviteId: plan3.inviteId, ok: true, agentId: "agent-dee", userId: "u1" })).body).toEqual({ ok: true, message: "joined" });
+    plan2.inviteId = plan3.inviteId;
     expect(t.db.tables.invites.find((r) => r.id === plan2.inviteId)).toMatchObject({ state: "done", agent_id: "agent-dee" });
     // Someone already on the team cannot be invited again.
     expect((await t.api("invite-create", { email: "dee@example.com" })).body).toEqual({ ok: false, message: "this person is already on the team" });
@@ -257,12 +273,192 @@ describe("invite links", () => {
     expect(t.db.tables.invites[0]!.state).toBe("new");
   });
 
+  it("with isolation required, refuses an invite without the new agent's own user", async () => {
+    const t = await setup();
+    expect((await t.api("invite-create", { email: "z@example.com" })).body.message).toContain("needs its own system user");
+    expect((await t.api("invite-create", { email: "z@example.com", agent: { agentUser: "-x" } })).body.message).toContain("malformed");
+    t.setConfig({ ...baseConfig, people: [{ ...baseConfig.people[0], ...agentFor("ana@example.com") }] });
+    expect((await t.api("invite-create", { email: "z@example.com", agent: agentFor("ana@example.com") })).body.message).toContain("already belongs");
+  });
+
   it("needs links set up, a valid email and timezone", async () => {
     const t = await setup();
     expect((await t.api("invite-create", { email: "nope" })).body.ok).toBe(false);
     expect((await t.api("invite-create", { email: "z@example.com", timezone: "Mars/Base" })).body.ok).toBe(false);
     t.setConfig({ ...baseConfig, links: undefined });
     expect((await t.api("invite-create", { email: "z@example.com" })).body.message).toContain("links");
+  });
+  // Spec gap 27: a join that fails halfway must not use up the invite.
+  it("a failed try gives the invite back, and the next try reuses what the first one made", async () => {
+    const t = await setup();
+    const inv = await invite(t);
+    const first = (await t.api("invite-claim", { token: inv.token })).body.plan;
+    expect(first).toMatchObject({ attempt: 1, resume: { userId: null, agentId: null } });
+    // While a try runs, nobody else can use the link.
+    expect((await t.api("invite-preview", { token: inv.token })).body).toMatchObject({ status: "already-used", message: expect.stringContaining("being used right now") });
+    expect((await t.api("invite-claim", { token: inv.token })).body.status).toBe("already-used");
+    const failed = await t.api("invite-finish", { inviteId: first.inviteId, attempt: 1, ok: false, message: "failed while saving your settings: Paperclip answered 500", userId: "user-cy", agentId: "agent-cy" });
+    expect(failed.body).toEqual({ ok: true, message: "recorded", retry: true });
+    expect((await t.api("invite-preview", { token: inv.token })).body).toMatchObject({ ok: true, status: "valid" });
+    const second = (await t.api("invite-claim", { token: inv.token })).body.plan;
+    expect(second).toMatchObject({ inviteId: first.inviteId, attempt: 2, resume: { userId: "user-cy", agentId: "agent-cy" } });
+    const { agentEnvironmentId, agentUser, checksKey } = agentFor("cy@example.com");
+    t.setConfig({ ...baseConfig, people: [...baseConfig.people, { email: "cy@example.com", agentId: "agent-cy", timezone: "UTC", handoverStartHour: 22, handoverBudgetCapCents: 300, agentEnvironmentId, agentUser, checksKey }] });
+    expect((await t.api("invite-finish", { inviteId: first.inviteId, attempt: 2, ok: true, agentId: "agent-cy", userId: "user-cy" })).body).toEqual({ ok: true, message: "joined" });
+    expect(t.db.tables.invites[0]).toMatchObject({ state: "done", attempts: 2, agent_id: "agent-cy", user_id: "user-cy" });
+    expect((await t.api("invite-preview", { token: inv.token })).body.message).toBe("This invite link was already used.");
+  });
+
+  it("a try that never reports back is taken over after 10 minutes, and its late report is ignored", async () => {
+    const t = await setup();
+    const inv = await invite(t);
+    const start = Date.now();
+    const first = (await t.api("invite-claim", { token: inv.token })).body.plan;
+    vi.setSystemTime(start + 9 * 60_000);
+    expect((await t.api("invite-claim", { token: inv.token })).body.status).toBe("already-used");
+    vi.setSystemTime(start + 10 * 60_000 + 1000);
+    expect((await t.api("invite-preview", { token: inv.token })).body.status).toBe("valid");
+    const second = (await t.api("invite-claim", { token: inv.token })).body.plan;
+    expect(second.attempt).toBe(2);
+    expect((await t.api("invite-finish", { inviteId: first.inviteId, attempt: 1, ok: false, message: "late" })).body).toEqual({ ok: false, message: "this try was taken over by a newer one" });
+    expect(t.db.tables.invites[0]).toMatchObject({ state: "processing", attempts: 2 });
+  });
+
+  it("a try that saved the settings but stopped before reporting back: the next visit records the join", async () => {
+    const t = await setup();
+    const inv = await invite(t);
+    const start = Date.now();
+    await t.api("invite-claim", { token: inv.token });
+    const { agentEnvironmentId, agentUser, checksKey } = agentFor("cy@example.com");
+    t.setConfig({ ...baseConfig, people: [...baseConfig.people, { email: "cy@example.com", agentId: "agent-cy", timezone: "UTC", handoverStartHour: 22, handoverBudgetCapCents: 300, agentEnvironmentId, agentUser, checksKey }] });
+    vi.setSystemTime(start + 11 * 60_000);
+    expect((await t.api("invite-claim", { token: inv.token })).body).toEqual({ ok: false, status: "already-used", message: "You have already joined. Sign in with your email and the password you chose." });
+    expect(t.db.tables.invites[0]).toMatchObject({ state: "done", agent_id: "agent-cy" });
+    // Someone else in the settings under that email (not this invite's agent) is still refused.
+    const inv2 = await invite(t, "dee@example.com");
+    await t.api("invite-claim", { token: inv2.token });
+    t.setConfig({ ...baseConfig, people: [...baseConfig.people, { email: "dee@example.com", agentId: "agent-x", timezone: "UTC", handoverStartHour: 22, handoverBudgetCapCents: 300 }] });
+    vi.setSystemTime(start + 22 * 60_000);
+    expect((await t.api("invite-claim", { token: inv2.token })).body).toMatchObject({ ok: false, status: "refused" });
+  });
+
+  it("after five failed tries the invite is used up", async () => {
+    const t = await setup();
+    const inv = await invite(t);
+    for (let i = 1; i <= 5; i += 1) {
+      const plan = (await t.api("invite-claim", { token: inv.token })).body.plan;
+      expect(plan.attempt).toBe(i);
+      const res = await t.api("invite-finish", { inviteId: plan.inviteId, attempt: i, ok: false, message: "no" });
+      expect(res.body.retry).toBe(i < 5);
+    }
+    expect((await t.api("invite-claim", { token: inv.token })).body).toMatchObject({ status: "already-used", message: "This invite link can no longer be used. Ask for a new one." });
+  });
+});
+
+describe("approvals interrupted by a crash (spec gap 27)", () => {
+  it("GitHub mode: listed for the email service only after 15 minutes, with exactly what to publish", async () => {
+    const t = await setup();
+    const token = t.linkIn((await t.pending())[0]!.text, "Approve")!;
+    const start = Date.now();
+    expect((await t.api("link-execute", { token })).body.status).toBe("publish"); // then the email service crashed
+    expect((await t.api("links-stuck")).body.approvals).toEqual([]);
+    vi.setSystemTime(start + 15 * 60_000 + 1000);
+    const [stuck] = (await t.api("links-stuck")).body.approvals;
+    expect(stuck).toMatchObject({ taskId: "t1", publish: { repo: "acme/app", branch: "task", baseBranch: "main", expectedHead: t.heads.t1, worktree: t.worktrees.t1 } });
+    expect(stuck.publish.actionId).toBe(stuck.actionId);
+    // A shorter wait can be asked for (test beds), never under a minute.
+    vi.setSystemTime(start + 30_000);
+    expect((await t.api("links-stuck", {}, { olderThanMinutes: "0" })).body.approvals).toEqual([]);
+    vi.setSystemTime(start + 61_000);
+    expect((await t.api("links-stuck", {}, { olderThanMinutes: "1" })).body.approvals).toHaveLength(1);
+    expect((await t.api("link-recover", { actionId: stuck.actionId, olderThanMinutes: 0.01, result: "merged", number: 3, url: "https://x/3" })).body.status).toBe("refused");
+  });
+
+  it("GitHub mode: the recovered result is recorded once; the original's late report is refused", async () => {
+    const t = await setup();
+    const token = t.linkIn((await t.pending())[0]!.text, "Approve")!;
+    await t.api("link-execute", { token });
+    vi.setSystemTime(Date.now() + 16 * 60_000);
+    const [stuck] = (await t.api("links-stuck")).body.approvals;
+    const res = await t.api("link-recover", { actionId: stuck.actionId, result: "merged", number: 4, url: "https://github.com/acme/app/pull/4", mergeSha: "c".repeat(40) });
+    expect(res.body).toMatchObject({ ok: true, status: "merged" });
+    expect(t.event("t1").outcome).toBe("accepted");
+    expect((await t.h.ctx.issues.get("t1", CO))?.status).toBe("done");
+    expect((await t.api("link-recover", { actionId: stuck.actionId, result: "merged", number: 4, url: "https://x/4" })).body.status).toBe("refused");
+    expect((await t.api("link-publish-result", { token, result: "merged", number: 4, url: "https://x/4" })).body.status).toBe("refused");
+    expect((await t.api("links-stuck")).body.approvals).toEqual([]);
+    expect((await t.api("link-preview", { token })).body.message).toBe("This link was already used: merged on GitHub: pull request #4.");
+  });
+
+  it("GitHub mode: a recovery that could not publish releases the task, which comes back next morning", async () => {
+    const t = await setup();
+    const token = t.linkIn((await t.pending())[0]!.text, "Approve")!;
+    await t.api("link-execute", { token });
+    vi.setSystemTime(Date.now() + 16 * 60_000);
+    const [stuck] = (await t.api("links-stuck")).body.approvals;
+    expect((await t.api("link-recover", { actionId: stuck.actionId, result: "failed", message: "the branch changed after the email was sent" })).body.status).toBe("refused");
+    expect(t.event("t1")).toMatchObject({ outcome: null, decision_action_id: null });
+    t.db.tables.briefings.forEach((b) => (b.status = "sent"));
+    vi.setSystemTime(NEXT_MORNING);
+    await t.tick(NEXT_MORNING);
+    expect((await t.pending())[0]!.text).toContain("T1 Task t1");
+  });
+
+  it("the tick leaves GitHub approvals to the email service for a day, then releases them", async () => {
+    const t = await setup();
+    const token = t.linkIn((await t.pending())[0]!.text, "Approve")!;
+    const start = Date.now();
+    await t.api("link-execute", { token });
+    vi.setSystemTime(start + 60 * 60_000);
+    await t.tickAll(new Date(start + 60 * 60_000));
+    expect(t.event("t1").decision_action_id).not.toBeNull();
+    vi.setSystemTime(start + 25 * 60 * 60_000);
+    await t.tickAll(new Date(start + 25 * 60 * 60_000));
+    expect(t.event("t1")).toMatchObject({ outcome: null, decision_action_id: null });
+    expect(t.db.tables.link_actions.find((a) => a.state === "refused")?.result).toBe("interrupted; the task comes back in the next email");
+  });
+
+  /** As if the plugin stopped right after the click took the task's decision. */
+  function interrupt(t: Awaited<ReturnType<typeof setup>>, kind: "approve" | "reject", taskId = "t1") {
+    const action = t.db.tables.link_actions.find((a) => a.kind === kind && a.task_id === taskId)!;
+    action.state = "processing";
+    action.used_at = new Date(Date.now() - 20 * 60_000).toISOString();
+    t.event(taskId).decision_action_id = action.id;
+    return action;
+  }
+
+  it("without GitHub: the tick finishes an interrupted approval (version check included)", async () => {
+    const t = await setup({ ...baseConfig, github: undefined });
+    await t.pending();
+    const a1 = interrupt(t, "approve", "t1");
+    const a2 = interrupt(t, "approve", "t2");
+    commit(t.worktrees.t2!, "late.txt"); // t2's branch moved after the email
+    await t.tickAll(new Date());
+    expect(t.event("t1").outcome).toBe("accepted");
+    expect(sh(t.worktrees.t1!, "merge-base", "--is-ancestor", t.heads.t1!, "main")).toBe("");
+    expect(a1).toMatchObject({ state: "done" });
+    expect(t.event("t2")).toMatchObject({ outcome: null, decision_action_id: null });
+    expect(a2).toMatchObject({ state: "refused", result: "the branch changed after the email was sent" });
+    // Running the tick again changes nothing.
+    await t.tickAll(new Date());
+    expect(sh(t.worktrees.t1!, "log", "--merges", "--oneline", "main").trim().split("\n")).toHaveLength(1);
+  });
+
+  it("an interrupted Reject releases the task (its reason was lost); an already decided task only closes the link", async () => {
+    const t = await setup({ ...baseConfig, github: undefined });
+    await t.pending();
+    const r1 = interrupt(t, "reject", "t1");
+    const r2 = interrupt(t, "reject", "t2");
+    t.event("t2").outcome = "rejected";
+    const fresh = t.db.tables.link_actions.find((a) => a.kind === "approve" && a.task_id === "t1")!;
+    fresh.state = "processing"; // clicked a minute ago: still running, left alone
+    fresh.used_at = new Date(Date.now() - 60_000).toISOString();
+    await t.tickAll(new Date());
+    expect(t.event("t1")).toMatchObject({ outcome: null, decision_action_id: null });
+    expect(r1).toMatchObject({ state: "refused", result: "interrupted; the task comes back in the next email" });
+    expect(r2).toMatchObject({ state: "done", result: "rejected (recorded after an interruption)" });
+    expect(fresh.state).toBe("processing");
+    expect(fresh.result).toBeUndefined();
   });
 });
 

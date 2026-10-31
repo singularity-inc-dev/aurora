@@ -25,15 +25,24 @@ describe("classify", () => {
     expect(classify(facts())).toMatchObject({ category: "ready", approvable: true });
   });
 
+  it("NOT TESTED (no test command) is never shown as passed; the owner may still approve, knowing that", () => {
+    const c = classify(facts({ checksResult: "not-tested" }));
+    expect(c).toMatchObject({ category: "ready", approvable: true });
+    expect(c.checks).toContain("NOT TESTED");
+    expect(c.checks).not.toMatch(/passed/i);
+    expect(classify(facts({ checksResult: "not-tested", branchHead: "def5678" })).approvable).toBe(false);
+  });
+
   it.each([
     [{ outcome: "failed" }, "failed", "timed out"],
-    [{ outcome: "blocked" }, "blocked", "stopped by the night routine"],
+    [{ outcome: "blocked" }, "blocked", "stopped by the handover"],
     [{ startedAt: null }, "blocked", "not started"],
     [{ issueStatus: "in_progress" }, "blocked", "in_progress"],
     [{ worktree: null }, "blocked", "no worktree"],
     [{ clean: false }, "blocked", "uncommitted"],
     [{ checksResult: "failed" }, "blocked", "checks failed"],
     [{ checksResult: null }, "blocked", "checks not run"],
+    [{ checksResult: "no-changes" }, "blocked", "committed nothing"],
     [{ branchHead: "def5678" }, "blocked", "latest commit"],
   ] as const)("%o -> %s", (patch, category, reason) => {
     const c = classify(facts(patch as Partial<TaskFacts>));
@@ -50,9 +59,10 @@ describe("renderBriefing", () => {
     id: "b1",
     companyId: "co",
     owner: "ana@example.com",
-    nightDate: "2026-10-21",
+    handoverKey: "2026-10-21",
     status: "pending",
     notes: [],
+    conflicts: [],
     items: [
       { taskId: "t1", identifier: "VT-1", title: "Fix login", category: "ready", summary: "Fix login: 1 file changed, 2 insertions(+)", checks: "checks passed on abc1234", reason: null, approveActionId: "a1", rejectActionId: "r1" },
       { taskId: "t2", identifier: "VT-2", title: "Docs <draft>", category: "blocked", summary: "Docs <draft>", checks: "checks failed", reason: "checks failed", approveActionId: null, rejectActionId: "r2" },
@@ -62,7 +72,7 @@ describe("renderBriefing", () => {
   const email = renderBriefing(b, { baseUrl: "http://mail.test", signingSecret: { type: "secret_ref", secretId: "x" }, expiresMinutes: 60 }, secret, exp);
 
   it("has Ready, Blocked and Failed sections with counts in the subject", () => {
-    expect(email.subject).toBe("Your night of 2026-10-21: 1 ready, 1 blocked, 1 failed");
+    expect(email.subject).toBe("Your handover of 2026-10-21: 1 ready, 1 blocked, 1 failed");
     expect(email.text).toMatch(/READY \(1\)[\s\S]*BLOCKED \(1\)[\s\S]*FAILED \(1\)/);
     expect(email.to).toBe("ana@example.com");
   });
