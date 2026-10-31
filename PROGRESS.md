@@ -17,6 +17,8 @@ INTENT.md and DEVIATIONS.md are on `claude/intent-audit` ([#5](https://github.co
 | 7, 8, 9 | Plan text tells the agent to run checks; "Done when" template; rename to Aurora | Waiting until the first real run is finished (that session owns those files) |
 | 10 | The "another person's key" check runs for every kind of agent, not only Claude | Done (unit tests) |
 
+**Tests (this pass):** unit: plugin 401, email service 51. Full live run (cold start): **361 passed, 0 failed**, deployment rehearsal 109 passed. New live check in M2: a reassigned hand-off waits in backlog.
+
 **Also fixed:** an agent that committed nothing (or whose commits cancel out) used to get its unchanged base tested and PASSED, so the task showed Ready with an Approve that merges nothing. Now the checks say **NO CHANGES TO CHECK**; it is never Ready.
 
 ### Integrity (done)
