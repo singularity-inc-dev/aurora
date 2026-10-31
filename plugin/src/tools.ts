@@ -37,7 +37,7 @@ export const PROPOSE_TOOL: PluginToolDeclaration = {
   name: TOOL_PROPOSE,
   displayName: "Propose this handover's tasks",
   description:
-    "Propose up to 3 tasks for this handover. Each task is either an existing backlog ticket assigned to you (issueId) or a new one (title, description), and lists the files and folders it may change (claims). A task that reaches into another owner's files goes to that owner's agent instead. Your owner approves the plan with one tap; nothing runs before that.",
+    "Propose up to 3 tasks for this handover. Each task is either an existing backlog ticket assigned to you (issueId) or a new one (title, description), and lists the files and folders it may change (claims). A task that reaches into another owner's files goes to that owner's agent instead. A person (never an agent) approves the plan on the plan ticket; nothing runs before that.",
   parametersSchema: {
     type: "object",
     properties: {

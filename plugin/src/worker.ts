@@ -1,5 +1,5 @@
 import { definePlugin, runWorker, type PluginContext, type ToolResult } from "@paperclipai/plugin-sdk";
-import { formatReport, localRunner, refusingRunner, runChecksGate, type CommandRunner } from "./checks.js";
+import { formatReport, gateWord, localRunner, refusingRunner, runChecksGate, type CommandRunner } from "./checks.js";
 import { sandboxRunner } from "./checksandbox.js";
 import { findPersonByAgent, findPersonByEmail, parseSettings, sandboxLogin, type Person, type PluginSettings } from "./config.js";
 import { ensureTaskRow, getTaskRow, recordChecks, recordHandoff } from "./eventlog.js";
@@ -259,11 +259,11 @@ const plugin = definePlugin({
             format: "markdown",
             body,
             companyId: run.companyId,
-            changeSummary: report.passed ? "Checks passed" : "Checks failed",
+            changeSummary: `Checks ${gateWord(report.result)}`,
           });
           await ctx.issues.createComment(
             issueId,
-            `Checks gate ${report.passed ? "passed" : "FAILED"} on commit ${report.headSha ?? "unknown"}. See the document "${documentKey}".`,
+            `Checks gate ${gateWord(report.result)} on commit ${report.headSha ?? "unknown"}. See the document "${documentKey}".`,
             run.companyId,
             { authorAgentId: run.agentId },
           );
@@ -274,10 +274,10 @@ const plugin = definePlugin({
             agent: run.agentId,
             taskKind: "task",
           });
-          await recordChecks(ctx.db, issueId, report.passed ? "passed" : "failed", report.headSha);
+          await recordChecks(ctx.db, issueId, report.result, report.headSha);
           return {
-            content: `Checks ${report.passed ? "passed" : "failed"}: ${report.results.map((r) => `${r.name} ${r.status}`).join(", ")}.`,
-            data: { passed: report.passed, headSha: report.headSha, documentKey, results: report.results.map(({ output: _o, ...r }) => r) },
+            content: `Checks ${report.result === "not-tested" ? "NOT TESTED (no test command is set up)" : report.result}: ${report.results.map((r) => `${r.name} ${r.status}`).join(", ")}.`,
+            data: { passed: report.passed, result: report.result, headSha: report.headSha, documentKey, results: report.results.map(({ output: _o, ...r }) => r) },
           };
         } catch (err) {
           return refusal(err);

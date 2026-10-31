@@ -25,6 +25,14 @@ describe("classify", () => {
     expect(classify(facts())).toMatchObject({ category: "ready", approvable: true });
   });
 
+  it("NOT TESTED (no test command) is never shown as passed; the owner may still approve, knowing that", () => {
+    const c = classify(facts({ checksResult: "not-tested" }));
+    expect(c).toMatchObject({ category: "ready", approvable: true });
+    expect(c.checks).toContain("NOT TESTED");
+    expect(c.checks).not.toMatch(/passed/i);
+    expect(classify(facts({ checksResult: "not-tested", branchHead: "def5678" })).approvable).toBe(false);
+  });
+
   it.each([
     [{ outcome: "failed" }, "failed", "timed out"],
     [{ outcome: "blocked" }, "blocked", "stopped by the handover"],

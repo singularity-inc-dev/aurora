@@ -106,7 +106,7 @@ export function handoverPage(status: HandoverStatus, note: string | null = null)
     "Hand over now",
     `${note ? `<p><strong>${esc(note)}</strong></p>` : ""}<p>Signed in as <strong>${esc(status.email ?? "")}</strong>. Your scheduled handover is at ${hour}:00 (${esc(status.timezone ?? "")}).</p>
 ${open ? `<p>A handover is in progress: ${esc(STATUS_WORDS[open.status] ?? open.status)}.</p>` : form(`<p><button type="submit">Hand over now</button></p>`)}
-<p class="muted">Your agent plans up to three tasks right away; nothing runs until you approve the plan in Paperclip, and nothing shared changes until you approve each result.</p>
+<p class="muted">Your agent then chooses up to three tasks (your limit), from tickets already assigned to it or new ones it writes, and proposes them on a plan ticket in Paperclip. Nothing runs until the plan is approved there; anyone signed in to Paperclip as a person can approve it, not only you. Work starts as soon as it is approved. Nothing shared changes until you approve each result in your handback email.</p>
 ${recent ? `<h2>Recent handovers</h2><ul>${recent}</ul>` : ""}`,
   );
 }

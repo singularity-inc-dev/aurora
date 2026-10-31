@@ -6,7 +6,7 @@ import manifest from "../src/manifest.js";
 import plugin, { checksDocumentKey, HANDOFF_ORIGIN } from "../src/worker.js";
 import { TOOL_HANDOFF, TOOL_RUN_CHECKS } from "../src/tools.js";
 import { installFakeSsh } from "./fakessh.js";
-import { isolatedAgentFields, isolatedPersonFields, makeRepoWithWorktree, write } from "./helpers.js";
+import { isolatedAgentFields, isolatedPersonFields, makeRepoWithWorktree, sh, write } from "./helpers.js";
 
 const CO = "co-1";
 const person = (email: string, agentId: string) => ({
@@ -135,6 +135,8 @@ describe("run_checks", () => {
     const h = await setup({ cfg });
     const { worktree } = makeRepoWithWorktree();
     write(worktree, "src/a.ts", "export const a = 1;\n");
+    sh(worktree, "add", "-A");
+    sh(worktree, "commit", "-q", "-m", "agent's work");
     h.seed({
       executionWorkspaces: [
         { id: "ws-1", companyId: CO, projectId: "proj-1", projectWorkspaceId: null, path: worktree, cwd: worktree, repoUrl: null, baseRef: "main", branchName: "task", providerType, providerMetadata: null } as PluginExecutionWorkspaceMetadata,
@@ -175,6 +177,16 @@ describe("run_checks", () => {
     expect(res.data.passed).toBe(true);
     const doc = await h.ctx.issues.documents.get("iss-1", res.data.documentKey, CO);
     expect(doc?.body).toContain("Checks gate: PASSED");
+  });
+
+  it("with no test command, records NOT TESTED (never passed) in the report and the event log", async () => {
+    const h = await withWorkspace("git_worktree", { ...config, isolation: { required: false }, checks: {} });
+    const res = await h.executeTool<{ error?: string; content: string; data: { passed: boolean; result: string; documentKey: string } }>(TOOL_RUN_CHECKS, { issueId: "iss-1" }, run("agent-ana"));
+    expect(res.data).toMatchObject({ passed: false, result: "not-tested" });
+    expect(res.content).toContain("NOT TESTED");
+    const doc = await h.ctx.issues.documents.get("iss-1", res.data.documentKey, CO);
+    expect(doc?.body).toContain("Checks gate: NOT TESTED");
+    expect(doc?.body).not.toContain("PASSED");
   });
 
   it("refuses tickets that belong to another agent", async () => {

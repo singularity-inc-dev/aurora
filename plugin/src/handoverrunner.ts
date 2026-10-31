@@ -232,7 +232,11 @@ async function apply(
         description:
           `Propose up to ${limit} task(s) for this handover with the \`${TOOL_PROPOSE}\` tool. ` +
           `List the files and folders each task may change (its claims); a task that reaches into another owner's area or claims goes to their agent instead. ` +
-          `Nothing runs until ${person.email} approves the plan. Work starts at ${String(person.handoverStartHour).padStart(2, "0")}:00 ${person.timezone}.${waiting}`,
+          `Nothing runs until a person approves the plan on this ticket (agents cannot). ` +
+          (current.kind === "now"
+            ? "Work starts as soon as the plan is approved."
+            : `Work starts at ${String(person.handoverStartHour).padStart(2, "0")}:00 ${person.timezone}, if the plan is approved by then.`) +
+          ` ${person.email} decides each result in the handback email.${waiting}`,
         status: "todo",
         assigneeAgentId: person.agentId,
         originKind: PLAN_ORIGIN,
@@ -465,7 +469,7 @@ export async function proposeHandover(
       continuationPolicy: "none",
       payload: {
         version: 1,
-        prompt: `Approve this handover's plan for ${person.email}? Nothing shared changes until you approve each result in the handback email.`,
+        prompt: `Approve ${person.email}'s handover plan? Their agent proposed these tasks; approving lets them run. Nothing shared changes until ${person.email} approves each result in the handback email.`,
         acceptLabel: "Approve the plan",
         rejectLabel: "Not this time",
         allowDeclineReason: true,

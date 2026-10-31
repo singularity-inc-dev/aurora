@@ -2,6 +2,29 @@
 
 Updated after every phase. Newest phase first.
 
+## Integrity and wording before 2 November (31 Oct 2026, branch `claude/handover-alignment`)
+
+INTENT.md and DEVIATIONS.md are not in the repository (no branch, no history) nor in your Google Drive, so this was done from your message alone. The "rest of the Top 10 by listed order" and the "colliding with the first-real-run branch" markings need DEVIATIONS.md; nothing was guessed. FIRST-REAL-RUN.md and DEPLOY.md were left alone because the first-real-run branch owns them.
+
+### Integrity (done)
+- **The checks use only committed files.** `run_checks` fixes the worktree's current commit, then: the change size and the key scan compare that commit with the base (uncommitted and untracked files no longer count); the test and lint commands run on a fresh copy of exactly that commit (`git archive`), in the owner's sandbox on the server and in a temporary folder on test beds. An uncommitted file can no longer make tests pass, and an uncommitted change can no longer fail them. The report says "committed files only".
+- **No test command means NOT TESTED, never passed.** The gate has three results: passed, failed, not tested. With no test command, the report, the ticket comment, the event log (`checks_result = not-tested`), the CSV ("not tested") and the handback email say NOT TESTED. Such a task can still be approved (the server kit sets no test command by default, so blocking it would stop the first real run); the email says "check it yourself before you approve". Say if you want NOT TESTED to block Approve instead: it is one line.
+
+### Wording (done)
+- README: no "sub-agents" (it says they are in the spec, not built). The milestone 3 section described the old night flow ("Evening plan", `propose_tonight`, "Approve tonight's plan"); it now describes the plan approval exactly as it works, including that **any person signed in to Paperclip can approve a plan, not only its owner**, and that the agent, not the owner, chooses the tasks.
+- The plan ticket said a Hand over now would start "at HH:00"; it now says work starts as soon as the plan is approved. It and the approval prompt no longer say the owner must approve it. The Hand over now page and the agent's tool description say the same.
+- **Not changed (you can):** the GitHub repository description still says "the sub-agents it manages" (repository settings; no tool here edits it).
+
+### Phase 1 (not built, by your decision)
+- **Owner-chosen tasks:** Hand over now runs exactly the tickets the owner selected, with the owner's note on each; the tap is the approval (no separate "Approve the plan"); the agent cannot add, swap or rewrite tasks; agent proposals only when the owner asks.
+- **"Done when" checking:** a note per task with "done when"; the handback item shows met / not met / owner to verify, with evidence (test names, output), from Aurora's own run of the tests, never the agent's word.
+- **Extra schedule slots** (more than one scheduled handover a day).
+- **Owner-only plan approval** (today any person signed in to Paperclip can approve a plan).
+- A start on the first two is parked on branch `claude/handover-alignment-wip` (not for merge; its scheduled-proposal unit tests are not updated).
+
+### Tests
+Unit: plugin 394 (was 388), email service 51. Live: see the pull request.
+
 ## First real run (in progress, 31 Oct 2026)
 
 Following FIRST-REAL-RUN.md on a real server. Fixes made to unblock the run are logged here, one line each.

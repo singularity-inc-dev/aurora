@@ -24,7 +24,7 @@ export interface SheetRow {
   owner: string;
   taskId: string;
   workOrder: string;
-  checksPassed: "yes" | "no" | "";
+  checksPassed: "yes" | "no" | "not tested" | "";
   outcome: string;
   approvedWithoutEdits: "yes" | "no" | "";
   minutesToApprove: number | null;
@@ -102,7 +102,7 @@ export function computeNumbers(input: NumbersInput): Numbers {
       owner: String(e.owner),
       taskId,
       workOrder: input.titles.get(taskId) ?? taskId,
-      checksPassed: e.checks_result === "passed" ? "yes" : e.checks_result ? "no" : "",
+      checksPassed: e.checks_result === "passed" ? "yes" : e.checks_result === "not-tested" ? "not tested" : e.checks_result ? "no" : "",
       outcome,
       approvedWithoutEdits: outcome === "accepted" ? "yes" : outcome === "undecided" ? "" : "no",
       minutesToApprove: minutesOf(taskId),

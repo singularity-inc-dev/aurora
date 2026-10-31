@@ -51,7 +51,8 @@ export interface Classified {
  * committed, and the checks passed on exactly the commit the owner will approve.
  */
 export function classify(f: TaskFacts): Classified {
-  const checks = f.checksResult ? `checks ${f.checksResult}${f.checksHead ? ` on ${f.checksHead.slice(0, 7)}` : ""}` : "checks not run";
+  const result = f.checksResult === "not-tested" ? "NOT TESTED (no test command is set up; check it yourself before you approve)" : f.checksResult;
+  const checks = f.checksResult ? `checks ${result}${f.checksHead ? ` on ${f.checksHead.slice(0, 7)}` : ""}` : "checks not run";
   const no = (category: Category, reason: string): Classified => ({ category, checks, reason, approvable: false });
   if (f.outcome === "failed") return no("failed", "timed out after its retries");
   if (f.outcome === "blocked") return no("blocked", "stopped by the handover");
@@ -59,7 +60,8 @@ export function classify(f: TaskFacts): Classified {
   if (f.issueStatus && !["done", "in_review"].includes(f.issueStatus)) return no("blocked", `agent left it ${f.issueStatus}`);
   if (!f.worktree || !f.branchHead) return no("blocked", "no worktree for this task");
   if (!f.clean) return no("blocked", "uncommitted changes in the worktree");
-  if (f.checksResult !== "passed") return no("blocked", f.checksResult === "failed" ? "checks failed" : "checks not run");
+  // "not-tested": nothing failed but no test command ran. The owner may still approve, and is told it was not tested.
+  if (f.checksResult !== "passed" && f.checksResult !== "not-tested") return no("blocked", f.checksResult === "failed" ? "checks failed" : "checks not run");
   if (f.checksHead !== f.branchHead) return no("blocked", "checks did not run on the latest commit");
   return { category: "ready", checks, reason: null, approvable: true };
 }
@@ -101,7 +103,7 @@ function readyBranch(f: TaskFacts, owner: string): ReadyBranch | null {
 /** Every other task in the company that is ready and waiting for its owner's decision. */
 async function otherReadyBranches(ctx: PluginContext, companyId: string, except: readonly string[]): Promise<ReadyBranch[]> {
   const rows = await ctx.db.query(
-    `SELECT * FROM "${ctx.db.namespace}".task_events WHERE company_id = $1 AND outcome IS NULL AND decision_action_id IS NULL AND checks_result = 'passed'`,
+    `SELECT * FROM "${ctx.db.namespace}".task_events WHERE company_id = $1 AND outcome IS NULL AND decision_action_id IS NULL AND checks_result IN ('passed', 'not-tested')`,
     [companyId],
   );
   const result: ReadyBranch[] = [];

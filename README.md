@@ -1,5 +1,5 @@
 # aurora
-A platform where every person’s AI agent, and the sub-agents it manages, work together with other people’s agents on one shared project. Each agent handles the repetitive, long-running and logical work on its own, assists with the creative work, and keeps going while its owner is offline. Nothing ships until its owner approves.
+A platform where each person on a team directs their own AI agent on one shared project. At each handover (on a schedule, or when they tap Hand over now) their agent works on its own; the work comes back as a short list of decisions, and nothing shared changes until its owner approves it. (Master agents that run their own sub-agents are in the spec, not built.)
 
 **Putting it on a real server for the first time:** follow [FIRST-REAL-RUN.md](FIRST-REAL-RUN.md) (it uses [DEPLOY.md](DEPLOY.md) for the server). Emergency stop on the server: `sudo vt-stop`.
 
@@ -68,7 +68,7 @@ Milestone 2 adds three things:
 
 - **Board-only hand-offs:** an agent passes work to a teammate only through the `handoff_to_teammate` tool, which creates or reassigns a board ticket.
 - **One worktree and branch per task:** Paperclip gives each ticket its own copy of the code on a `vt/...` branch.
-- **The checks gate:** the `run_checks` tool runs tests, lint, a change-size limit and a key scan in the ticket's worktree, and attaches the report to the ticket.
+- **The checks gate:** the `run_checks` tool runs tests, lint, a change-size limit and a key scan on the ticket's latest commit, and attaches the report to the ticket. Only committed files are checked (a fresh copy of the commit, never the working folder), because a commit is what the owner approves. With no test command set up, the result is **NOT TESTED**, never "passed"; the handback email says so next to Approve.
 
 **A. Automatic tests**
 
@@ -84,7 +84,7 @@ Expected: all unit tests pass, then `Result: … passed, 0 failed` (50 checks at
 1. Turn on per-task worktrees. This is an experimental Paperclip setting: Instance settings → Experimental → "Isolated workspaces". Through the API: `PATCH /api/instance/settings/experimental {"enableIsolatedWorkspaces": true}`.
 2. In your project, set the execution workspace policy to isolated workspaces using git worktrees, with the project workspace pointing at your repo.
 3. For each person's agent, turn off "can create agents" and "can create skills". Then open the plugin's `route-audit` view: it should say `ok: true`. Until it does, the plugin refuses hand-offs and checks for that agent.
-4. In the plugin settings, fill in the "Checks gate" box: test command, lint command, and the maximum changed lines per task (default 400).
+4. In the plugin settings, fill in the "Checks gate" box: test command, lint command, and the maximum changed lines per task (default 400). Without a test command every task is reported as NOT TESTED.
 
 **C. Updating the plugin**
 
@@ -97,13 +97,17 @@ npx -y paperclipai@2026.1012.0 plugin install "$(pwd)/plugin"
 
 ## How to test milestone 3
 
-Milestone 3 adds the evening plan and the night routine:
+Milestone 3 added the plan and the routine. Its names were "evening plan" and "night"; they are now "plan" and "handover". This is exactly how a plan is approved today:
 
-- **Evening plan:** a set number of hours before each person's night (default 2), the plugin opens an "Evening plan" ticket for their agent. The agent proposes up to 3 tasks with `propose_tonight`, either new ones or backlog tickets it already has, such as hand-offs.
-- **One-tap approval:** the owner approves or rejects the plan with one tap on the plan ticket. Only humans can answer; agents are refused.
-- **Night routine:** one per person per night. At their night start it releases the approved tasks one at a time.
-  - **Time-outs and retries:** a task that runs past the time limit is retried, by default once, then marked failed.
-  - **Budget cap:** spending is counted from the start of the night; at the person's night budget cap the routine stops and the running task is blocked.
+1. **A plan opens.** Either a set number of hours before the person's scheduled handover hour (default 2), or at once when they tap **Hand over now** (`/vt/handover` on the server). The plugin opens a ticket "Plan for <email>'s handover ..." assigned to their agent. It lists the backlog tickets already assigned to that agent.
+2. **The agent proposes.** The agent, not the owner, chooses the tasks: up to the person's "Max tasks per handover" (1 to 3), each an existing backlog ticket or a new task it writes, each with the files it may change (its claims), using the `propose_handover` tool. The owner cannot pick the tickets on the page yet.
+3. **The pre-handover check.** A task that reaches into another owner's CODEOWNERS area, or into files another owner's open task claimed first, goes to that owner's agent instead. The plan lists those as at most three questions.
+4. **One tap.** The plan ticket shows **Approve the plan** and **Not this time**. Any person signed in to Paperclip can answer it, not only the owner (Paperclip's human-only rule); agents are refused. Owner-only approval exists only for the handback email links.
+5. **Work.** After approval, a Hand over now starts its first task at once; a scheduled handover starts at the person's handover hour. Tasks run one at a time, each in its own worktree.
+   - **Time-outs and retries:** a task that runs past the time limit is retried, by default once, then marked failed.
+   - **Budget cap:** spending is counted from the start of the handover; at the person's budget cap the handover stops, the running task is blocked and the agent is paused.
+6. **No answer, or "Not this time".** A plan not approved before the handover ends (default 8 hours) expires and nothing runs. "Not this time" records the reason and runs nothing.
+7. **Handback.** Each finished task comes back in the owner's handback email with Approve (Ready tasks only) and Reject links that only that owner's email receives.
 
 **A. Automatic tests**
 
@@ -116,11 +120,11 @@ SLOW=1 scripts/integration-test.sh     # also waits out a real 5-minute time-out
 **B. Try it by hand in your own Paperclip**
 
 1. Do the milestone 2 setup first (isolated workspaces, project policy, locked agents).
-2. In the plugin settings, open the "Night routine" box and set "Project for night tasks" to your project's id.
-3. Set your own night start hour to 1 to 2 hours from now. Within 5 minutes an "Evening plan for you@…" ticket appears, assigned to your agent.
-4. When your agent has proposed, the plan ticket shows "Approve tonight's plan" and "Not tonight". Tap one.
-5. At your night start, the first task moves to "todo" and your agent starts on it in its own worktree.
-6. The plugin's `night-status` view shows each person's night: proposing, awaiting approval, approved, running, finished, budget stopped, rejected or expired.
+2. In the plugin settings, open the "Handovers" box and set the project id.
+3. Set your own handover start hour to 1 to 2 hours from now. Within 5 minutes a "Plan for you@…'s handover of …" ticket appears, assigned to your agent.
+4. When your agent has proposed, the plan ticket shows "Approve the plan" and "Not this time". Tap one.
+5. At your handover hour, the first task moves to "todo" and your agent starts on it in its own worktree.
+6. The plugin's `handover-status` view shows each handover: proposing, awaiting approval, approved, running, finished, budget stopped, rejected or expired.
 
 ## How to test milestone 4
 

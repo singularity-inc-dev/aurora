@@ -1,9 +1,8 @@
 import { spawn } from "node:child_process";
-import { lstat, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { SandboxLogin } from "./config.js";
-import { git } from "./git.js";
 import { redact } from "./secretscan.js";
 import type { CommandOutcome, CommandRunner } from "./checks.js";
 
@@ -32,45 +31,34 @@ export function sandboxSshArgs(sb: SandboxLogin, keyFile: string, knownHostsFile
   ];
 }
 
-/** Files of the worktree that go to the sandbox: tracked and untracked-but-not-ignored, never .git. */
-export async function worktreeFiles(cwd: string): Promise<string[]> {
-  const out = await git(cwd, ["ls-files", "-z", "--cached", "--others", "--exclude-standard"]);
-  const files: string[] = [];
-  for (const f of new Set(out.split("\0").filter(Boolean))) {
-    if (f === ".git" || f.startsWith(".git/")) continue;
-    // Deleted files are still listed by --cached; symlinks are copied as links (tar never follows them).
-    if (await lstat(path.join(cwd, f)).then(() => true, () => false)) files.push(f);
-  }
-  return files;
-}
-
 /**
- * Run check commands as the task owner's own agent user: a copy of the worktree
- * goes over ssh as a tar stream, deploy/bin/vt-check-runner unpacks it into a
+ * Run check commands as the task owner's own agent user: the files of the
+ * checked commit (`git archive`, committed files only, never the working folder)
+ * go over ssh as a tar stream, deploy/bin/vt-check-runner unpacks it into a
  * fresh folder, runs the command with a clean environment and deletes the folder.
  * The command never runs as Paperclip's own user (code an agent wrote cannot read
  * Paperclip's data or secrets) nor as another owner's.
  */
 export function sandboxRunner(cwd: string, sb: SandboxLogin, privateKey: string): CommandRunner {
-  return async (command, timeoutSeconds) => {
+  return async (command, timeoutSeconds, commit) => {
+    if (!/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(commit)) return { exitCode: null, timedOut: false, output: "not a commit id" };
     const dir = await mkdtemp(path.join(tmpdir(), "vt-sandbox-"));
     try {
       const keyFile = path.join(dir, "key");
       const knownHostsFile = path.join(dir, "known_hosts");
       await writeFile(keyFile, privateKey.endsWith("\n") ? privateKey : `${privateKey}\n`, { mode: 0o600 });
       await writeFile(knownHostsFile, `${sb.knownHosts}\n`, { mode: 0o600 });
-      const files = await worktreeFiles(cwd);
-      return await runOverSsh(cwd, files, sandboxSshArgs(sb, keyFile, knownHostsFile), `${timeoutSeconds} ${command}`, timeoutSeconds);
+      return await runOverSsh(cwd, commit, sandboxSshArgs(sb, keyFile, knownHostsFile), `${timeoutSeconds} ${command}`, timeoutSeconds);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
   };
 }
 
-function runOverSsh(cwd: string, files: string[], sshArgs: string[], remote: string, timeoutSeconds: number): Promise<CommandOutcome> {
+function runOverSsh(cwd: string, commit: string, sshArgs: string[], remote: string, timeoutSeconds: number): Promise<CommandOutcome> {
   return new Promise((resolve) => {
     const env = { PATH: process.env.PATH ?? "", LANG: "C.UTF-8" };
-    const tar = spawn("tar", ["--null", "--no-recursion", "-T", "-", "-c", "-f", "-"], { cwd, env, stdio: ["pipe", "pipe", "ignore"] });
+    const tar = spawn("git", ["archive", "--format=tar", commit], { cwd, env, stdio: ["ignore", "pipe", "ignore"] });
     const ssh = spawn("ssh", [...sshArgs, remote], { env, stdio: ["pipe", "pipe", "pipe"] });
     let output = "";
     const collect = (chunk: Buffer) => {
@@ -79,7 +67,6 @@ function runOverSsh(cwd: string, files: string[], sshArgs: string[], remote: str
     ssh.stdout.on("data", collect);
     ssh.stderr.on("data", collect);
     tar.stdout.pipe(ssh.stdin);
-    tar.stdin.end(files.map((f) => `${f}\0`).join(""));
     // A broken pipe (the sandbox refused or closed early) must not crash the worker.
     ssh.stdin.on("error", () => undefined);
     tar.stdout.on("error", () => undefined);
