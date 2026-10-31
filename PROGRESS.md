@@ -2,6 +2,16 @@
 
 Updated after every phase. Newest phase first.
 
+## First real run (in progress, 31 Oct 2026)
+
+Following FIRST-REAL-RUN.md on a real server. Fixes made to unblock the run are logged here, one line each.
+
+### Gaps found (not fixed: no new features before the run)
+- **The agent still proposes the work.** The product is "the owner writes the task and hands it over". The closest path that exists is: the owner writes a ticket in Backlog for their agent, taps **Hand over now**, the agent proposes it on the plan ticket (`propose_handover` by `issueId`), and the owner taps **Approve the plan**. The agent could propose a different or extra task. The owner sees exactly what was proposed and nothing runs without that tap, but there is no "hand over exactly these tickets" button that skips the agent's proposal.
+
+### Fixes
+- DEPLOY.md step 6 and README: the server checks out `main` (was `claude/eloquent-hopper-9m2e04`), so `vt-update` follows the merged code.
+
 ## Numbers for applications (a16z speedrun Sun 1 Nov, YC Mon 2 Nov)
 
 These numbers come from `tools/collision-audit` run on five public GitHub repos (56-day window, Oct 2026). Reports are in `tools/collision-audit/audit-results/`.

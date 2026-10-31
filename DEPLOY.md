@@ -125,10 +125,10 @@ git clone https://github.com/singularity-inc-dev/aurora.git /opt/vision-and-tom/
 When asked for **Username**, type your GitHub user name. When asked for **Password**, paste the `vt-download` token. Nothing shows while you paste; that's normal. Then:
 
 ```
-cd /opt/vision-and-tom/app && git checkout claude/eloquent-hopper-9m2e04
+cd /opt/vision-and-tom/app && git checkout main
 ```
 
-(Use `main` instead once this work has been merged there.)
+(The server follows `main`; `vt-update` brings it to the newest `main`.)
 
 ### ☐ 7. Fill in the settings file
 
