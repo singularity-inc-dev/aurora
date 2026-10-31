@@ -42,6 +42,7 @@ describe("classify", () => {
     [{ clean: false }, "blocked", "uncommitted"],
     [{ checksResult: "failed" }, "blocked", "checks failed"],
     [{ checksResult: null }, "blocked", "checks not run"],
+    [{ checksResult: "no-changes" }, "blocked", "committed nothing"],
     [{ branchHead: "def5678" }, "blocked", "latest commit"],
   ] as const)("%o -> %s", (patch, category, reason) => {
     const c = classify(facts(patch as Partial<TaskFacts>));

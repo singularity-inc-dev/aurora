@@ -276,7 +276,7 @@ const plugin = definePlugin({
           });
           await recordChecks(ctx.db, issueId, report.result, report.headSha);
           return {
-            content: `Checks ${report.result === "not-tested" ? "NOT TESTED (no test command is set up)" : report.result}: ${report.results.map((r) => `${r.name} ${r.status}`).join(", ")}.`,
+            content: `Checks ${report.result === "passed" || report.result === "failed" ? report.result : gateWord(report.result)}: ${report.results.map((r) => `${r.name} ${r.status}`).join(", ")}.`,
             data: { passed: report.passed, result: report.result, headSha: report.headSha, documentKey, results: report.results.map(({ output: _o, ...r }) => r) },
           };
         } catch (err) {

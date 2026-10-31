@@ -11,8 +11,10 @@ export type CheckStatus = "passed" | "failed" | "skipped";
 /**
  * The gate's verdict. "not-tested": nothing failed, but no test command is set
  * up, so nothing was tested. It is never reported as "passed".
+ * "no-changes": the commit changes nothing against the base (the agent committed
+ * nothing), so there is nothing to check or approve. Never "passed", never Ready.
  */
-export type GateResult = "passed" | "failed" | "not-tested";
+export type GateResult = "passed" | "failed" | "not-tested" | "no-changes";
 
 export interface CheckResult {
   name: "diff-size" | "secret-scan" | "tests" | "lint";
@@ -186,6 +188,16 @@ export async function runChecksGate(
   }
 
   const stats = await diffStats(cwd, base, head);
+  if (stats.files.length === 0) {
+    // Testing the unchanged base would "pass" work that does not exist.
+    return {
+      passed: false,
+      result: "no-changes",
+      headSha: head,
+      baseRef,
+      results: [{ name: "diff-size", status: "failed", summary: `no changes to check: nothing is committed beyond ${baseRef}` }],
+    };
+  }
   const changed = stats.addedLines + stats.removedLines;
   results.push({
     name: "diff-size",
@@ -231,5 +243,6 @@ export function formatReport(report: ChecksReport): string {
 
 /** How a gate result reads to people. "Not tested" never reads as a pass. */
 export function gateWord(result: GateResult): string {
+  if (result === "no-changes") return "NO CHANGES TO CHECK (nothing was committed)";
   return result === "passed" ? "PASSED" : result === "failed" ? "FAILED" : "NOT TESTED (no test command is set up)";
 }

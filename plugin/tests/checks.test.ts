@@ -55,8 +55,26 @@ describe("runChecksGate", () => {
     expect(formatReport(report)).toContain("committed files only");
   });
 
+  it("an agent that committed nothing gets NO CHANGES TO CHECK, never a pass on the unchanged base", async () => {
+    const { worktree } = makeRepoWithWorktree();
+    write(worktree, "src/uncommitted.ts", "export {};\n");
+    const report = await runChecksGate(worktree, "main", { ...base, testCommand: "true", lintCommand: "true" });
+    expect(report).toMatchObject({ passed: false, result: "no-changes" });
+    expect(report.results).toEqual([expect.objectContaining({ status: "failed", summary: "no changes to check: nothing is committed beyond main" })]);
+    expect(formatReport(report)).toContain("# Checks gate: NO CHANGES TO CHECK");
+    // Commits that add and then remove the same change also leave nothing to check.
+    sh(worktree, "clean", "-fdq");
+    write(worktree, "tmp.txt", "x\n");
+    commit(worktree, "add");
+    sh(worktree, "rm", "-q", "tmp.txt");
+    sh(worktree, "commit", "-q", "-m", "remove");
+    expect((await runChecksGate(worktree, "main", { ...base, testCommand: "true" })).result).toBe("no-changes");
+  });
+
   it("an uncommitted file cannot make failing tests pass", async () => {
     const { worktree } = makeRepoWithWorktree();
+    write(worktree, "src/a.ts", "export const a = 1;\n");
+    commit(worktree);
     write(worktree, "PROOF", "untracked\n");
     const report = await runChecksGate(worktree, "main", { ...base, testCommand: "test -f PROOF" });
     expect(byName(report, "tests").status).toBe("failed");
@@ -94,6 +112,8 @@ describe("runChecksGate", () => {
 
   it("runs test and lint commands and reports failures", async () => {
     const { worktree } = makeRepoWithWorktree();
+    write(worktree, "src/a.ts", "export const a = 1;\n");
+    commit(worktree);
     const report = await runChecksGate(worktree, "main", { ...base, testCommand: "true", lintCommand: "echo lint broke; exit 3" });
     expect(byName(report, "tests").status).toBe("passed");
     expect(byName(report, "lint")).toMatchObject({ status: "failed", summary: "exit code 3" });

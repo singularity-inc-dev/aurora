@@ -51,7 +51,8 @@ export interface Classified {
  * committed, and the checks passed on exactly the commit the owner will approve.
  */
 export function classify(f: TaskFacts): Classified {
-  const result = f.checksResult === "not-tested" ? "NOT TESTED (no test command is set up; check it yourself before you approve)" : f.checksResult;
+  const result =
+    f.checksResult === "not-tested" ? "NOT TESTED (no test command is set up; check it yourself before you approve)" : f.checksResult === "no-changes" ? "found no changes" : f.checksResult;
   const checks = f.checksResult ? `checks ${result}${f.checksHead ? ` on ${f.checksHead.slice(0, 7)}` : ""}` : "checks not run";
   const no = (category: Category, reason: string): Classified => ({ category, checks, reason, approvable: false });
   if (f.outcome === "failed") return no("failed", "timed out after its retries");
@@ -61,6 +62,7 @@ export function classify(f: TaskFacts): Classified {
   if (!f.worktree || !f.branchHead) return no("blocked", "no worktree for this task");
   if (!f.clean) return no("blocked", "uncommitted changes in the worktree");
   // "not-tested": nothing failed but no test command ran. The owner may still approve, and is told it was not tested.
+  if (f.checksResult === "no-changes") return no("blocked", "no changes to check: the agent committed nothing");
   if (f.checksResult !== "passed" && f.checksResult !== "not-tested") return no("blocked", f.checksResult === "failed" ? "checks failed" : "checks not run");
   if (f.checksHead !== f.branchHead) return no("blocked", "checks did not run on the latest commit");
   return { category: "ready", checks, reason: null, approvable: true };
