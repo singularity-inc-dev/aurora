@@ -66,6 +66,6 @@ export function planHandoff(settings: PluginSettings, fromAgentId: string, req: 
 }
 
 export function handoffDescription(plan: HandoffPlan & { kind: "create" }): string {
-  const header = `Handed off by ${plan.from.email}'s agent to ${plan.to.email}'s agent via Vision and Tom.`;
+  const header = `Handed off by ${plan.from.email}'s agent to ${plan.to.email}'s agent via Aurora.`;
   return plan.description ? `${header}\n\n${plan.description}` : header;
 }

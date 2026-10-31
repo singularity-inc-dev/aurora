@@ -109,7 +109,7 @@ git clone -q --bare "$R/app-src" "$R/app-origin.git"
 git clone -q "$R/app-origin.git" "$VT_ROOT/opt/vision-and-tom/app"
 sed -e "s/^DOMAIN=.*/DOMAIN=$DOMAIN/" -e "s/^ACME_EMAIL=.*/ACME_EMAIL=owner@example.com/" \
   -e "s/^SMTP_HOST=.*/SMTP_HOST=127.0.0.1/" -e "s/^SMTP_PORT=.*/SMTP_PORT=1028/" -e "s/^SMTP_USER=.*/SMTP_USER=owner@example.com/" \
-  -e 's/^MAIL_FROM=.*/MAIL_FROM="Vision and Tom <owner@example.com>"/' -e "s#^GITHUB_REPO=.*#GITHUB_REPO=acme/app#" \
+  -e 's/^MAIL_FROM=.*/MAIL_FROM="Aurora <owner@example.com>"/' -e "s#^GITHUB_REPO=.*#GITHUB_REPO=acme/app#" \
   -e 's/^COMPANY_NAME=.*/COMPANY_NAME="Rehearsal team"/' "$ROOT/deploy/install.conf.example" >"$VT_ROOT/etc/vision-and-tom/install.conf"
 cat >>"$VT_ROOT/etc/vision-and-tom/install.conf" <<CONF
 # Rehearsal only: other ports, a local certificate authority, local stand-ins.

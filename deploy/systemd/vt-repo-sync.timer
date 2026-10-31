@@ -1,5 +1,5 @@
 [Unit]
-Description=Vision and Tom: update the project's main branch every 10 minutes
+Description=Aurora: update the project's main branch every 10 minutes
 
 [Timer]
 OnBootSec=2min

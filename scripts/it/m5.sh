@@ -94,7 +94,7 @@ echo "-- the email service: SMTP login + STARTTLS, GitHub token from a file"
 m5_es_start() { # [minutes after which an unanswered approval counts as interrupted]
   (cd "$ROOT/email-service" && unset GITHUB_TOKEN && PAPERCLIP_URL="$BASE" VT_COMPANY_ID="$M5_CID" LISTEN_PORT=3298 POLL_SECONDS=2 \
     SMTP_HOST=127.0.0.1 SMTP_PORT=$M5_SMTP_PORT SMTP_REQUIRE_TLS=true SMTP_CA_FILE="$M5_DIR/smtp.crt" \
-    SMTP_USER=briefing@example.com SMTP_PASS_FILE="$M5_DIR/secrets/smtp-pass" MAIL_FROM="Vision and Tom <briefing@example.com>" \
+    SMTP_USER=briefing@example.com SMTP_PASS_FILE="$M5_DIR/secrets/smtp-pass" MAIL_FROM="Aurora <briefing@example.com>" \
     GITHUB_TOKEN_FILE="$M5_GH_TOKEN_FILE" GITHUB_API_URL="$M5_GH/api" GITHUB_GIT_URL="$M5_GH" GITHUB_SYNC_MINUTES=1 GITHUB_STUCK_MINUTES="${1:-15}" \
     STATE_DIR="$M5_DIR/email-state" exec node src/main.ts) >>"$LOG_DIR/email-service-m5.log" 2>&1 &
   M5_ES_PID=$!

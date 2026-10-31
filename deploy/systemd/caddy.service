@@ -1,5 +1,5 @@
 [Unit]
-Description=Caddy (HTTPS for Vision and Tom)
+Description=Caddy (HTTPS for Aurora)
 After=network-online.target
 Wants=network-online.target
 

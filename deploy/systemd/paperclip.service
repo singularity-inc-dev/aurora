@@ -1,5 +1,5 @@
 [Unit]
-Description=Paperclip (Vision and Tom), authenticated mode
+Description=Paperclip (Aurora), authenticated mode
 After=network-online.target postgresql.service
 Wants=network-online.target
 Requires=postgresql.service

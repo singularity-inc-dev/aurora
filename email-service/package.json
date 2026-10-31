@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Sends the Vision and Tom morning briefing and serves its Approve / Reject link pages.",
+  "description": "Sends the Aurora handback email and serves its Approve / Reject link pages.",
   "scripts": {
     "start": "node --env-file-if-exists=.env src/main.ts",
     "typecheck": "tsc --noEmit",

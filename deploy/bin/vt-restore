@@ -16,7 +16,7 @@ file="$(readlink -f "$1")"
 [ -f "$file" ] || die "no such backup: $1"
 work=$(mktemp -d "$BACKUPS/.restore-XXXXXX")
 trap 'rm -rf "$work"' EXIT
-tar -C "$work" -xf "$file" MANIFEST paperclip.dump files.tar.gz || die "this file is not a Vision and Tom backup"
+tar -C "$work" -xf "$file" MANIFEST paperclip.dump files.tar.gz || die "this file is not a Aurora backup"
 (cd "$work" && sed -n '/  /p' MANIFEST | sha256sum -c --quiet -) || die "the backup is damaged (checksums do not match); nothing was changed"
 say "Backup checked: $(sed -n 's/^created=//p' "$work/MANIFEST")"
 

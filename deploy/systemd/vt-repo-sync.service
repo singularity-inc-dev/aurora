@@ -1,5 +1,5 @@
 [Unit]
-Description=Vision and Tom: bring the project's main branch up to date from GitHub
+Description=Aurora: bring the project's main branch up to date from GitHub
 After=network-online.target
 
 [Service]

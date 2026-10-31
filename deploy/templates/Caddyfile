@@ -1,4 +1,4 @@
-# Vision and Tom: one web address, HTTPS certificates from Let's Encrypt (automatic).
+# Aurora: one web address, HTTPS certificates from Let's Encrypt (automatic).
 # Values come from /etc/vision-and-tom/caddy.env.
 {
 	email {$VT_ACME_EMAIL}

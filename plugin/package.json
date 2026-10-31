@@ -3,7 +3,7 @@
   "version": "0.10.0",
   "private": true,
   "type": "module",
-  "description": "Vision and Tom: one personal night agent per teammate, approve-before-merge.",
+  "description": "Aurora: each owner directs their own agent; nothing shared changes until its owner approves.",
   "paperclipPlugin": {
     "manifest": "./dist/manifest.js",
     "worker": "./dist/worker.js"

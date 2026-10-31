@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Vision and Tom server installer (Ubuntu 24.04). Safe to run again: it only
+# Aurora server installer (Ubuntu 24.04). Safe to run again: it only
 # adds what is missing and never deletes data or overwrites your secrets.
 #
 #   sudo bash /opt/vision-and-tom/app/deploy/install.sh

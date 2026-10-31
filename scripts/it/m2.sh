@@ -116,7 +116,7 @@ M2_H=$(echo "$API_BODY" | json 'd.result.data && d.result.data.issueId || ""')
 check "hand-off creates a ticket" "$([ -n "$M2_H" ] && echo yes || echo no)" "yes"
 api GET "/api/issues/$M2_H"
 check "ticket is assigned to the teammate's agent" "$(echo "$API_BODY" | json "d.assigneeAgentId==='$M2_B'")" "true"
-check "ticket is tagged as a Vision and Tom hand-off" "$(echo "$API_BODY" | json 'd.originKind')" "plugin:$PLUGIN_KEY:handoff"
+check "ticket is tagged as a Aurora hand-off" "$(echo "$API_BODY" | json 'd.originKind')" "plugin:$PLUGIN_KEY:handoff"
 check "ticket asks for its own worktree" "$(echo "$API_BODY" | json 'd.executionWorkspaceSettings.workspaceStrategy.type')" "git_worktree"
 check "teammate's agent does not start before approval (backlog)" "$(echo "$API_BODY" | json 'd.status')" "backlog"
 m2_event "$M2_H"

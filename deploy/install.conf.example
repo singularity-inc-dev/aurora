@@ -1,4 +1,4 @@
-# Vision and Tom server settings. Copy to /etc/vision-and-tom/install.conf and fill in.
+# Aurora server settings. Copy to /etc/vision-and-tom/install.conf and fill in.
 # No passwords or tokens here: those go in with `sudo vt-secret ...` (see DEPLOY.md).
 
 # The web address people use, without https:// (its DNS must point at this server).
@@ -12,7 +12,7 @@ SMTP_HOST=smtp.example.com
 SMTP_PORT=587
 SMTP_USER=you@example.com
 # Who the morning emails come from (usually the same address as SMTP_USER).
-MAIL_FROM="Vision and Tom <you@example.com>"
+MAIL_FROM="Aurora <you@example.com>"
 
 # The GitHub repository the agents work on, as owner/name.
 GITHUB_REPO=your-org/your-repo

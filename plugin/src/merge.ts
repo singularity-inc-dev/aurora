@@ -17,7 +17,7 @@ export interface MergeRequest {
   message: string;
 }
 
-const IDENTITY = ["-c", "user.name=Vision and Tom", "-c", "user.email=vision-and-tom@localhost"];
+const IDENTITY = ["-c", "user.name=Aurora", "-c", "user.email=aurora@localhost"];
 
 async function revParse(cwd: string, ref: string): Promise<string | null> {
   try {

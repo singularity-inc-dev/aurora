@@ -148,7 +148,7 @@ export async function executeLink(
     await setDecisionOutcome(ctx.db, claims.t, "rejected", reason);
     if (issue) {
       await ctx.issues.update(claims.t, { status: "cancelled" }, companyId);
-      await ctx.issues.createComment(claims.t, `Rejected by ${claims.o} from the morning email: ${reason}`, companyId);
+      await ctx.issues.createComment(claims.t, `Rejected by ${claims.o} from the handback email: ${reason}`, companyId);
     }
     await finishAction(ctx.db, action.id, "done", `rejected: ${reason}`);
     return { ok: true, status: "rejected", message: `${name} was rejected. Reason saved.` };
@@ -184,7 +184,7 @@ function publishRequestFor(repo: string, action: LinkAction, name: string, title
     baseBranch: baseBranchName(action.baseRef ?? ""),
     expectedHead: action.expectedHead ?? "",
     title: `${name}: ${title ?? "handover task"}`,
-    body: `Approved by ${action.owner} from the Vision and Tom morning email.\n\nTask ${name}, branch ${action.branch} at ${action.expectedHead}.`,
+    body: `Approved by ${action.owner} from the Aurora handback email.\n\nTask ${name}, branch ${action.branch} at ${action.expectedHead}.`,
   };
 }
 
@@ -200,7 +200,7 @@ async function mergeLocally(ctx: PluginContext, companyId: string, action: LinkA
     branch: action.branch,
     baseRef: action.baseRef,
     expectedHead: action.expectedHead,
-    message: `Merge ${name}: ${title ?? ""} (approved by ${action.owner} via Vision and Tom)`,
+    message: `Merge ${name}: ${title ?? ""} (approved by ${action.owner} via Aurora)`,
   });
   if (!merge.ok) {
     await releaseDecision(ctx.db, action.taskId, action.id);
@@ -212,7 +212,7 @@ async function mergeLocally(ctx: PluginContext, companyId: string, action: LinkA
     await ctx.issues.update(action.taskId, { status: "done" }, companyId);
     await ctx.issues.createComment(
       action.taskId,
-      `Approved by ${action.owner} from the morning email. Merged ${action.branch} at ${action.expectedHead.slice(0, 7)} into ${action.baseRef} (${merge.mergeSha.slice(0, 7)}).`,
+      `Approved by ${action.owner} from the handback email. Merged ${action.branch} at ${action.expectedHead.slice(0, 7)} into ${action.baseRef} (${merge.mergeSha.slice(0, 7)}).`,
       companyId,
     );
   }
@@ -261,7 +261,7 @@ async function applyPublishResult(ctx: PluginContext, companyId: string, action:
     await setDecisionOutcome(ctx.db, taskId, "accepted", null);
     if (issue) {
       await ctx.issues.update(taskId, { status: "done" }, companyId);
-      await ctx.issues.createComment(taskId, `Approved by ${owner} from the morning email. Pull request #${number} was squash-merged on GitHub: ${url}`, companyId);
+      await ctx.issues.createComment(taskId, `Approved by ${owner} from the handback email. Pull request #${number} was squash-merged on GitHub: ${url}`, companyId);
     }
     await finishAction(ctx.db, action.id, "done", `merged on GitHub: pull request #${number}`);
     return { ok: true, status: "merged", message: `${name} was merged on GitHub (pull request #${number}).` };

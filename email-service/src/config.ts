@@ -92,7 +92,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
       pass: secret(env, "SMTP_PASS"),
       caFile: env.SMTP_CA_FILE?.trim() || null,
     },
-    mailFrom: env.MAIL_FROM?.trim() || "Vision and Tom <briefing@localhost>",
+    mailFrom: env.MAIL_FROM?.trim() || "Aurora <briefing@localhost>",
     listenHost: env.LISTEN_HOST?.trim() || "127.0.0.1",
     listenPort: int("LISTEN_PORT", 3299),
     pollSeconds: int("POLL_SECONDS", 60),

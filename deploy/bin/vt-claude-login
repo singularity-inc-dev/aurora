@@ -4,7 +4,7 @@
 # user (vt-model-access writes, in that user's root-owned key file):
 #   restrict,pty,command="/opt/vision-and-tom/app/deploy/bin/vt-claude-login" ssh-ed25519 ... vt-owner-login
 # The owner runs:  ssh -t <agent user>@<your domain>        (or add: status / logout)
-# Claude Code stores the login in that user's own home; Vision and Tom never reads,
+# Claude Code stores the login in that user's own home; Aurora never reads,
 # copies or logs it, and no other user (Paperclip's included) can read it.
 set -u
 CLAUDE="/opt/vision-and-tom/agents/node_modules/.bin/claude"
@@ -13,7 +13,7 @@ export DISABLE_AUTOUPDATER=1
 case "${SSH_ORIGINAL_COMMAND:-login}" in
   login)
     echo "Signing in Claude Code for your agent ($(id -un)) with your own Claude subscription."
-    echo "This is Claude Code's own sign-in; Vision and Tom never sees it."
+    echo "This is Claude Code's own sign-in; Aurora never sees it."
     exec "$CLAUDE" auth login --claudeai ;;
   status) exec "$CLAUDE" auth status --text ;;
   logout) exec "$CLAUDE" auth logout ;;

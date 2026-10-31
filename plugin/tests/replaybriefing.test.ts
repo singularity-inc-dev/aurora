@@ -149,7 +149,7 @@ describe("conflicts in the email", () => {
   it("a notice says a teammate's work conflicts", () => {
     const e = render({ ...base, owner: "bo@example.com", handoverKey: `${CONFLICT_NOTICE_PREFIX}2026-10-24T07:00:00` });
     expect(e.subject).toBe("A teammate's new work conflicts with yours (1): 1 ready for your decision");
-    expect(e.text.split("\n")[0]).toBe("Vision and Tom test-merged a teammate's new work with yours and found a conflict. Your tasks below are still waiting for your decision.");
+    expect(e.text.split("\n")[0]).toBe("Aurora test-merged a teammate's new work with yours and found a conflict. Your tasks below are still waiting for your decision.");
   });
 
   it("emails without conflicts look as before", () => {

@@ -7,10 +7,10 @@ const manifest: PaperclipPluginManifestV1 = {
   id: PLUGIN_ID,
   apiVersion: 1,
   version: "0.10.0",
-  displayName: "Vision and Tom",
+  displayName: "Aurora",
   description:
     "One personal agent per teammate, working at each handover (scheduled or Hand over now). Agents use only their owner's keys, hand off via board tickets, and change nothing shared until the owner approves.",
-  author: "Vision and Tom",
+  author: "Aurora",
   categories: ["automation"],
   // Each capability is needed by a feature; routes.ts lists the ones we must never ask for.
   capabilities: [

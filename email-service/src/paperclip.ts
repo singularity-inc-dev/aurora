@@ -225,7 +225,7 @@ export function boardApi(cfg: ServiceConfig, fetchImpl: typeof fetch = fetch): B
     if (pluginId) return pluginId;
     const list = await req<Array<{ id: string; pluginKey?: string; key?: string }>>("GET", "/api/plugins");
     const found = list.find((p) => (p.pluginKey ?? p.key) === cfg.plugin);
-    if (!found) throw new PaperclipError(404, "the Vision and Tom plugin is not installed");
+    if (!found) throw new PaperclipError(404, "the Aurora plugin is not installed");
     pluginId = found.id;
     return pluginId;
   }

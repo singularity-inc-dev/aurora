@@ -20,7 +20,7 @@ const out = (kind, text) => process.stdout.write(`${kind} ${text}\n`);
 
 const plugin = ((await call("GET", "/api/plugins")).data ?? []).find((p) => (p.pluginKey ?? p.key) === PLUGIN_KEY);
 if (!plugin) {
-  out("PROBLEM", "the Vision and Tom plugin is not installed (run: vt-setup)");
+  out("PROBLEM", "the Aurora plugin is not installed (run: vt-setup)");
   process.exit(0);
 }
 const config = (await call("GET", `/api/plugins/${plugin.id}/config?companyId=${cid}`)).data?.configJson ?? {};

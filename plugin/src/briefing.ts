@@ -262,7 +262,7 @@ export function renderBriefing(b: Briefing, links: LinkSettings, secret: string,
     ? `A teammate's new work conflicts with yours${conflictCount ? ` (${conflicts.length})` : ""}: ${count("ready")} ready for your decision`
     : `Your handover of ${describeKey(b.handoverKey)}: ${count("ready")} ready, ${count("blocked")} blocked, ${count("failed")} failed${waiting ? `, ${waiting} waiting for review` : ""}${conflictCount}`;
   const intro = notice
-    ? "Vision and Tom test-merged a teammate's new work with yours and found a conflict. Your tasks below are still waiting for your decision."
+    ? "Aurora test-merged a teammate's new work with yours and found a conflict. Your tasks below are still waiting for your decision."
     : `Here is what your agent did in your handover of ${describeKey(b.handoverKey)}.`;
 
   const text: string[] = [intro, ""];

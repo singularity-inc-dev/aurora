@@ -1,5 +1,5 @@
 [Unit]
-Description=Vision and Tom daily backup at 03:30 (server time)
+Description=Aurora daily backup at 03:30 (server time)
 
 [Timer]
 OnCalendar=*-*-* 03:30:00

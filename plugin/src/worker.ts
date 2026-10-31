@@ -205,7 +205,7 @@ const plugin = definePlugin({
             const note = plan.note ? `\n\n${plan.note}` : "";
             await ctx.issues.createComment(
               plan.issueId,
-              `Handed off by ${plan.from.email}'s agent to ${plan.to.email}'s agent via Vision and Tom.${note}`,
+              `Handed off by ${plan.from.email}'s agent to ${plan.to.email}'s agent via Aurora.${note}`,
               run.companyId,
               { authorAgentId: run.agentId },
             );
@@ -308,7 +308,7 @@ const plugin = definePlugin({
 
     switch (input.routeKey) {
       case "briefings-pending": {
-        if (!settings.links) return { status: 409, body: { error: "morning email links are not configured" } };
+        if (!settings.links) return { status: 409, body: { error: "handback email links are not configured" } };
         const pending = await listPendingBriefings(ctx.db, input.companyId);
         if (pending.length === 0) return { status: 200, body: { emails: [] } };
         // Paperclip allows 30 secret reads a minute per company, so only read the key when there is mail to sign.

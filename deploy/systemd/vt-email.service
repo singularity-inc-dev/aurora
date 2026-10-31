@@ -1,5 +1,5 @@
 [Unit]
-Description=Vision and Tom email service (morning emails, Approve/Reject and invite pages)
+Description=Aurora email service (morning emails, Approve/Reject and invite pages)
 After=network-online.target paperclip.service
 Wants=network-online.target
 

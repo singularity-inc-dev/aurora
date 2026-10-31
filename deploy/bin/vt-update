@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Update a running server to another version of Vision and Tom, without a full reinstall.
+# Update a running server to another version of Aurora, without a full reinstall.
 #   sudo vt-update            the newest version of the branch the server runs
 #   sudo vt-update NAME       a branch, a tag, or a commit (also to go back to an earlier version)
 #   sudo vt-update NAME --now even while a handover is running (agents may be stopped mid-task)

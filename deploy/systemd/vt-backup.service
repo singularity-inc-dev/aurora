@@ -1,5 +1,5 @@
 [Unit]
-Description=Vision and Tom daily backup
+Description=Aurora daily backup
 After=postgresql.service
 
 [Service]

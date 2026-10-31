@@ -92,7 +92,7 @@ export async function createInvite(
   input: { email?: unknown; timezone?: unknown; agent?: unknown },
   now: Date,
 ): Promise<InviteCreated> {
-  if (!settings.links) return { ok: false, message: "set up the morning email links first (they sign invites too)" };
+  if (!settings.links) return { ok: false, message: "set up the handback email links first (they sign invites too)" };
   const email = typeof input.email === "string" ? input.email.trim().toLowerCase() : "";
   if (!EMAIL_RE.test(email)) return { ok: false, message: "a valid email is required" };
   if (findPersonByEmail(settings, email)) return { ok: false, message: "this person is already on the team" };
