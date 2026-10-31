@@ -27,6 +27,8 @@ const settings = (() => {
 })();
 const [ana, bo] = settings.people as [Person, Person];
 
+const LONG = Array.from({ length: 10 }, (_, i) => `line ${i + 1}`);
+
 /** A repository with one worktree per task branch, as Paperclip makes them. */
 function repo() {
   const dir = mkdtempSync(path.join(tmpdir(), "vt-replay-brief-"));
@@ -35,6 +37,7 @@ function repo() {
   g(dir, "config", "user.email", "t@example.com");
   g(dir, "config", "user.name", "t");
   writeFileSync(path.join(dir, "greeting.txt"), "hello\n");
+  writeFileSync(path.join(dir, "long.txt"), LONG.join("\n") + "\n");
   g(dir, "add", ".");
   g(dir, "commit", "-qm", "base");
   const task = (name: string, file: string, content: string) => {
@@ -113,6 +116,22 @@ describe("merge replay at handback", () => {
     expect(bos!.conflicts).toMatchObject([{ taskId: "b1", withOwner: "ana@example.com" }]);
   });
 
+  it("lists a file both owners changed even when git merges it cleanly, and announces nothing", async () => {
+    const t = await setup();
+    await t.ready("b1", bo, "long.txt", [...LONG.slice(0, 9), "BO"].join("\n") + "\n");
+    await t.ready("a1", ana, "long.txt", ["ANA", ...LONG.slice(1)].join("\n") + "\n");
+    const anas = await t.brief(ana, "2026-10-24", ["a1"]);
+    expect(anas!.conflicts).toEqual([]);
+    expect(anas!.shared).toEqual([
+      { taskId: "a1", title: "Task a1", identifier: "A1", withOwner: "bo@example.com", withTaskId: "b1", withTitle: "Task b1", withIdentifier: "B1", files: ["long.txt"] },
+    ]);
+    expect(JSON.parse(String(t.db.tables.briefings.at(-1)!.shared_files))).toHaveLength(1);
+    // Not a conflict: nothing recorded as one, no notice to Bo, nothing merged.
+    expect(t.db.tables.conflicts).toEqual([]);
+    expect(t.db.tables.briefings).toHaveLength(1);
+    expect(t.db.tables.task_events.every((r) => r.outcome == null)).toBe(true);
+  });
+
   it("also replays an owner's own ready branches against each other", async () => {
     const t = await setup();
     await t.ready("a1", ana, "greeting.txt", "one\n");
@@ -150,6 +169,15 @@ describe("conflicts in the email", () => {
     const e = render({ ...base, owner: "bo@example.com", handoverKey: `${CONFLICT_NOTICE_PREFIX}2026-10-24T07:00:00` });
     expect(e.subject).toBe("A teammate's new work conflicts with yours (1): 1 ready for your decision");
     expect(e.text.split("\n")[0]).toBe("Vision and Tom test-merged a teammate's new work with yours and found a conflict. Your tasks below are still waiting for your decision.");
+  });
+
+  it("lists files also changed in other ready work, even with no conflict; the subject counts only conflicts", () => {
+    const e = render({ ...base, conflicts: [], shared: [{ ...base.conflicts[0]!, files: ["src/app.ts", "README.md"] }] });
+    expect(e.subject).toBe("Your handover of 2026-10-24: 1 ready, 0 blocked, 0 failed");
+    expect(e.text).toContain("ALSO CHANGED IN OTHER READY WORK, NO CONFLICT (1)");
+    expect(e.text).toContain('- Your "Greeting" (A1) and bo@example.com\'s "Banner" (B1) both change src/app.ts, README.md.');
+    expect(e.text).toContain("Git merges them cleanly, but nothing has checked that they still work together.");
+    expect(e.html).toContain("<h2>Also changed in other ready work, no conflict (1)</h2>");
   });
 
   it("emails without conflicts look as before", () => {

@@ -27,7 +27,7 @@ const KEYS: Record<TableName, string[]> = {
 const DEFAULTS: Record<TableName, Row> = {
   task_events: {},
   handover_runs: { task_ids: "[]", current_index: -1, current_attempt: 0, kind: "scheduled" },
-  briefings: { status: "pending", items: "[]", notes: "[]", conflicts: "[]" },
+  briefings: { status: "pending", items: "[]", notes: "[]", conflicts: "[]", shared_files: "[]" },
   link_actions: { state: "new" },
   invites: { state: "new", attempts: 0 },
   pull_requests: { state: "waiting" },

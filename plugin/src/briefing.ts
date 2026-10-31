@@ -206,16 +206,29 @@ export async function createBriefing(
   if (!run && items.length === 0) return null;
   const notes = run?.status === "budget_stopped" ? ["Your agent hit this handover's budget cap and was paused. Resume it in Paperclip when you are ready."] : [];
 
-  const { conflicts: found, unreplayed } = mine.length ? await replayPairs(mine, await otherReadyBranches(ctx, companyId, taskIds)) : { conflicts: [], unreplayed: [] };
+  const { conflicts: found, shared: sharedPairs, unreplayed } = mine.length
+    ? await replayPairs(mine, await otherReadyBranches(ctx, companyId, taskIds))
+    : { conflicts: [], shared: [], unreplayed: [] };
   const conflicts: BriefingConflict[] = [];
+  const asSeen = (c: (typeof found)[number]): BriefingConflict => ({
+    taskId: c.a.taskId,
+    title: c.a.title,
+    identifier: c.a.identifier,
+    withOwner: c.b.owner,
+    withTaskId: c.b.taskId,
+    withTitle: c.b.title,
+    withIdentifier: c.b.identifier,
+    files: c.files,
+  });
+  const shared = sharedPairs.map(asSeen);
   const tell = new Map<string, string[]>();
   for (const c of found) {
-    conflicts.push({ taskId: c.a.taskId, title: c.a.title, identifier: c.a.identifier, withOwner: c.b.owner, withTaskId: c.b.taskId, withTitle: c.b.title, withIdentifier: c.b.identifier, files: c.files });
+    conflicts.push(asSeen(c));
     if ((await recordConflict(ctx.db, companyId, c)) && c.b.owner !== person.email) tell.set(c.b.owner, [...(tell.get(c.b.owner) ?? []), c.b.taskId]);
   }
   if (unreplayed.length) notes.push(`${unreplayed.length} pair(s) of ready tasks could not be test-merged against each other, so they may still conflict.`);
 
-  const briefing = { id: briefingId, companyId, owner: person.email, handoverKey, items, notes, conflicts };
+  const briefing = { id: briefingId, companyId, owner: person.email, handoverKey, items, notes, conflicts, shared };
   if (!(await insertBriefing(ctx.db, briefing))) return null;
   for (const a of actions) await insertAction(ctx.db, a);
 
@@ -286,6 +299,20 @@ export function renderBriefing(b: Briefing, links: LinkSettings, secret: string,
         c.withOwner === b.owner
           ? "Nothing has been merged. Approve one; the other then has to be redone on top of it."
           : `Nothing has been merged. Agree with ${c.withOwner} which goes first: approve that one, and the other has to be redone on top of it.`;
+      text.push(`- ${line}`, `  ${advice}`, "");
+      html.push(`<li><p><strong>${esc(line)}</strong><br>${esc(advice)}</p></li>`);
+    }
+    html.push("</ul>");
+  }
+  const shared = b.shared ?? [];
+  if (shared.length) {
+    const name = (title: string, id: string | null) => `"${title}"${id ? ` (${id})` : ""}`;
+    text.push(`ALSO CHANGED IN OTHER READY WORK, NO CONFLICT (${shared.length})`);
+    html.push(`<h2>Also changed in other ready work, no conflict (${shared.length})</h2><ul>`);
+    for (const c of shared) {
+      const other = c.withOwner === b.owner ? `your ${name(c.withTitle, c.withIdentifier)}` : `${c.withOwner}'s ${name(c.withTitle, c.withIdentifier)}`;
+      const line = `Your ${name(c.title, c.identifier)} and ${other} both change ${c.files.join(", ")}.`;
+      const advice = "Git merges them cleanly, but nothing has checked that they still work together. Nothing has been merged.";
       text.push(`- ${line}`, `  ${advice}`, "");
       html.push(`<li><p><strong>${esc(line)}</strong><br>${esc(advice)}</p></li>`);
     }

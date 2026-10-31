@@ -50,13 +50,42 @@ export interface Conflict {
   files: string[];
 }
 
+/** Two branches that git merges cleanly but that both change the same files. */
+export type SharedFiles = Conflict;
+
+const SHA = /^[0-9a-f]{40}([0-9a-f]{24})?$/;
+const gitOut = async (cwd: string, args: string[]) =>
+  (await run("git", args, { cwd, maxBuffer: 16 * 1024 * 1024, env: { PATH: process.env.PATH ?? "" } })).stdout;
+
+/**
+ * Files both branches change since they split (their merge base), whether or not
+ * git can merge them. Read-only, like the replay. Null when git cannot tell.
+ */
+export async function changedByBoth(cwd: string, a: string, b: string): Promise<string[] | null> {
+  if (!SHA.test(a) || !SHA.test(b)) return null;
+  try {
+    const base = (await gitOut(cwd, ["merge-base", a, b])).trim();
+    if (!SHA.test(base)) return null;
+    const files = async (head: string) => new Set((await gitOut(cwd, ["diff", "--name-only", "-z", "--no-renames", base, head, "--"])).split("\0").filter(Boolean));
+    const [fa, fb] = await Promise.all([files(a), files(b)]);
+    return [...fa].filter((f) => fb.has(f)).sort();
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Test-merge each of `mine` against the rest of `mine` and against every one of
- * `others`. Returns the pairs that conflict, and the pairs that could not be
+ * `others`. Returns the pairs that conflict, the pairs that merge cleanly but
+ * both change the same files (`shared`), and the pairs that could not be
  * replayed (for example, branches of different repositories).
  */
-export async function replayPairs(mine: readonly ReadyBranch[], others: readonly ReadyBranch[]): Promise<{ conflicts: Conflict[]; unreplayed: Array<[ReadyBranch, ReadyBranch]> }> {
+export async function replayPairs(
+  mine: readonly ReadyBranch[],
+  others: readonly ReadyBranch[],
+): Promise<{ conflicts: Conflict[]; shared: SharedFiles[]; unreplayed: Array<[ReadyBranch, ReadyBranch]> }> {
   const conflicts: Conflict[] = [];
+  const shared: SharedFiles[] = [];
   const unreplayed: Array<[ReadyBranch, ReadyBranch]> = [];
   const pairs: Array<[ReadyBranch, ReadyBranch]> = [];
   mine.forEach((a, i) => {
@@ -68,6 +97,11 @@ export async function replayPairs(mine: readonly ReadyBranch[], others: readonly
     const r = await replayMerge(a.cwd, a.head, b.head);
     if (r.status === "conflict") conflicts.push({ a, b, files: r.files });
     else if (r.status === "error") unreplayed.push([a, b]);
+    else {
+      const both = await changedByBoth(a.cwd, a.head, b.head);
+      if (both === null) unreplayed.push([a, b]);
+      else if (both.length > 0) shared.push({ a, b, files: both });
+    }
   }
-  return { conflicts, unreplayed };
+  return { conflicts, shared, unreplayed };
 }

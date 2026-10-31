@@ -48,6 +48,8 @@ export interface Briefing {
   items: BriefingItem[];
   notes: string[];
   conflicts: BriefingConflict[];
+  /** Files this owner's ready work and other ready work both change, though git merges them cleanly. */
+  shared?: BriefingConflict[];
 }
 
 export interface LinkAction {
@@ -86,6 +88,7 @@ function toBriefing(r: Record<string, unknown>): Briefing {
     items: json<BriefingItem[]>(r.items, []),
     notes: json<string[]>(r.notes, []),
     conflicts: json<BriefingConflict[]>(r.conflicts ?? "[]", []),
+    shared: json<BriefingConflict[]>(r.shared_files ?? "[]", []),
   };
 }
 
@@ -128,8 +131,8 @@ export async function listPendingBriefings(db: Db, companyId: string): Promise<B
 /** Insert the briefing; returns false if one already exists for this person and handover. */
 export async function insertBriefing(db: Db, b: Omit<Briefing, "status">): Promise<boolean> {
   const { rowCount } = await db.execute(
-    `INSERT INTO ${t(db, "briefings")} (id, company_id, owner, handover_key, items, notes, conflicts) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (company_id, owner, handover_key) DO NOTHING`,
-    [b.id, b.companyId, b.owner, b.handoverKey, JSON.stringify(b.items), JSON.stringify(b.notes), JSON.stringify(b.conflicts)],
+    `INSERT INTO ${t(db, "briefings")} (id, company_id, owner, handover_key, items, notes, conflicts, shared_files) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (company_id, owner, handover_key) DO NOTHING`,
+    [b.id, b.companyId, b.owner, b.handoverKey, JSON.stringify(b.items), JSON.stringify(b.notes), JSON.stringify(b.conflicts), JSON.stringify(b.shared ?? [])],
   );
   return rowCount === 1;
 }
