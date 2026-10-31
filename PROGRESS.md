@@ -71,12 +71,16 @@ People (≥3c) = distinct non-bot authors with ≥3 commits in the window (2026-
 **What they don't prove:**
 - **Not an agent conflict rate.** This measures human commit patterns, not agent behaviour. Agents can produce more changes per day across more files, and they don't naturally wait for each other the way humans do.
 - **Not a semantic conflict rate.** A git merge that succeeds cleanly can still break behaviour. The tool counts only textual git conflicts.
-- **Why 0% here vs 33% in the spec.** The spec's 33% rate came from a separate replay: 20 open-source product teams, 2–10 people each, 22 Oct 2025 – 22 Oct 2026 (see Sources in `aurora-v1-spec.md`). Independent pairs conflicted 34 of 103 times (33%, 95% interval 25%–43%). These five repos had 0 conflicts across 88 clean replays. Hypothesis: the repos in this batch may differ from the spec's set in team structure or review process; or the truncated clones (ruff, biome, zed — see note above) may have missed events. The pilot will measure whether internal product teams differ.
+- **Why 0% here vs 33% in the spec.** The 33% is an earlier, unreproduced estimate (see "33% figure — cannot be reproduced" below). The spec said it came from a separate replay: 20 open-source product teams, 2–10 people each, 22 Oct 2025 – 22 Oct 2026 (see Sources in `aurora-v1-spec.md`). Independent pairs conflicted 34 of 103 times (33%, 95% interval 25%–43%). These five repos had 0 conflicts across 88 clean replays. Hypothesis: the repos in this batch may differ from the spec's set in team structure or review process; or the truncated clones (ruff, biome, zed — see note above) may have missed events. The pilot will measure whether internal product teams differ.
 - **Not a causal claim.** These numbers say the collision surface exists; they don't prove Aurora reduces it. That proof requires a pilot.
 
 ### Exact wording you may use in applications
 
-> "We built a history-based collision audit tool and ran it on five active public repos (ruff, biome, trpc, pydantic, zed) over a 56-day window ending Oct 2026. Teams of 21–67 active contributors (≥3 commits each) had 2–6 same-day file-overlap opportunities per week. Across 88 clean replays, the textual conflict rate was 0%. A separate replay of 20 open-source product teams (2–10 people each, Oct 2025 – Oct 2026) found a 33% textual conflict rate — cited in the spec with a 95% interval of 25%–43%. We don't yet know whether internal product teams differ; the pilot will measure it."
+**Replaced on 31 October** (DEVIATIONS.md, A9 and Top 10 #1). The earlier wording here quoted the five-repo batch above (three of its clones were truncated) and a 33% rate from a 20-team replay that cannot be reproduced (see below). Use only the corrected, measured run:
+
+> "We built a read-only collision audit. In a corrected run on 7 public repositories (56 days, September to October 2026, 8 to 47 regular contributors each), same-day edits to the same file happened 0.4 to 36 times a week. 1 of 104 clean replays of those overlaps conflicted in git. This measures people, not agents; the pilot will measure agents."
+
+Do not cite 33% (or "1.5 to 4 conflicts a week"). If it must be mentioned, call it "an earlier, unreproduced estimate".
 
 **Do not say:** "Aurora reduces conflicts by X%" (unproven), "agents would hit X conflicts" (not measured), or use these counts as evidence of an agent problem without the qualifying sentence about human vs agent rates.
 

@@ -28,7 +28,7 @@ When several people's agents build one product at once, they collide, mostly at 
 | Review load | Review time up 91% on teams that use AI heavily; agent pull requests drew 16.5 comments against 12.4 | [Faros AI](https://www.faros.ai/blog/ai-software-engineering); [Microsoft](https://devblogs.microsoft.com/dotnet/ten-months-with-cca-in-dotnet-runtime/) |
 | Agent work accepted | 67.9% against 87.1% for Microsoft's engineers | [Microsoft](https://devblogs.microsoft.com/dotnet/ten-months-with-cca-in-dotnet-runtime/) |
 | Human approvals | 97% of Claude Code's permission prompts approved; 14% of dangerous commands caught | [The New Stack](https://thenewstack.io/claude-code-auto-mode/) |
-| Our replay of 20 teams' git history | Same-day changes to the same file conflicted 33% of the time in teams of 2 to 10; teams of 7 to 10 would hit about 1.5 to 4 conflicts a week if each agent does three days of work per handover | Own measurement (Sources) |
+| An earlier replay of 20 teams' git history (**unreproduced estimate**) | Same-day changes to the same file conflicted 33% of the time in teams of 2 to 10; teams of 7 to 10 would hit about 1.5 to 4 conflicts a week if each agent does three days of work per handover. The 20 teams were never recorded, so this cannot be reproduced; our corrected, measured run found 1 conflict in 104 clean replays (PROGRESS.md) | Earlier estimate (Sources) |
 
 The replay uses people's history, not agents, so the pilot measures the real rate.
 
@@ -229,8 +229,8 @@ The first customers are teams of 5 to 10 people who each run their own agents on
 | Solo builder | Handover planner, gauge and decision inbox; no Hardy, because there are no other owners | Entry tier only. Claude Code, Codex, Cursor's cloud agents and GitHub's scheduled agent runs already cover much of this. |
 | 2 to 3 people | Contracts, claims and Hardy | Insurance: about one conflict a month in our replay |
 | 5 to 6 people | The same | Depends on the team: a median of about one conflict every two weeks, one team in five far more |
-| 7 to 10 people | The same | First customers: about 1.5 to 4 conflicts a week |
-| 11 or more | The same, plus admin and policy features | Later: pairs conflict less often (24% against 33%), but there are more owners to coordinate |
+| 7 to 10 people | The same | First customers: about 1.5 to 4 conflicts a week (unreproduced estimate) |
+| 11 or more | The same, plus admin and policy features | Later: pairs conflict less often (24% against 33%, unreproduced estimate), but there are more owners to coordinate |
 
 The replay numbers come from people's git history and assume each person's agent does about three days of their work per handover. A team doesn't need to mix agent tools: pairs from different tools conflict more, but they were only 0.5% of the pairs of agent pull requests open at the same time, December 2024 to July 2025 ([Xu et al.](https://arxiv.org/html/2607.04697v2)).
 
@@ -463,9 +463,9 @@ Twenty-seven gaps remain on 24 October: nine to settle this week, seven to build
 
 ## Sources
 
-### Own measurement
+### Earlier estimate (not reproducible)
 
-Git history of 20 open-source product teams, 22 October 2025 to 22 October 2026. Same-day changes by two people to the same code file were replayed with git's own merge as if done in parallel; 439 clean replays were kept. Independent pairs conflicted 34 of 103 times (33%, 95% interval 25% to 43%) in teams of 2 to 10, and 20 of 82 (24%) in teams of 11 to 30. Re-run on 23 October 2026 with the collision-audit scripts.
+Git history of 20 open-source product teams, 22 October 2025 to 22 October 2026. Same-day changes by two people to the same code file were replayed with git's own merge as if done in parallel; 439 clean replays were kept. Independent pairs conflicted 34 of 103 times (33%, 95% interval 25% to 43%) in teams of 2 to 10, and 20 of 82 (24%) in teams of 11 to 30. **Not reproducible** (corrected 31 October 2026): the 20 teams were never recorded, and the collision-audit scripts first existed on 25 October 2026, so this was not re-run with them. Treat it as an earlier, unreproduced estimate. The measured numbers are the corrected run in PROGRESS.md: 7 public repositories, 56 days, 1 conflict in 104 clean replays.
 
 ### Research and surveys
 
