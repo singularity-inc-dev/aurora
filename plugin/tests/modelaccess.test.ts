@@ -49,9 +49,20 @@ describe("auditModelAccess", () => {
     expect(auditModelAccess(s, s.people[0]!, agent({ GITHUB_TOKEN: ref("g1") })).join()).toContain("another person's key");
   });
 
-  it("applies only to Claude agents (other tools bring their own access)", () => {
+  it("the Claude rules apply only to Claude agents (other tools bring their own access)", () => {
     const s = settingsWith([{}]);
     expect(auditModelAccess(s, s.people[0]!, agent({}, "codex_local"))).toEqual([]);
+    expect(auditModelAccess(s, s.people[0]!, agent({ OPENAI_API_KEY: ref("own") }, "codex_local"))).toEqual([]);
+  });
+
+  it("another person's key is refused for every kind of agent, not only Claude", () => {
+    const s = settingsWith([{}, { secrets: [{ name: "openai", secret: ref("o1") }, { name: "github", secret: ref("g1") }] }]);
+    for (const adapter of ["codex_local", "cursor", "gemini_local", "opencode_local"]) {
+      const problems = auditModelAccess(s, s.people[0]!, agent({ OPENAI_API_KEY: ref("o1"), GITHUB_TOKEN: ref("g1") }, adapter));
+      expect(problems).toEqual(["the agent's OPENAI_API_KEY is another person's key", "the agent's GITHUB_TOKEN is another person's key"]);
+    }
+    // A Claude agent with no access chosen yet is told both things.
+    expect(auditModelAccess(s, s.people[0]!, agent({ GITHUB_TOKEN: ref("g1") })).join()).toMatch(/no Claude access chosen.*another person's key/);
   });
 });
 

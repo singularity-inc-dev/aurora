@@ -17,10 +17,12 @@ const secretIdOf = (binding: unknown): string | null => {
  * The audit reads only the agent's settings; it never reads a login or a key.
  */
 export function auditModelAccess(settings: PluginSettings, person: Person, agent: AgentIsolationFacts): string[] {
-  if (agent.adapterType !== "claude_local") return [];
-  if (!person.modelAccess) return ["no Claude access chosen for this person yet: their own subscription or API key (vt-model-access)"];
   const env = (agent.adapterConfig?.env ?? {}) as Record<string, unknown>;
-  const problems: string[] = [];
+  // For every kind of agent (Claude, Codex, Cursor, ...): no setting may point at another person's key.
+  const problems = othersKeyProblems(settings, person, env);
+  // The Claude access rules below apply to Claude agents; other tools bring their own access.
+  if (agent.adapterType !== "claude_local") return problems;
+  if (!person.modelAccess) return ["no Claude access chosen for this person yet: their own subscription or API key (vt-model-access)", ...problems];
   const given = CLAUDE_AUTH_ENV.filter((k) => env[k] !== undefined && env[k] !== null && env[k] !== "");
   if (person.modelAccess === "subscription") {
     if (given.length > 0) problems.push(`the agent is given ${given.join(", ")}, but this owner uses their own subscription (signed in on their agent)`);
@@ -32,8 +34,13 @@ export function auditModelAccess(settings: PluginSettings, person: Person, agent
     const others = given.filter((k) => k !== "ANTHROPIC_API_KEY");
     if (others.length > 0) problems.push(`the agent is also given ${others.join(", ")}`);
   }
-  // No setting of the agent may point at another person's key.
+  return problems;
+}
+
+/** Settings of the agent that point at a key listed under another person. */
+function othersKeyProblems(settings: PluginSettings, person: Person, env: Record<string, unknown>): string[] {
   const othersKeys = new Set(settings.people.filter((p) => p.email !== person.email).flatMap((p) => p.secrets.map((s) => s.secret.secretId)));
+  const problems: string[] = [];
   for (const [name, binding] of Object.entries(env)) {
     const id = secretIdOf(binding);
     if (id && othersKeys.has(id)) problems.push(`the agent's ${name} is another person's key`);
