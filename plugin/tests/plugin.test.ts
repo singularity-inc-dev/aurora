@@ -94,13 +94,14 @@ describe("handoff_to_teammate", () => {
     const h = await setup();
     h.seed({
       issues: [
-        { id: "iss-ana", companyId: CO, title: "mine", assigneeAgentId: "agent-ana" } as unknown as Issue,
+        { id: "iss-ana", companyId: CO, title: "mine", assigneeAgentId: "agent-ana", status: "todo" } as unknown as Issue,
         { id: "iss-bo", companyId: CO, title: "theirs", assigneeAgentId: "agent-bo" } as unknown as Issue,
       ],
     });
     const ok = await h.executeTool<{ error?: string }>(TOOL_HANDOFF, { toEmail: "bo@example.com", issueId: "iss-ana" }, run("agent-ana"));
     expect(ok.error).toBeUndefined();
-    expect((await h.ctx.issues.get("iss-ana", CO))?.assigneeAgentId).toBe("agent-bo");
+    // A todo ticket would wake the teammate's agent at once; a hand-off waits in backlog for its owner's approval.
+    expect(await h.ctx.issues.get("iss-ana", CO)).toMatchObject({ assigneeAgentId: "agent-bo", status: "backlog" });
     const stolen = await h.executeTool<{ error?: string }>(TOOL_HANDOFF, { toEmail: "ana@example.com", issueId: "iss-ana" }, run("agent-bo"));
     expect(stolen.error).toBeUndefined();
     const notMine = await h.executeTool<{ error?: string }>(TOOL_HANDOFF, { toEmail: "bo@example.com", issueId: "iss-bo" }, run("agent-ana"));

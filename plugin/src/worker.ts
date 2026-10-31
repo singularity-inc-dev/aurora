@@ -201,7 +201,8 @@ const plugin = definePlugin({
             const issue = await ctx.issues.get(plan.issueId, run.companyId);
             if (!issue) throw new Refused("ticket not found");
             if (issue.assigneeAgentId !== plan.from.agentId) throw new Refused("you can only hand off tickets assigned to you");
-            await ctx.issues.update(plan.issueId, { assigneeAgentId: plan.to.agentId }, run.companyId, actor);
+            // Back to backlog, as a new hand-off starts: the teammate's agent waits for its own owner's approval.
+            await ctx.issues.update(plan.issueId, { assigneeAgentId: plan.to.agentId, status: "backlog" }, run.companyId, actor);
             const note = plan.note ? `\n\n${plan.note}` : "";
             await ctx.issues.createComment(
               plan.issueId,

@@ -154,4 +154,5 @@ check "an agent cannot call a tool pretending to be another agent (Paperclip)" "
 m2_tool handoff_to_teammate "{\"toEmail\":\"bo@example.com\",\"issueId\":\"$M2_ISS\",\"description\":\"Over to you.\"}" "$M2_A" "$M2_RUN_A"
 api GET "/api/issues/$M2_ISS"
 check "agent can hand off its own ticket by reassigning it" "$(echo "$API_BODY" | json "d.assigneeAgentId==='$M2_B'")" "true"
+check "a reassigned hand-off waits in backlog for the teammate's owner (it was not in backlog before)" "$(echo "$API_BODY" | json 'd.status')" "backlog"
 unset M2_KEY_A
