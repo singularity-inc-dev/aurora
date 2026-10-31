@@ -6,7 +6,7 @@ import { HANDOFF_TOOL, PROPOSE_TOOL, RUN_CHECKS_TOOL } from "./tools.js";
 const manifest: PaperclipPluginManifestV1 = {
   id: PLUGIN_ID,
   apiVersion: 1,
-  version: "0.10.1",
+  version: "0.10.2",
   displayName: "Vision and Tom",
   description:
     "One personal agent per teammate, working at each handover (scheduled or Hand over now). Agents use only their owner's keys, hand off via board tickets, and change nothing shared until the owner approves.",

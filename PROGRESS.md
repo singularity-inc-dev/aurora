@@ -2,9 +2,22 @@
 
 Updated after every phase. Newest phase first.
 
-## Integrity and wording before 2 November (31 Oct 2026, branch `claude/handover-alignment`)
+## DEVIATIONS.md Top 10 before 2 November (31 Oct 2026, branch `claude/handover-alignment`)
 
-INTENT.md and DEVIATIONS.md are not in the repository (no branch, no history) nor in your Google Drive, so this was done from your message alone. The "rest of the Top 10 by listed order" and the "colliding with the first-real-run branch" markings need DEVIATIONS.md; nothing was guessed. FIRST-REAL-RUN.md and DEPLOY.md were left alone because the first-real-run branch owns them.
+INTENT.md and DEVIATIONS.md are on `claude/intent-audit` ([#5](https://github.com/singularity-inc-dev/aurora/pull/5)); the first pass below was done before they were found, from your message alone. FIRST-REAL-RUN.md and DEPLOY.md were not touched (the first-real-run session owns them).
+
+| Top 10 | What | State |
+| --- | --- | --- |
+| 1 | 33% figure relabelled "earlier, unreproduced estimate" (PROGRESS.md wording for applications, spec lines 31, 232-233 and Sources, pilot playbook) | Done |
+| 2 | README claims match the code; no "sub-agents" | Done. **The GitHub repository description still says "the sub-agents it manages": change it in the repository settings (no tool here can).** |
+| 3 | A hand-off by reassigning also moves the ticket to backlog | Done (unit test, m2 live check) |
+| 4 | The teammate check also lists files both changed when git merges them cleanly ("Also changed in other ready work, no conflict" in the email) | Done (real-git unit tests) |
+| 5 | Checks see only committed files | Done differently from DEVIATIONS.md: uncommitted files are ignored, not refused, so a stray file cannot fool the checks and cannot block the first run |
+| 6 | No test command is NOT TESTED, never passed | Done. Your decision: it stays approvable, with the warning in the email |
+| 7, 8, 9 | Plan text tells the agent to run checks; "Done when" template; rename to Aurora | Waiting until the first real run is finished (that session owns those files) |
+| 10 | The "another person's key" check runs for every kind of agent, not only Claude | Done (unit tests) |
+
+**Also fixed:** an agent that committed nothing (or whose commits cancel out) used to get its unchanged base tested and PASSED, so the task showed Ready with an Approve that merges nothing. Now the checks say **NO CHANGES TO CHECK**; it is never Ready.
 
 ### Integrity (done)
 - **The checks use only committed files.** `run_checks` fixes the worktree's current commit, then: the change size and the key scan compare that commit with the base (uncommitted and untracked files no longer count); the test and lint commands run on a fresh copy of exactly that commit (`git archive`), in the owner's sandbox on the server and in a temporary folder on test beds. An uncommitted file can no longer make tests pass, and an uncommitted change can no longer fail them. The report says "committed files only".
@@ -22,7 +35,7 @@ INTENT.md and DEVIATIONS.md are not in the repository (no branch, no history) no
 - **Owner-only plan approval** (today any person signed in to Paperclip can approve a plan).
 - A start on the first two is parked on branch `claude/handover-alignment-wip` (not for merge; its scheduled-proposal unit tests are not updated).
 
-### Tests
+### Tests (first pass)
 Unit: plugin 394 (was 388), email service 51. Full live run (cold start): **360 passed, 0 failed** (was 356; 4 new in M2: uncommitted files are not checked, and no test command is NOT TESTED in the result, the report and the event log), deployment rehearsal 109 passed.
 
 ## First real run (in progress, 31 Oct 2026)
