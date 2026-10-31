@@ -1,8 +1,10 @@
 # Hardy: the referee (contingency module)
 
-**What this is.** One design for Hardy, the referee that keeps owners' agents from colliding. Hardy is a **contingency**: the handover core works without it, and Hardy only becomes a lead feature if pilot teams of 5 to 10 people hit at least one overlap or conflict a week (section 3). Code references point at commit `0137939` on `claude/eloquent-hopper-9m2e04`.
+**What this is.** One design for Hardy, the referee that keeps owners' agents from colliding. Hardy is a **contingency**: the handover core works without it, and Hardy only becomes a lead feature if pilot teams of 5 to 10 people hit at least one real conflict a week (section 3; overlaps alone do not count). Code references point at commit `0137939` on `claude/eloquent-hopper-9m2e04`.
 
 **Sources, and a gap.** The research text "Full Vision and Conflict Referee" (Hardy v1, v2, v3) is **not in this repository or its history**, and there is no `docs/research/` folder. This consolidation uses the spec's Hardy section (aurora-v1-spec.md:145-162), the build plan rows for M2 and M4 (aurora-v1-spec.md:303-311), the pilot playbook (pilot-playbook.md:114-180) and the six layers named in the brief. Where a v1/v2/v3 detail could change a layer, it says **NEEDS V1-V3 TEXT**. Paste the research and I will reconcile it.
+
+**Status on 31 October.** The research was sent as an attachment, but the file never reached the design session, so this file has **not** yet been checked against it and every NEEDS V1-V3 TEXT marker still stands. `INTENT.md` (on `claude/intent-audit`) lists Hardy as out of scope for now, which matches treating it as a contingency.
 
 ## 1. Words used here
 
@@ -41,13 +43,33 @@ Sizes: **S** = up to 3 days of focused work, **M** = 1 to 2 weeks, **L** = 3 wee
 
 ## 3. The trigger
 
-Hardy leads only if pilot teams of 5 to 10 people hit **at least one overlap or conflict a week**. Measured, not estimated:
+Hardy leads only if pilot teams of 5 to 10 people hit **at least one real conflict a week** (section 3.1 explains why overlaps alone no longer count). Measured, not estimated:
 
 - **Inside Aurora**: overlaps caught before plus conflicts found after, per team per week, from the numbers the plugin already computes (`plugin/src/numbers.ts:76`, `overlapsCaughtBefore`, `conflictsFoundAfter`).
 - **Outside Aurora**: shadow-mode would-be conflicts between the team's open agent pull requests.
-- **Rule**: two consecutive pilot weeks at or above 1 per week, in at least one team of 5 to 10 → build Phase 2 (ROADMAP.md) in the order the Hardy log shows (pilot-playbook.md:172-177). Below that after week 4 → Hardy stays at today's level (claims plus replay, already built and cheap to keep), and the spec's stop rule applies (aurora-v1-spec.md:390-394).
+- **Rule**: two consecutive pilot weeks at or above 1 real conflict a week, in at least one team of 5 to 10 → build Phase 2 (ROADMAP.md) in the order the Hardy log shows (pilot-playbook.md:172-177). Below that after week 4 → Hardy stays at today's level (claims plus replay, already built and cheap to keep), and the spec's stop rule applies (aurora-v1-spec.md:390-394).
 
-Note the evidence so far is weak: the corrected audit found 1 conflict in 104 clean replays across eight public repositories, and the spec's 33% could not be reproduced (PROGRESS.md:54, :72, on the working branch). The pilot is the real test.
+### 3.1 What the corrected collision numbers mean for the trigger
+
+The spec's case for Hardy rested on a 33% conflict rate and "1.5 to 4 conflicts a week" for teams of 7 to 10 (aurora-v1-spec.md:31, :232). **The 33% cannot be reproduced**: the 20 repositories were never recorded, and the scripts did not exist on the date given (PROGRESS.md:54 on the working branch; `DEVIATIONS.md` finding A9 on `claude/intent-audit`). The "1.5 to 4 a week" was computed from that 33%, so it falls with it. Neither number may be used to argue for Hardy.
+
+What was actually measured (PROGRESS.md:58-72): 7 public repositories, 56 days, same-day edits to the same file **0.4 to 36 times a week**, and **1 conflict in 104 clean replays**, about 1% (95% interval roughly 0.2% to 5.2%). Pairs that could not be replayed (108 of 212) are left out, and these are people, not agents.
+
+What that means:
+
+1. **Overlaps are common; textual conflicts are rare.** At 1%, even the busiest repository (36 overlaps a week) gives about 0.35 conflicts a week, and a typical 5-10 person team well under 0.1. Only at the top of the interval does the busiest one reach about 2 a week. **On human history, the conflict half of the trigger would not fire.**
+2. **The trigger as first written ("one overlap *or* conflict a week") fires on overlaps alone**, so it would switch Hardy on without proving that settling is needed. It is split below.
+3. **Agents may behave differently.** Outside studies report far higher rates for agent pull requests (aurora-v1-spec.md:23-25, :425), but they measure agents against their base branch or across tools, not our setting. They justify measuring in the pilot, not building ahead of it.
+
+**Corrected trigger, layer by layer:**
+
+| Hardy layer | Switched on when, in a pilot team of 5 to 10, two weeks running | Why |
+| --- | --- | --- |
+| Prevent (claims, pre-handover check) | Already on; stays on | Built, cheap, and overlaps are frequent |
+| Watch, Settle, Decide, Learn (Phase 2) | **At least 1 real conflict a week**: textual conflicts found by the merge replay, plus shadow-mode conflicts, plus breakages an owner reports where two clean-merging changes broke each other. Overlaps alone do not count | This is the evidence the 33% claimed to give |
+| Contracts, blind pick | As above, **and** the Hardy log shows breakages that claims and textual replay did not catch | These are the most expensive layers |
+
+If no pilot team reaches 1 real conflict a week by the end of week 4, Hardy stays at today's level and the spec's stop rule applies (aurora-v1-spec.md:390-394). Overlaps caught before are still reported, as a measure of the pre-handover check.
 
 ## 4. Each layer
 
