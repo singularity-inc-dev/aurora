@@ -33,6 +33,7 @@ I did not see the application texts themselves. "A" means the code contradicts
 | **B3. Missing tests count as passed** | Checked by tests and lint. | If no test or lint command is set, that check is "skipped" (`plugin/src/checks.ts:88`), and skipped counts as passed (`:146`). An item can be "Ready" with no tests and no lint ever run. | B | S | Treat a missing test command as a failure (or as "not checked", which is never Ready) when isolation is required. Show "tests: not configured" in the handback. |
 | **B4. Too many taps, in two places** | Owner hands over, then decides on the handback. | Hand over now (handover page), then approve the plan **inside Paperclip** (`email-service/src/pages.ts:260`, `email-service/src/server.ts:98`), then approve each result by email. That is three steps in three places. | B | M | For the demo, rehearse the exact clicks. Later: approve the plan from the handover page, or skip plan approval when the owner wrote the tasks (see A1). |
 | **B5. Tasks moved before anyone approves** | Out of scope: Hardy rulings. Work moves only through tickets. | When the agent proposes, the pre-handover check **immediately** gives a task to another owner's agent if it touches their CODEOWNERS area or claims. Owner-written tickets are reassigned too (`plugin/src/handoverrunner.ts:415-449`, reassign at `:422-425`). The owner is asked "Is that right?" only afterwards (`plugin/src/prehandover.ts:103-112`). Answering "Not this time" does not move it back. This is a Hardy-style ruling, and a task can vanish from the presenter's plan mid-demo. | B | M | Make the move advisory: keep the task, show the overlap as a question, and move it only if the owner agrees. For the demo, use a repository whose CODEOWNERS does not overlap the demo task. |
+| **B6. No work shows as Ready** (found reviewing #7; present before it too) | Each item is checked against "done when" and by the checks gate; Approve merges real work. | When the agent commits nothing, the checks gate compares the base with itself, finds 0 changed lines, runs the tests on the unchanged base, and reports PASSED, or NOT TESTED without a test command. The handback shows the item as **Ready** with Approve, summary "no changes". Without GitHub, Approve records it as **accepted** (`plugin/src/merge.ts:61` at `65d31ac`), which inflates the handover yield. With GitHub, the pull request cannot open and the item comes back in every email. Verified on #7's code; see "PR #7 review". | B | S | Make the gate fail with "nothing committed" when the base..commit diff is empty. Add the same check to the Ready rule. |
 | **C1. Links act for whoever holds them** | Nothing merges without **the owner's** tap. | Approve and Reject links are bearer tokens. Anyone who has the email (forwarded, shared inbox, a scanner that submits forms) can act. Nothing checks who is signed in (`plugin/src/links.ts:65-89`, `email-service/src/server.ts:131-145`). This is a known gap. The sign-in check already exists for `/handover` (`email-service/src/server.ts:91-92`). | C | M | On the POST, require the Paperclip session's email to equal the link's owner. Reuse `whoIs`. |
 | **C2. Checks may test files the commit does not have** | Approve only what was checked. | `run_checks` records `HEAD` (`plugin/src/checks.ts:117`) but tests the working folder, including uncommitted and untracked files (`plugin/src/git.ts:214-232`, `plugin/src/checksandbox.ts:277-286`). "Clean" is checked only later, at handback (`plugin/src/briefing.ts:61-63`). An agent can pass the checks with an untracked helper file, delete it, and the commit shows Ready without ever being tested as committed. | C | S | Refuse `run_checks` unless `git status --porcelain` is empty (`isClean` already exists, `plugin/src/merge.ts:99`). |
 | **C3. "Read-only" keys are not enforced** | The agent uses only that owner's keys. | Each key has an `access` flag, read-only by default (`plugin/src/config.ts:32`). The only code that respects it (`plugin/src/secrets.ts:22-45`) is called by nothing except its own test. Agents get keys through Paperclip's adapter settings, which the plugin never filters. An owner who adds a write-capable GitHub token thinking it is "read-only" gives the agent push rights. | C | S | Either delete the flag and say plainly "the token's own scope is the only limit" (already noted in CLAUDE.md), or enforce it in the audit. Delete `secrets.ts`. |
@@ -87,18 +88,54 @@ exercises first: the plan text, `run_checks`, the model-access check and the han
 **High** = will almost certainly collide. **Medium** = likely to collide if the run hits a problem there.
 **Low** = unlikely to collide.
 
-| # | Fix | Finding | Time | Files | Collides with first real run? |
-| --- | --- | --- | --- | --- | --- |
-| 1 | Remove or relabel the 33% figure in all application text; correct `aurora-v1-spec.md:31` and `:468` | A9 | 10 min | `PROGRESS.md`, `aurora-v1-spec.md`, application texts | **High** for `PROGRESS.md`: the run session adds to it at every fix. Make one small edit to the "Numbers for applications" section only, after #4 merges. Low for the spec. |
-| 2 | Make the claims match the code (see "Claims allowed on 2 November" below); remove "sub-agents" from the README and the GitHub repository description | A1, A3, A4, A8 | 20 min | `README.md`, `PROGRESS.md`, GitHub settings, application texts | **High** for `README.md` and `PROGRESS.md` (both already edited on that branch). Application texts and GitHub settings: none. |
-| 3 | Hand-off by reassigning also sets `backlog`, with tests | A7 | 20 min | `plugin/src/worker.ts`, `plugin/tests/plugin.test.ts`, `scripts/it/m2.sh` | **Medium**: `worker.ts` holds every tool. The hand-off code is not used in the first run, so the lines themselves are unlikely to clash. |
-| 4 | The teammate check also lists files both changed, even when git merges them cleanly | A6 | 45 min | `plugin/src/replay.ts`, `plugin/src/briefing.ts`, `plugin/src/briefstore.ts`, `plugin/tests/replay*.test.ts` | **Medium** for `briefing.ts`: the handback email is step 5 of the run. Low for `replay.ts` (one person, no teammate branches in the first run). |
-| 5 | `run_checks` refuses a worktree with uncommitted or untracked files | C2 | 20 min | `plugin/src/worker.ts`, `plugin/src/checks.ts`, tests | **Medium**, and it **changes the run's behaviour**: a real agent that leaves a stray file would now be refused. Do it after the first run, or tell the run session first. |
-| 6 | A missing test command is never "Ready"; the handback says "tests not configured" | B3 | 20 min | `plugin/src/checks.ts`, `plugin/src/briefing.ts`, tests | **Medium** (`briefing.ts`). The run sets `sh test.sh`, so behaviour is unchanged for it. |
-| 7 | Plan and task tickets tell the agent to commit, call `run_checks`, then mark done | B1 | 15 min | `plugin/src/handoverrunner.ts` (plan text), `FIRST-REAL-RUN.md:61` | **High**: if the real agent stumbles, this plan text is the first thing the run session will edit. Hand this item to the run session, or wait until it is done. |
-| 8 | "What / Done when / Limits" template, with the "Done when" line printed on each handback item | A2, A3 | 45 min | `plugin/src/briefing.ts`, `plugin/src/briefstore.ts`, `plugin/src/handoverrunner.ts`, `FIRST-REAL-RUN.md` | **High** (`handoverrunner.ts`, `FIRST-REAL-RUN.md`) and Medium (`briefing.ts`). Do it after the first run. |
-| 9 | Rename the visible "Vision and Tom" and "morning email" text to Aurora and "handback" (plugin id unchanged, version bumped) | E1, E2 | 30 min | `plugin/src/manifest.ts` (version), `links.ts`, `briefing.ts`, `merge.ts`, `handoff.ts`, `worker.ts`, `config.ts`, `email-service/src/config.ts`, `invite.ts`, tests | **High**: any plugin fix in the run also bumps the version in `manifest.ts`. `FIRST-REAL-RUN.md` and `DEPLOY.md` tell the owner to open "the Vision and Tom plugin", so renaming mid-run confuses the person following them. Do it after the run, in one commit that also updates those documents. |
-| 10 | The "another person's key" check runs for every adapter | C4 | 10 min | `plugin/src/modelaccess.ts`, `plugin/tests/modelaccess.test.ts` | **Medium**: step 4 of the run (the real Claude sign-in) runs exactly this check. If `vt-check` complains, the run session will edit this file. |
+**Status** is as of [singularity-inc-dev/aurora#7](https://github.com/singularity-inc-dev/aurora/pull/7) (`claude/handover-alignment`, head `65d31ac`).
+#7's own code change is the single commit `03a6af7`; `65d31ac` only adds its live results to PROGRESS.md. Line numbers in the
+Status column are at `65d31ac`. **Fixed** = done in #7. **Partly** = some of it done in #7. **Open** = not in #7.
+Two items have a start on `claude/handover-alignment-wip`, which says "not for merge" and does not count.
+
+| # | Fix | Finding | Time | Files | Collides with first real run? | Status (PR #7) |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | Remove or relabel the 33% figure in all application text; correct `aurora-v1-spec.md:31` and `:468` | A9 | 10 min | `PROGRESS.md`, `aurora-v1-spec.md`, application texts | **High** for `PROGRESS.md`: the run session adds to it at every fix. Make one small edit to the "Numbers for applications" section only, after #4 merges. Low for the spec. | **Open.** The 33% sentence is still in "Exact wording you may use in applications" (`PROGRESS.md:79`), and the spec is unchanged (`aurora-v1-spec.md:31`, `:468`). |
+| 2 | Make the claims match the code (see "Claims allowed on 2 November" below); remove "sub-agents" from the README and the GitHub repository description | A1, A3, A4, A8 | 20 min | `README.md`, `PROGRESS.md`, GitHub settings, application texts | **High** for `README.md` and `PROGRESS.md` (both already edited on that branch). Application texts and GitHub settings: none. | **Partly**, `03a6af7`. Fixed: the README drops "sub-agents" (`README.md:2`); the README, the plan ticket, the approval prompt, the Hand over now page and the tool description now say the agent chooses the tasks and any signed-in person can approve (`README.md:103-105`, `plugin/src/handoverrunner.ts:235-238`). Still open: the GitHub repository description still says "sub-agents"; the application texts; and #7 adds a **new overclaim** at `README.md:105`: "Owner-only approval exists only for the handback email links". Those links work for anyone holding the email (C1). |
+| 3 | Hand-off by reassigning also sets `backlog`, with tests | A7 | 20 min | `plugin/src/worker.ts`, `plugin/tests/plugin.test.ts`, `scripts/it/m2.sh` | **Medium**: `worker.ts` holds every tool. The hand-off code is not used in the first run, so the lines themselves are unlikely to clash. | **Open.** Unchanged (`plugin/src/worker.ts:203-204`). |
+| 4 | The teammate check also lists files both changed, even when git merges them cleanly | A6 | 45 min | `plugin/src/replay.ts`, `plugin/src/briefing.ts`, `plugin/src/briefstore.ts`, `plugin/tests/replay*.test.ts` | **Medium** for `briefing.ts`: the handback email is step 5 of the run. Low for `replay.ts` (one person, no teammate branches in the first run). | **Open.** `replay.ts` is unchanged. |
+| 5 | `run_checks` refuses a worktree with uncommitted or untracked files | C2 | 20 min | `plugin/src/worker.ts`, `plugin/src/checks.ts`, tests | **Medium**, and it **changes the run's behaviour**: a real agent that leaves a stray file would now be refused. Do it after the first run, or tell the run session first. | **Fixed differently, and better**, `03a6af7`. The gate checks the commit and ignores the working folder: diff and key scan are base..commit (`plugin/src/checks.ts:172-196`); commands run on `git archive` of that commit (`plugin/src/checks.ts:54`, `plugin/src/checksandbox.ts:61`). It never refuses, so the mid-run risk is gone. It opens a new gap: B6. See "PR #7 review" below. |
+| 6 | A missing test command is never "Ready"; the handback says "tests not configured" | B3 | 20 min | `plugin/src/checks.ts`, `plugin/src/briefing.ts`, tests | **Medium** (`briefing.ts`). The run sets `sh test.sh`, so behaviour is unchanged for it. | **Partly**, `03a6af7`. It is never called "passed": it shows as NOT TESTED in the report, the ticket comment, the event log, the CSV and the email (`plugin/src/checks.ts:207`, `plugin/src/briefing.ts:54`). But it is **still Ready and approvable** (`plugin/src/briefing.ts:64`), by your choice, because the server kit sets no test command. |
+| 7 | Plan and task tickets tell the agent to commit, call `run_checks`, then mark done | B1 | 15 min | `plugin/src/handoverrunner.ts` (plan text), `FIRST-REAL-RUN.md:61` | **High**: if the real agent stumbles, this plan text is the first thing the run session will edit. Hand this item to the run session, or wait until it is done. | **Open.** #7 rewrote the plan text (`plugin/src/handoverrunner.ts:235-238`), but it still does not tell the agent to commit, call `run_checks` or mark the ticket done. Only the owner's own ticket text does (`FIRST-REAL-RUN.md:61`). |
+| 8 | "What / Done when / Limits" template, with the "Done when" line printed on each handback item | A2, A3 | 45 min | `plugin/src/briefing.ts`, `plugin/src/briefstore.ts`, `plugin/src/handoverrunner.ts`, `FIRST-REAL-RUN.md` | **High** (`handoverrunner.ts`, `FIRST-REAL-RUN.md`) and Medium (`briefing.ts`). Do it after the first run. | **Open.** A start ("locked handover note, done-when machine check") is on `claude/handover-alignment-wip` (`7a72c72`), marked not for merge. |
+| 9 | Rename the visible "Vision and Tom" and "morning email" text to Aurora and "handback" (plugin id unchanged, version bumped) | E1, E2 | 30 min | `plugin/src/manifest.ts` (version), `links.ts`, `briefing.ts`, `merge.ts`, `handoff.ts`, `worker.ts`, `config.ts`, `email-service/src/config.ts`, `invite.ts`, tests | **High**: any plugin fix in the run also bumps the version in `manifest.ts`. `FIRST-REAL-RUN.md` and `DEPLOY.md` tell the owner to open "the Vision and Tom plugin", so renaming mid-run confuses the person following them. Do it after the run, in one commit that also updates those documents. | **Open.** "Vision and Tom" and "morning email" are still there (`plugin/src/manifest.ts:10`, `plugin/src/links.ts:151,187,215,264`). A paused rename is on `claude/handover-alignment-wip` (`1461658`). |
+| 10 | The "another person's key" check runs for every adapter | C4 | 10 min | `plugin/src/modelaccess.ts`, `plugin/tests/modelaccess.test.ts` | **Medium**: step 4 of the run (the real Claude sign-in) runs exactly this check. If `vt-check` complains, the run session will edit this file. | **Open.** Unchanged (`plugin/src/modelaccess.ts:20`). |
+
+**Score for #7:** 1 fixed (#5), 2 partly fixed (#2, #6), 7 open (#1, #3, #4, #7, #8, #9, #10).
+It adds one new gap (B6) and one new overclaim (`README.md:105`).
+
+## PR #7 review: "committed files only", and an agent that commits nothing
+
+**Is it the same as item #5?** No, and it is the better fix. Item #5 refused to check a worktree with stray files.
+#7 checks only the commit and ignores everything else in the folder. Both close C2: tests can no longer pass
+because of a file the commit does not contain. #7 tests this live (`scripts/it/m2.sh:103-106`).
+
+**Does it carry the mid-run risk?** No. `run_checks` never refuses because of stray files, so a real agent cannot be blocked
+mid-run by it. One thing is unchanged from before #7: the handback still marks an item Blocked when the worktree has uncommitted
+or untracked files (`plugin/src/briefing.ts:62`). A stray build file that is not in `.gitignore` will still block an item at handback.
+That is not new, but expect it in the first run.
+
+**What if the agent commits nothing?** It can pass. **It never says "failed" or "nothing to check".**
+I ran #7's own code in a throwaway copy (head `65d31ac`; a scratch test that was not committed). #7's 394 unit tests also pass there.
+The task branch was created from `main` with no commits on it:
+
+| Case | Checks gate says | Handback |
+| --- | --- | --- |
+| No commits, test command set | **PASSED**: `diff-size 0 changed lines in 0 files`, secret scan passed, tests passed (they ran on the unchanged base) | **Ready**, with an Approve link. The summary reads "Do the thing: no changes" |
+| No commits, no test command | NOT TESTED | **Ready**, with an Approve link, labelled NOT TESTED |
+| Work left uncommitted, nothing committed | **PASSED** (it tested the base). The ticket comment says "Checks gate PASSED on commit <base>" | Blocked: "uncommitted changes in the worktree" |
+
+What tapping Approve then does, read from the code and not run:
+- **Without GitHub:** the local merge sees the branch is already part of the base (`plugin/src/merge.ts:61`). It reports **"merged"** and records the task as **accepted**, so it counts as a success in the handover-yield numbers.
+- **With GitHub:** the push succeeds. Opening the pull request is then refused. GitHub normally answers "No commits between ..." for an empty branch; that is expected but not tested here. The plugin reports "Not merged: GitHub did not open the pull request" (`email-service/src/github.ts:110`), releases the task, and the task comes back in every later email until someone rejects it.
+
+This is new finding **B6** (below). Fix size S: in the gate, zero committed changes against the base gives
+`failed: nothing committed`. The agent's tool reply then tells it to commit, and the handback shows the item as Blocked, not Ready.
 
 **For the alignment session:** start from `main` only after #4 is merged, or from `claude/codebase-review-ad3lrs`. Today's `main`
 is 24 commits behind and lacks most of this code. Safe to do in parallel now: 3, 4 (without the email layout), 6 and 10,
@@ -112,6 +149,8 @@ first time a real agent goes through the loop.
 ## Claims allowed on 2 November
 
 These hold for the code at `0137939` (the same plugin code is in [#4](https://github.com/singularity-inc-dev/aurora/pull/4)).
+Where [#7](https://github.com/singularity-inc-dev/aurora/pull/7) changes the answer, the row says
+"**needs #7**": use that sentence only once #7 is merged and running on the server you demo.
 "Live-tested" means against real Paperclip, git, SMTP and PostgreSQL, with stand-ins for GitHub and Claude.
 **No real Claude agent has run a whole handover yet** (B1), so no allowed sentence says it was tested with real agents.
 
@@ -125,20 +164,21 @@ These hold for the code at `0137939` (the same plugin code is in [#4](https://gi
 | Y4 | "Every task runs on its own branch, in its own git worktree." | `plugin/src/workspace.ts` | |
 | Y5 | "The owner writes a ticket for their agent and hands over, now or on a daily schedule. The agent turns it into a plan, and nothing runs until a person approves that plan. Agents cannot approve." | `FIRST-REAL-RUN.md:59-61`, `human_only` approval (`plugin/src/handoverrunner.ts:459-478`) | Not "only the owner" (A5); the agent may propose other tasks (A1); one schedule a day (A4) |
 | Y6 | "When the work is done, the owner gets a handback email: what is ready, blocked or failed." | `plugin/src/briefing.ts:244-249` | |
-| Y7 | "An item is Ready only when the agent finished it, everything is committed, and the checks gate passed on that commit: tests, lint, a diff-size limit and a secret scan." | `plugin/src/briefing.ts:53-65`, `plugin/src/checks.ts:107-147` | True only when a test command is set (B3), and the gate can test files the commit doesn't have (C2). Safe without qualification after top 10 #5 and #6. |
+| Y7 | **Needs #7.** "An item is Ready only when the agent marked it done, everything is committed, and the checks gate ran on exactly that commit, committed files only: tests, lint, a diff-size limit and a secret scan." | #7 `03a6af7`: `plugin/src/checks.ts:172-207`, `plugin/src/checksandbox.ts:61`, `plugin/src/briefing.ts:62-64`; live-tested (`scripts/it/m2.sh:103-106`) | Without #7, say only "the checks gate ran before handback" (C2). Do not say Ready means work was done: an empty branch can be Ready (B6). With no test command, the item is approvable but labelled NOT TESTED (B3). |
+| Y14 | **Needs #7.** "Aurora never reports untested work as passed. With no test command set up, it says NOT TESTED, everywhere." | #7 `03a6af7`: `plugin/src/checks.ts:207`, `plugin/src/briefing.ts:54`; live-tested in M2 | NOT TESTED items can still be approved (B3) |
 | Y8 | "Before the handback, Aurora test-merges each ready branch with teammates' ready branches and warns about files that would conflict. Nothing is merged." | `plugin/src/replay.ts`, `plugin/src/briefing.ts:205-212`, live-tested (v1e) | Conflicts only, not every shared file (A6) |
 | Y9 | "Approve merges exactly once, and only if the branch is unchanged since the email. Reject asks for a one-line reason." | `plugin/src/links.ts:102-175`, `plugin/src/merge.ts:55-58` | |
 | Y10 | "With GitHub connected, Approve opens a pull request and squash-merges it, respecting branch protection; if a review is required, it waits for the review." | `email-service/src/github.ts`, live-tested against a GitHub stand-in | Not yet run against real GitHub (`PROGRESS.md:96-97`) |
 | Y11 | "Agents have no merge, deploy, delete or payment actions. Work passes between agents only as board tickets." | `plugin/src/routes.ts:8-25`, `plugin/src/handoff.ts` | A hand-off of an existing ticket can skip the receiver's approval (A7) |
 | Y12 | "Each handover has a budget cap; at the cap the agent is paused." | `plugin/src/handover.ts:139-141`, `plugin/src/handoverrunner.ts:322-334` | |
-| Y13 | "We built a read-only collision audit. In a corrected run on 7 public repositories (56 days, September to October 2026, 8 to 47 regular contributors each), same-day edits to the same file happened 0.4 to 36 times a week. 1 of 104 clean replays of those overlaps conflicted in git. This measures people, not agents; the pilot will measure agents." | `PROGRESS.md:58-72` (corrected table, measured rows only) | Use these numbers only (A9). The replay is capped at 60 overlaps per repository. |
+| Y13 | "We built a read-only collision audit and ran it on 7 active public repositories over 56 days (1 September to 27 October 2026). Two people changed the same code file on the same day between 0.4 and 36 times a week per repository. When we replayed those overlaps as if done in parallel, 1 conflicted in git out of more than 100 clean replays. This measures people's history, not agents; the pilot will measure agents." | See "Source and caveats of the collision numbers" below | Say "more than 100", not "104": the table's own rows add to 144 (see below). Never use 33% (A9). |
 
 ### You must not say
 
 | # | Sentence (or anything that means it) | Why not |
 | --- | --- | --- |
 | N1 | "The 20-team replay found a 33% conflict rate", "our own measurement found 33%", "teams of 7 to 10 hit 1.5 to 4 conflicts a week" | Not reproducible: the 20 repositories were never recorded (A9; see "Reproducing the 33% figure" below) |
-| N2 | "2 to 6 same-day overlaps a week" and "0% conflicts across 88 replays" (the wording at `PROGRESS.md:46`) | Superseded. Three of those clones were truncated (`PROGRESS.md:25`); the corrected run gives Y13. |
+| N2 | "2 to 6 same-day overlaps a week" and "0% conflicts across 88 replays" (the wording at `PROGRESS.md:46`; `PROGRESS.md:79` at #7) | Superseded. Three of those clones were truncated (`PROGRESS.md:25`); the corrected run gives Y13. That wording is still in PROGRESS.md as "Exact wording you may use in applications". Replace it. |
 | N3 | "Agents never propose work", "agent proposals are off by default", "Aurora runs exactly the tasks the owner wrote" | The agent proposes every plan, and may add or swap tasks (A1) |
 | N4 | "Owners write a handover note with done-when and limits for each task" | No such fields; limits are per person, not per task (A2) |
 | N5 | "Each result is checked against the owner's done-when" | Nothing checks it (A3) |
@@ -152,6 +192,33 @@ These hold for the code at `0137939` (the same plugin code is in [#4](https://gi
 | N13 | "Agents get read-only keys by default" | The flag is not enforced (C3) |
 | N14 | "Hardy referees conflicts", "contracts", "standing rules", "risk-sorted inbox", "generated screens", "Slack or phone alerts", "works inside Claude or ChatGPT (MCP Apps)" | None of these exist in the code; Hardy is out of scope (INTENT.md) |
 | N15 | "Aurora reduces conflicts by X%" | Never measured (`PROGRESS.md:48`) |
+| N16 | "Every Ready item was tested" / "Ready means the agent's work passed its tests" | NOT TESTED items are approvable (B3, still true with #7), and an empty branch can be Ready (B6) |
+| N17 | "Owner-only approval exists for the handback email links" (now in the README at #7, `README.md:105`) | Anyone holding the email can use the links (C1). Say "the links are sent only to the owner" instead. |
+| N18 | "1 conflict in 104 clean replays" or "212 replays" as exact figures | The rows they summarise add to 144 clean and 272 replays (see below) |
+
+### Source and caveats of the collision numbers (Y13)
+
+- **Source:** only the table "Corrected and extended run" in `PROGRESS.md`, added in commit `0137939`
+  (27 October 2026; `PROGRESS.md:91-105` at #7's head `65d31ac`). The raw output of that run is **not committed**. The reports in
+  `tools/collision-audit/audit-results/` are from the **first, cut-short** run (200 commits per clone, window
+  31 August to 26 October): do not cite them. The command is recorded only as "the same `collision-audit-batch --fetch`
+  command" with `--shallow-since 2026-09-01`, The scripts' last change, `ff45c08` (the fix for checking cut-short clones), was committed 35 seconds before the table.
+So the run used code that was not yet committed. It most likely matches `ff45c08`, but nothing records that.
+- **The seven repositories:** astral-sh/ruff, biomejs/biome, zed-industries/zed, hashicorp/nomad,
+  firecracker-microvm/firecracker, kubernetes-sigs/karpenter, thanos-io/thanos. grafana/tempo failed (its clone was cut short) and is excluded.
+- **Overlaps a week:** 0.38 (thanos) to 35.75 (zed), shown as "0.4 to 36".
+- **Replays: the table contradicts its own total.** The rows give 60+60+60+33+6+50+3 = **272 replays**,
+  40+46+38+7+0+13+0 = **144 clean replays**, and **1 conflict** (biome). The total line under the table
+  (`PROGRESS.md:105`) says 212 and 104. That is exactly the sum without ruff, so it is most likely an addition
+  error. "1 conflict" is the same either way. Until someone re-runs the audit and commits its output, say "more than 100 clean replays".
+- **Caveats:**
+  - It counts people's commits, not agents'.
+  - It counts textual git conflicts only, so merges that succeed but break behaviour are missed.
+  - At most 60 overlaps are replayed per repository (an even sample), so ruff, biome and zed are sampled.
+  - "Clean" means the later change could be replayed onto the same base; the others are left out (`tools/collision-audit/README.md:34`).
+  - These teams have 8 to 47 regular contributors, mostly above Aurora's 2 to 10.
+  - The repositories were picked from about 45 screened by activity, not at random.
+  - The window is 56 days, not the spec's year.
 
 ## Reproducing the 33% figure (finding A9): not reproducible
 
