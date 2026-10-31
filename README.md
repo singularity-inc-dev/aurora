@@ -1,5 +1,5 @@
 # aurora
-A platform where each person on a team directs their own AI agent on one shared project. At each handover (on a schedule, or when they tap Hand over now) their agent works on its own; the work comes back as a short list of decisions, and nothing shared changes until its owner approves it. (Master agents that run their own sub-agents are in the spec, not built.)
+A team handover for software teams of 2 to 10 people, built as a plugin on the open-source Paperclip platform. Each person has their own agent. The owner writes a ticket for their agent and hands over, now or on a daily schedule; the agent turns it into a plan (it may also propose tasks of its own), and nothing runs until a person approves that plan. The work comes back in a handback email, and nothing merges until the owner taps Approve. Not yet run end to end with a real Claude agent.
 
 **Putting it on a real server for the first time:** follow [FIRST-REAL-RUN.md](FIRST-REAL-RUN.md) (it uses [DEPLOY.md](DEPLOY.md) for the server). Emergency stop on the server: `sudo vt-stop`.
 
@@ -48,9 +48,9 @@ What the tests prove:
 
 - The settings reject two people sharing one agent, the same email twice, a bad timezone, an hour outside 0-23, and a negative budget.
 - Keys must be picked from Paperclip's secret store. Pasting a raw token is rejected, and the error message never repeats the token.
-- An agent can only get its own owner's keys. Another person's key with the same name is never returned.
-- Keys are read-only unless marked `read-write`.
-- The manifest passes Paperclip's own manifest validator and asks only for `secrets.read-ref`.
+- An agent may not be given another person's key: the route audit (and `vt-check`) refuses any agent, of any kind, whose settings point at a key listed under someone else.
+- Each key has a `read-only` / `read-write` label, but nothing enforces it: the token's own scope, set where it was issued, is the only limit. Give agents tokens that are read-only at the source.
+- The manifest passes Paperclip's own manifest validator. (At milestone 1 it asked only for `secrets.read-ref`; later milestones added the permissions listed in `plugin/src/manifest.ts`.)
 
 **B. In Paperclip (about 10 minutes)**
 
@@ -102,7 +102,7 @@ Milestone 3 added the plan and the routine. Its names were "evening plan" and "n
 1. **A plan opens.** Either a set number of hours before the person's scheduled handover hour (default 2), or at once when they tap **Hand over now** (`/vt/handover` on the server). The plugin opens a ticket "Plan for <email>'s handover ..." assigned to their agent. It lists the backlog tickets already assigned to that agent.
 2. **The agent proposes.** The agent, not the owner, chooses the tasks: up to the person's "Max tasks per handover" (1 to 3), each an existing backlog ticket or a new task it writes, each with the files it may change (its claims), using the `propose_handover` tool. The owner cannot pick the tickets on the page yet.
 3. **The pre-handover check.** A task that reaches into another owner's CODEOWNERS area, or into files another owner's open task claimed first, goes to that owner's agent instead. The plan lists those as at most three questions.
-4. **One tap.** The plan ticket shows **Approve the plan** and **Not this time**. Any person signed in to Paperclip can answer it, not only the owner (Paperclip's human-only rule); agents are refused. Owner-only approval exists only for the handback email links.
+4. **One tap.** The plan ticket shows **Approve the plan** and **Not this time**. Any person signed in to Paperclip can answer it, not only the owner (Paperclip's human-only rule); agents are refused. The handback email's links are sent only to the owner, but anyone who can read that email can use them.
 5. **Work.** After approval, a Hand over now starts its first task at once; a scheduled handover starts at the person's handover hour. Tasks run one at a time, each in its own worktree.
    - **Time-outs and retries:** a task that runs past the time limit is retried, by default once, then marked failed.
    - **Budget cap:** spending is counted from the start of the handover; at the person's budget cap the handover stops, the running task is blocked and the agent is paused.
