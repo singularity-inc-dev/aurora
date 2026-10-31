@@ -1,6 +1,6 @@
 # Deviations from INTENT.md
 
-**What was audited:** the code at commit `0137939` on branch `claude/eloquent-hopper-9m2e04`.
+**What was audited:** the code at commit `0137939` on branch `claude/eloquent-hopper-9m2e04` (all `file:line` references, including `PROGRESS.md`, are to that commit).
 Every `file:line` below points to that commit. `main` is 24 commits behind it, so the same
 lines on `main` will not match. No code was changed for this audit.
 
@@ -78,22 +78,97 @@ headers from plugin routes, and company-scoped calls from jobs (no ticker loop).
 
 ## Top 10 to fix before 2 November (about 4 hours in total)
 
-| # | Fix | Finding | Time |
-| --- | --- | --- | --- |
-| 1 | Remove or relabel the 33% figure in all application text; correct `aurora-v1-spec.md:31` and `:468` | A9 | 10 min |
-| 2 | Make the claims match the code: "the owner writes the ticket, the agent turns it into a plan the owner approves"; "daily schedule or Hand over now"; "done when is shown to the owner, not verified automatically"; no sub-agents in the README | A1, A3, A4, A8 | 20 min |
-| 3 | Hand-off by reassigning also sets `backlog`, with tests | A7 | 20 min |
-| 4 | The teammate check also lists files both changed, even when git merges them cleanly | A6 | 45 min |
-| 5 | `run_checks` refuses a worktree with uncommitted or untracked files | C2 | 20 min |
-| 6 | A missing test command is never "Ready"; the handback says "tests not configured" | B3 | 20 min |
-| 7 | Plan and task tickets tell the agent to commit, call `run_checks`, then mark done | B1 | 15 min |
-| 8 | "What / Done when / Limits" template, with the "Done when" line printed on each handback item | A2, A3 | 45 min |
-| 9 | Rename the visible "Vision and Tom" and "morning email" text to Aurora and "handback" (plugin id unchanged, version bumped) | E1, E2 | 30 min |
-| 10 | The "another person's key" check runs for every adapter | C4 | 10 min |
+The last column says whether the fix touches files that the first-real-run session
+(`claude/codebase-review-ad3lrs`, [singularity-inc-dev/aurora#4](https://github.com/singularity-inc-dev/aurora/pull/4)) is likely to change.
+On 31 October that branch had changed only `DEPLOY.md`, `PROGRESS.md` and `README.md`.
+Its rule is "no new features before the run", so it will mostly edit the run documents and `deploy/`,
+plus whatever plugin or email-service code the real run breaks. The plugin code most exposed is the code a real agent
+exercises first: the plan text, `run_checks`, the model-access check and the handback email.
+**High** = will almost certainly collide. **Medium** = likely to collide if the run hits a problem there.
+**Low** = unlikely to collide.
+
+| # | Fix | Finding | Time | Files | Collides with first real run? |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Remove or relabel the 33% figure in all application text; correct `aurora-v1-spec.md:31` and `:468` | A9 | 10 min | `PROGRESS.md`, `aurora-v1-spec.md`, application texts | **High** for `PROGRESS.md`: the run session adds to it at every fix. Make one small edit to the "Numbers for applications" section only, after #4 merges. Low for the spec. |
+| 2 | Make the claims match the code (see "Claims allowed on 2 November" below); remove "sub-agents" from the README and the GitHub repository description | A1, A3, A4, A8 | 20 min | `README.md`, `PROGRESS.md`, GitHub settings, application texts | **High** for `README.md` and `PROGRESS.md` (both already edited on that branch). Application texts and GitHub settings: none. |
+| 3 | Hand-off by reassigning also sets `backlog`, with tests | A7 | 20 min | `plugin/src/worker.ts`, `plugin/tests/plugin.test.ts`, `scripts/it/m2.sh` | **Medium**: `worker.ts` holds every tool. The hand-off code is not used in the first run, so the lines themselves are unlikely to clash. |
+| 4 | The teammate check also lists files both changed, even when git merges them cleanly | A6 | 45 min | `plugin/src/replay.ts`, `plugin/src/briefing.ts`, `plugin/src/briefstore.ts`, `plugin/tests/replay*.test.ts` | **Medium** for `briefing.ts`: the handback email is step 5 of the run. Low for `replay.ts` (one person, no teammate branches in the first run). |
+| 5 | `run_checks` refuses a worktree with uncommitted or untracked files | C2 | 20 min | `plugin/src/worker.ts`, `plugin/src/checks.ts`, tests | **Medium**, and it **changes the run's behaviour**: a real agent that leaves a stray file would now be refused. Do it after the first run, or tell the run session first. |
+| 6 | A missing test command is never "Ready"; the handback says "tests not configured" | B3 | 20 min | `plugin/src/checks.ts`, `plugin/src/briefing.ts`, tests | **Medium** (`briefing.ts`). The run sets `sh test.sh`, so behaviour is unchanged for it. |
+| 7 | Plan and task tickets tell the agent to commit, call `run_checks`, then mark done | B1 | 15 min | `plugin/src/handoverrunner.ts` (plan text), `FIRST-REAL-RUN.md:61` | **High**: if the real agent stumbles, this plan text is the first thing the run session will edit. Hand this item to the run session, or wait until it is done. |
+| 8 | "What / Done when / Limits" template, with the "Done when" line printed on each handback item | A2, A3 | 45 min | `plugin/src/briefing.ts`, `plugin/src/briefstore.ts`, `plugin/src/handoverrunner.ts`, `FIRST-REAL-RUN.md` | **High** (`handoverrunner.ts`, `FIRST-REAL-RUN.md`) and Medium (`briefing.ts`). Do it after the first run. |
+| 9 | Rename the visible "Vision and Tom" and "morning email" text to Aurora and "handback" (plugin id unchanged, version bumped) | E1, E2 | 30 min | `plugin/src/manifest.ts` (version), `links.ts`, `briefing.ts`, `merge.ts`, `handoff.ts`, `worker.ts`, `config.ts`, `email-service/src/config.ts`, `invite.ts`, tests | **High**: any plugin fix in the run also bumps the version in `manifest.ts`. `FIRST-REAL-RUN.md` and `DEPLOY.md` tell the owner to open "the Vision and Tom plugin", so renaming mid-run confuses the person following them. Do it after the run, in one commit that also updates those documents. |
+| 10 | The "another person's key" check runs for every adapter | C4 | 10 min | `plugin/src/modelaccess.ts`, `plugin/tests/modelaccess.test.ts` | **Medium**: step 4 of the run (the real Claude sign-in) runs exactly this check. If `vt-check` complains, the run session will edit this file. |
+
+**For the alignment session:** start from `main` only after #4 is merged, or from `claude/codebase-review-ad3lrs`. Today's `main`
+is 24 commits behind and lacks most of this code. Safe to do in parallel now: 3, 4 (without the email layout), 6 and 10,
+in separate commits. Leave 1 and 2 as one small text-only commit after #4 merges. Hold 5, 7, 8 and 9 until the
+first real run is finished.
 
 That is about 3 h 55 min of code and text. **Not counted, and not optional:** one real run with real
 Claude on the server (`FIRST-REAL-RUN.md` section 5), about 1 hour. Without it, the demo is the
 first time a real agent goes through the loop.
+
+## Claims allowed on 2 November
+
+These hold for the code at `0137939` (the same plugin code is in [#4](https://github.com/singularity-inc-dev/aurora/pull/4)).
+"Live-tested" means against real Paperclip, git, SMTP and PostgreSQL, with stand-ins for GitHub and Claude.
+**No real Claude agent has run a whole handover yet** (B1), so no allowed sentence says it was tested with real agents.
+
+### You may say
+
+| # | Sentence | Why it is true | Limit (finding) |
+| --- | --- | --- | --- |
+| Y1 | "Aurora is a handover for software teams of up to 10 people, built as a plugin on the open-source Paperclip platform." | `plugin/src/config.ts:4` | |
+| Y2 | "Each person has their own agent. On the server it runs as its own system user, so it cannot read Paperclip's data, a teammate's files or the signing keys." | Piece A, live-tested with a hostile stand-in agent (`PROGRESS.md`, "A. Agent isolation") | |
+| Y3 | "Each agent uses its owner's own Claude access, their own subscription or their own API key, never a shared account." | `plugin/src/modelaccess.ts`, live-tested with stand-ins | Checked for Claude agents only (C4) |
+| Y4 | "Every task runs on its own branch, in its own git worktree." | `plugin/src/workspace.ts` | |
+| Y5 | "The owner writes a ticket for their agent and hands over, now or on a daily schedule. The agent turns it into a plan, and nothing runs until a person approves that plan. Agents cannot approve." | `FIRST-REAL-RUN.md:59-61`, `human_only` approval (`plugin/src/handoverrunner.ts:459-478`) | Not "only the owner" (A5); the agent may propose other tasks (A1); one schedule a day (A4) |
+| Y6 | "When the work is done, the owner gets a handback email: what is ready, blocked or failed." | `plugin/src/briefing.ts:244-249` | |
+| Y7 | "An item is Ready only when the agent finished it, everything is committed, and the checks gate passed on that commit: tests, lint, a diff-size limit and a secret scan." | `plugin/src/briefing.ts:53-65`, `plugin/src/checks.ts:107-147` | True only when a test command is set (B3), and the gate can test files the commit doesn't have (C2). Safe without qualification after top 10 #5 and #6. |
+| Y8 | "Before the handback, Aurora test-merges each ready branch with teammates' ready branches and warns about files that would conflict. Nothing is merged." | `plugin/src/replay.ts`, `plugin/src/briefing.ts:205-212`, live-tested (v1e) | Conflicts only, not every shared file (A6) |
+| Y9 | "Approve merges exactly once, and only if the branch is unchanged since the email. Reject asks for a one-line reason." | `plugin/src/links.ts:102-175`, `plugin/src/merge.ts:55-58` | |
+| Y10 | "With GitHub connected, Approve opens a pull request and squash-merges it, respecting branch protection; if a review is required, it waits for the review." | `email-service/src/github.ts`, live-tested against a GitHub stand-in | Not yet run against real GitHub (`PROGRESS.md:96-97`) |
+| Y11 | "Agents have no merge, deploy, delete or payment actions. Work passes between agents only as board tickets." | `plugin/src/routes.ts:8-25`, `plugin/src/handoff.ts` | A hand-off of an existing ticket can skip the receiver's approval (A7) |
+| Y12 | "Each handover has a budget cap; at the cap the agent is paused." | `plugin/src/handover.ts:139-141`, `plugin/src/handoverrunner.ts:322-334` | |
+| Y13 | "We built a read-only collision audit. In a corrected run on 7 public repositories (56 days, September to October 2026, 8 to 47 regular contributors each), same-day edits to the same file happened 0.4 to 36 times a week. 1 of 104 clean replays of those overlaps conflicted in git. This measures people, not agents; the pilot will measure agents." | `PROGRESS.md:58-72` (corrected table, measured rows only) | Use these numbers only (A9). The replay is capped at 60 overlaps per repository. |
+
+### You must not say
+
+| # | Sentence (or anything that means it) | Why not |
+| --- | --- | --- |
+| N1 | "The 20-team replay found a 33% conflict rate", "our own measurement found 33%", "teams of 7 to 10 hit 1.5 to 4 conflicts a week" | Not reproducible: the 20 repositories were never recorded (A9; see "Reproducing the 33% figure" below) |
+| N2 | "2 to 6 same-day overlaps a week" and "0% conflicts across 88 replays" (the wording at `PROGRESS.md:46`) | Superseded. Three of those clones were truncated (`PROGRESS.md:25`); the corrected run gives Y13. |
+| N3 | "Agents never propose work", "agent proposals are off by default", "Aurora runs exactly the tasks the owner wrote" | The agent proposes every plan, and may add or swap tasks (A1) |
+| N4 | "Owners write a handover note with done-when and limits for each task" | No such fields; limits are per person, not per task (A2) |
+| N5 | "Each result is checked against the owner's done-when" | Nothing checks it (A3) |
+| N6 | "Hand over at a meeting, at lunch or overnight on a schedule" | One scheduled time a day, plus Hand over now (A4) |
+| N7 | "Only the owner can approve their agent's work plan" / "nothing runs without the owner's own approval" | Any signed-in person can approve a plan (A5); a hand-off can skip the receiver's approval (A7) |
+| N8 | "Aurora shows every file two teammates both changed" | Only files that conflict (A6) |
+| N9 | "Each agent manages its own sub-agents" | Agents that can create agents are refused (A8) |
+| N10 | "Tested with real Claude agents" or "teams use it today" | Not until FIRST-REAL-RUN.md section 5 is done (B1) |
+| N11 | "Only the owner can use their Approve link" | Anyone with the email can (C1) |
+| N12 | "Approvals land on GitHub as the owner's own review" | One shared GitHub account (C5, spec decision 11 not built) |
+| N13 | "Agents get read-only keys by default" | The flag is not enforced (C3) |
+| N14 | "Hardy referees conflicts", "contracts", "standing rules", "risk-sorted inbox", "generated screens", "Slack or phone alerts", "works inside Claude or ChatGPT (MCP Apps)" | None of these exist in the code; Hardy is out of scope (INTENT.md) |
+| N15 | "Aurora reduces conflicts by X%" | Never measured (`PROGRESS.md:48`) |
+
+## Reproducing the 33% figure (finding A9): not reproducible
+
+Checked on 31 October 2026, on all five branches (`main`, `claude/eloquent-hopper-9m2e04`,
+`claude/keen-goldberg-484y4g`, `claude/codebase-review-ad3lrs`, `claude/intent-audit`) and their full history.
+**No run was started**: the input does not exist, so any run would be a new measurement, not a reproduction.
+
+- **The 20 repositories are not named anywhere.** The only description is "20 open-source product teams,
+  22 October 2025 to 22 October 2026" (`aurora-v1-spec.md:468`). No list, data file or commit message names them.
+  `tools/collision-audit/step5-candidates.md` is a different, later screening (about 45 repositories, 56 days).
+- **The scripts did not exist on the date given.** The spec says the figure was "re-run on 23 October 2026 with the
+  collision-audit scripts". The scripts first appear in commit `63c5d6d` on 25 October 2026, rebuilt from the
+  playbook's method because "the five scripts were not in the repo" (CLAUDE.md, piece G). The spec was committed in
+  `9a5b9b8` on 24 October. The "earlier analysis" the playbook refers to (`pilot-playbook.md:93`) is not in the repository.
+- **To reproduce it you would need** the list of 20 repositories (or the output files) from whoever ran the
+  original analysis. With that list: `python3 -I tools/collision-audit/collision-audit-batch --fetch ...` over the year
+  window. A one-year window on 20 repositories is likely to take more than 2 hours. Ask before starting.
 
 ## What must wait (and what to say until then)
 
