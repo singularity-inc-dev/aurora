@@ -23,7 +23,7 @@ INTENT.md and DEVIATIONS.md are not in the repository (no branch, no history) no
 - A start on the first two is parked on branch `claude/handover-alignment-wip` (not for merge; its scheduled-proposal unit tests are not updated).
 
 ### Tests
-Unit: plugin 394 (was 388), email service 51. Live: see the pull request.
+Unit: plugin 394 (was 388), email service 51. Full live run (cold start): **360 passed, 0 failed** (was 356; 4 new in M2: uncommitted files are not checked, and no test command is NOT TESTED in the result, the report and the event log), deployment rehearsal 109 passed.
 
 ## First real run (in progress, 31 Oct 2026)
 
