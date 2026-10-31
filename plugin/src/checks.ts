@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import type { ChecksSettings } from "./config.js";
 import { addedLines, diffStats, headSha, mergeBase } from "./git.js";
 import { redact, scanAddedLines, scanFileNames, type SecretFinding } from "./secretscan.js";
+import { LineWatcher } from "./handovernote.js";
 
 export type CheckStatus = "passed" | "failed" | "skipped";
 
@@ -11,6 +12,8 @@ export interface CheckResult {
   summary: string;
   /** Tail of command output, already redacted. */
   output?: string;
+  /** Tests only: output lines naming each watched test (the owner's "done when" tests). */
+  found?: Record<string, string[]>;
 }
 
 export interface ChecksReport {
@@ -26,12 +29,17 @@ export interface CommandOutcome {
   exitCode: number | null;
   timedOut: boolean;
   output: string;
+  /** Lines naming each watched test, from the whole output (not only its tail). */
+  found?: Record<string, string[]>;
 }
 
-/** Runs one operator-configured check command (locally, or in the checks sandbox: checksandbox.ts). */
-export type CommandRunner = (command: string, timeoutSeconds: number) => Promise<CommandOutcome>;
+/**
+ * Runs one operator-configured check command (locally, or in the checks sandbox:
+ * checksandbox.ts), watching its whole output for the given test names.
+ */
+export type CommandRunner = (command: string, timeoutSeconds: number, watch?: readonly string[]) => Promise<CommandOutcome>;
 
-export const localRunner = (cwd: string): CommandRunner => (command, timeoutSeconds) => runCommand(command, cwd, timeoutSeconds);
+export const localRunner = (cwd: string): CommandRunner => (command, timeoutSeconds, watch) => runCommand(command, cwd, timeoutSeconds, watch);
 
 /** With isolation required and no sandbox, commands are refused rather than run as Paperclip's own user. */
 export const refusingRunner: CommandRunner = async () => ({
@@ -44,7 +52,7 @@ export const refusingRunner: CommandRunner = async () => ({
  * Run an operator-configured command in the task worktree. The environment holds
  * only PATH/HOME/LANG and CI=1: no Paperclip tokens or other keys leak into it.
  */
-export function runCommand(command: string, cwd: string, timeoutSeconds: number): Promise<CommandOutcome> {
+export function runCommand(command: string, cwd: string, timeoutSeconds: number, watch: readonly string[] = []): Promise<CommandOutcome> {
   return new Promise((resolve) => {
     const child = spawn(command, {
       cwd,
@@ -54,8 +62,11 @@ export function runCommand(command: string, cwd: string, timeoutSeconds: number)
       stdio: ["ignore", "pipe", "pipe"],
     });
     let output = "";
+    const watcher = new LineWatcher(watch);
     const collect = (chunk: Buffer) => {
-      output = (output + chunk.toString("utf8")).slice(-OUTPUT_TAIL_CHARS * 4);
+      const text = chunk.toString("utf8");
+      watcher.feed(text);
+      output = (output + text).slice(-OUTPUT_TAIL_CHARS * 4);
     };
     child.stdout.on("data", collect);
     child.stderr.on("data", collect);
@@ -70,7 +81,7 @@ export function runCommand(command: string, cwd: string, timeoutSeconds: number)
     }, timeoutSeconds * 1000);
     child.on("close", (code) => {
       clearTimeout(timer);
-      resolve({ exitCode: code, timedOut, output: redact(output).slice(-OUTPUT_TAIL_CHARS) });
+      resolve({ exitCode: code, timedOut, output: redact(output).slice(-OUTPUT_TAIL_CHARS), found: watcher.end() });
     });
     child.on("error", () => {
       clearTimeout(timer);
@@ -84,17 +95,19 @@ async function commandCheck(
   command: string | null,
   runner: CommandRunner,
   timeoutSeconds: number,
+  watch: readonly string[] = [],
 ): Promise<CheckResult> {
   if (!command) return { name, status: "skipped", summary: "no command configured" };
-  const outcome = await runner(command, timeoutSeconds);
+  const outcome = await runner(command, timeoutSeconds, watch);
+  const found = watch.length ? { found: outcome.found ?? {} } : {};
   if (outcome.exitCode === null && !outcome.timedOut) {
-    return { name, status: "failed", summary: outcome.output.split("\n")[0] || "could not run", output: outcome.output };
+    return { name, status: "failed", summary: outcome.output.split("\n")[0] || "could not run", output: outcome.output, ...found };
   }
   if (outcome.timedOut) {
-    return { name, status: "failed", summary: `timed out after ${timeoutSeconds}s`, output: outcome.output };
+    return { name, status: "failed", summary: `timed out after ${timeoutSeconds}s`, output: outcome.output, ...found };
   }
-  if (outcome.exitCode === 0) return { name, status: "passed", summary: "exit code 0", output: outcome.output };
-  return { name, status: "failed", summary: `exit code ${outcome.exitCode}`, output: outcome.output };
+  if (outcome.exitCode === 0) return { name, status: "passed", summary: "exit code 0", output: outcome.output, ...found };
+  return { name, status: "failed", summary: `exit code ${outcome.exitCode}`, output: outcome.output, ...found };
 }
 
 function describeFindings(findings: SecretFinding[]): string {
@@ -103,12 +116,16 @@ function describeFindings(findings: SecretFinding[]): string {
   return `${findings.length} possible secret(s): ${shown.join(", ")}${more}`;
 }
 
-/** Run the whole gate: diff size, secret scan, tests, lint. Fails closed on errors. */
+/**
+ * Run the whole gate: diff size, secret scan, tests, lint. Fails closed on errors.
+ * `watchTests`: the owner's "done when" test names, looked for in the tests output.
+ */
 export async function runChecksGate(
   cwd: string,
   baseRef: string,
   settings: ChecksSettings,
   runner: CommandRunner = localRunner(cwd),
+  watchTests: readonly string[] = [],
 ): Promise<ChecksReport> {
   const results: CheckResult[] = [];
   let base: string;
@@ -140,7 +157,7 @@ export async function runChecksGate(
       : { name: "secret-scan", status: "failed", summary: describeFindings(findings) },
   );
 
-  results.push(await commandCheck("tests", settings.testCommand, runner, settings.timeoutSeconds));
+  results.push(await commandCheck("tests", settings.testCommand, runner, settings.timeoutSeconds, watchTests));
   results.push(await commandCheck("lint", settings.lintCommand, runner, settings.timeoutSeconds));
 
   return { passed: results.every((r) => r.status !== "failed"), headSha: head, baseRef, results };

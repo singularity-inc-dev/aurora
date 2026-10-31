@@ -1,9 +1,13 @@
 import { MAX_TASKS_PER_HANDOVER, type Person } from "./config.js";
 import { MAX_CLAIMS_PER_TASK, normalizeClaim } from "./claims.js";
 import { MAX_DESCRIPTION_LENGTH, MAX_TITLE_LENGTH } from "./handoff.js";
+import { parseNote } from "./handovernote.js";
 
-/** Every task lists the files and folders it may change (its claims, piece D). */
-export type ProposedTask = ({ issueId: string } | { title: string; description: string }) & { claims: string[] };
+/**
+ * Every task lists the files and folders it may change (its claims, piece D), and
+ * may say how to know it is done (shown to the owner on the plan, locked once proposed).
+ */
+export type ProposedTask = ({ issueId: string } | { title: string; description: string }) & { claims: string[]; doneWhen: string; tests: string[] };
 
 export class ProposalRefused extends Error {
   constructor(message: string) {
@@ -23,18 +27,21 @@ export function parseProposal(params: unknown, person: Person): ProposedTask[] {
   return raw.map((entry, i): ProposedTask => {
     const t = (typeof entry === "object" && entry !== null ? entry : {}) as Record<string, unknown>;
     const claims = parseClaims(t.claims, i);
+    const note = parseNote({ doneWhen: t.doneWhen, files: claims, tests: t.tests }, false);
+    if (typeof note === "string") throw new ProposalRefused(`task ${i + 1}: ${note}`);
+    const { doneWhen, tests } = note;
     const issueId = typeof t.issueId === "string" ? t.issueId.trim() : "";
     if (issueId) {
       if (seen.has(issueId)) throw new ProposalRefused(`task ${i + 1}: ticket listed twice`);
       seen.add(issueId);
-      return { issueId, claims };
+      return { issueId, claims, doneWhen, tests };
     }
     const title = typeof t.title === "string" ? t.title.trim() : "";
     const description = typeof t.description === "string" ? t.description.trim() : "";
     if (!title) throw new ProposalRefused(`task ${i + 1}: needs a title or an issueId`);
     if (title.length > MAX_TITLE_LENGTH) throw new ProposalRefused(`task ${i + 1}: title is too long`);
     if (description.length > MAX_DESCRIPTION_LENGTH) throw new ProposalRefused(`task ${i + 1}: description is too long`);
-    return { title, description, claims };
+    return { title, description, claims, doneWhen, tests };
   });
 }
 

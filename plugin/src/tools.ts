@@ -37,7 +37,7 @@ export const PROPOSE_TOOL: PluginToolDeclaration = {
   name: TOOL_PROPOSE,
   displayName: "Propose this handover's tasks",
   description:
-    "Propose up to 3 tasks for this handover. Each task is either an existing backlog ticket assigned to you (issueId) or a new one (title, description), and lists the files and folders it may change (claims). A task that reaches into another owner's files goes to that owner's agent instead. Your owner approves the plan with one tap; nothing runs before that.",
+    "Only when your owner asked you for proposals: propose up to 3 tasks for this handover. Each task is either an existing backlog ticket assigned to you (issueId) or a new one (title, description), lists the files and folders it may change (claims), and says how your owner will know it is done (doneWhen, with test names if a test proves it). A task that reaches into another owner's files goes to that owner's agent instead. Your owner approves the plan with one tap; nothing runs before that.",
   parametersSchema: {
     type: "object",
     properties: {
@@ -50,7 +50,14 @@ export const PROPOSE_TOOL: PluginToolDeclaration = {
           properties: {
             issueId: { type: "string", description: "An existing backlog ticket assigned to you." },
             title: { type: "string", description: "Title for a new ticket." },
-            description: { type: "string", description: "What needs doing and how to know it is done." },
+            description: { type: "string", description: "What needs doing." },
+            doneWhen: { type: "string", description: "How your owner will know it is done, in one or two sentences. Your owner sees it on the plan; it cannot be changed afterwards." },
+            tests: {
+              type: "array",
+              maxItems: 5,
+              items: { type: "string" },
+              description: "Names of tests that prove it is done. Aurora runs the test command itself and looks for these names passing.",
+            },
             claims: {
               type: "array",
               minItems: 1,

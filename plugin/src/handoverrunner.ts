@@ -10,7 +10,8 @@ import { randomUUID } from "node:crypto";
 import { ensureTaskRow, recordHandoff } from "./eventlog.js";
 import { HANDOFF_ORIGIN, HANDOVER_TASK_ORIGIN, PLAN_ORIGIN } from "./ids.js";
 import { openClaims, recordClaims, recordOverlap, releaseClaims } from "./claimstore.js";
-import { movedTicketNote, ownerQuestions, preHandoverCheck, type Areas, type Overlap, type Verdict } from "./prehandover.js";
+import { movedTicketNote, overlapReason, ownerQuestions, preHandoverCheck, type Areas, type Overlap, type Verdict } from "./prehandover.js";
+import { lockNote, noteComment, parseNote, type HandoverNote } from "./handovernote.js";
 import { readAreas } from "./repoareas.js";
 import { parseProposal, ProposalRefused } from "./proposal.js";
 import { taskWorkspaceSettings } from "./workspace.js";
@@ -76,26 +77,137 @@ function scheduleOf(settings: PluginSettings, person: Person, now: Date): Handov
   return handoverClock(now, person.timezone, person.handoverStartHour, settings.handover.proposalLeadHours, settings.handover.handoverLengthHours);
 }
 
-export type StartNow = { ok: true; handoverKey: string; planIssueId: string | null } | { ok: false; message: string };
+export type StartNow =
+  | { ok: true; handoverKey: string; planIssueId: string | null; taskIds?: string[]; notHandedOver?: string[] }
+  | { ok: false; message: string; notHandedOver?: string[] };
+
+/** One ticket the owner chose on the Hand over now page, with the owner's note. */
+export interface ChosenTask {
+  issueId: string;
+  note: HandoverNote;
+}
 
 /**
- * "Hand over now" (thin version 1, piece C): start a handover right away, next to
- * the schedule. The owner tapped it; the agent plans at once, the owner approves
- * the plan as always, and work starts as soon as it is approved. At most one
- * handover per person is open at a time.
+ * What the owner asked for on the Hand over now page: run exactly these tickets
+ * (the default), or ask the agent to propose tasks (the plan is then approved
+ * separately, as before).
  */
-export async function startHandoverNow(ctx: PluginContext, companyId: string, settings: PluginSettings, person: Person, now: Date): Promise<StartNow> {
+export type HandoverRequest = { mode: "tickets"; tasks: ChosenTask[] } | { mode: "proposals" };
+
+/** Read the page's request. Anything that is not a valid list of tickets is refused, never guessed. */
+export function parseHandoverRequest(body: Record<string, unknown>, person: Person): HandoverRequest | string {
+  if (body.mode === "proposals") return { mode: "proposals" };
+  if (body.mode !== undefined && body.mode !== "tickets") return "unknown kind of handover";
+  const raw = body.tasks;
+  if (!Array.isArray(raw) || raw.length === 0) return "choose at least one ticket";
+  const limit = Math.min(person.maxTasksPerHandover, MAX_TASKS_PER_HANDOVER);
+  if (raw.length > limit) return `choose at most ${limit} ticket(s)`;
+  const seen = new Set<string>();
+  const tasks: ChosenTask[] = [];
+  for (const [i, entry] of raw.entries()) {
+    const t = (typeof entry === "object" && entry !== null ? entry : {}) as Record<string, unknown>;
+    const issueId = typeof t.issueId === "string" ? t.issueId.trim() : "";
+    if (!issueId || issueId.length > 100) return `ticket ${i + 1}: no ticket chosen`;
+    if (seen.has(issueId)) return `ticket ${i + 1}: chosen twice`;
+    seen.add(issueId);
+    const note = parseNote({ doneWhen: t.doneWhen, files: t.files, tests: t.tests });
+    if (typeof note === "string") return `ticket ${i + 1}: ${note}`;
+    tasks.push({ issueId, note });
+  }
+  return { mode: "tickets", tasks };
+}
+
+/**
+ * "Hand over now" (piece C). By default the owner chooses the tickets and writes
+ * a note on each; the tap is the approval, so exactly those tickets run, at once,
+ * with no separate plan step, and the agent cannot add, swap or rewrite tasks.
+ * When the owner asks for proposals instead, the agent plans and the owner
+ * approves the plan as before. At most one handover per person is open at a time.
+ */
+export async function startHandoverNow(
+  ctx: PluginContext,
+  companyId: string,
+  settings: PluginSettings,
+  person: Person,
+  now: Date,
+  request: HandoverRequest = { mode: "proposals" },
+): Promise<StartNow> {
   assertTier("start-handover-now", "needs-tap");
   const open = await getOpenRun(ctx.db, companyId, person.email);
   if (open) return { ok: false, message: `a handover is already in progress (${open.status.replace("_", " ")})` };
   if (!(await agentIsSafe(ctx, settings, companyId, person))) return { ok: false, message: "your agent is not locked down yet (see the plugin's route audit)" };
   const handoverKey = now.toISOString().slice(0, 19);
   const endsAt = new Date(now.getTime() + settings.handover.handoverLengthHours * 3600_000);
+  if (request.mode === "tickets") return startChosenTickets(ctx, companyId, settings, person, now, handoverKey, endsAt, request.tasks);
   if (!(await claimRun(ctx.db, { companyId, owner: person.email, agentId: person.agentId, handoverKey, kind: "now", startsAt: now, endsAt }))) {
     return { ok: false, message: "a handover was just started; try again in a moment" };
   }
   await tickPerson(ctx, companyId, settings, person, now);
   return { ok: true, handoverKey, planIssueId: (await getRun(ctx.db, companyId, person.email, handoverKey))?.planIssueId ?? null };
+}
+
+/**
+ * The owner's own tickets, handed over by the owner's tap. Every ticket is
+ * checked before anything changes: it must be the owner's agent's, in backlog.
+ * The pre-handover check still runs; a ticket that reaches into a teammate's
+ * area or claims is not handed over (and not moved: the owner decides what next).
+ */
+async function startChosenTickets(
+  ctx: PluginContext,
+  companyId: string,
+  settings: PluginSettings,
+  person: Person,
+  now: Date,
+  handoverKey: string,
+  endsAt: Date,
+  chosen: ChosenTask[],
+): Promise<StartNow> {
+  const issues = [];
+  for (const c of chosen) {
+    const issue = await ctx.issues.get(c.issueId, companyId);
+    if (!issue || issue.assigneeAgentId !== person.agentId) return { ok: false, message: "you can only hand over tickets assigned to your own agent" };
+    if (issue.status !== "backlog") return { ok: false, message: `ticket ${issue.identifier ?? issue.id} is not in backlog` };
+    issues.push(issue);
+  }
+  const projectId = settings.handover.projectId ?? issues.find((i) => i.projectId)?.projectId ?? null;
+  let areas: Areas | null;
+  try {
+    ({ areas } = await projectAreas(ctx, settings, companyId, projectId));
+  } catch (err) {
+    if (err instanceof ProposalRefused) return { ok: false, message: err.message };
+    throw err;
+  }
+  const titleOf = async (taskId: string) => (await ctx.issues.get(taskId, companyId))?.title ?? taskId;
+  const open = await openClaims(ctx.db, companyId, titleOf);
+  const verdicts = preHandoverCheck(person, settings.people, issues.map((i, n) => ({ title: i.title, claims: chosen[n]!.note.claims })), open, areas);
+
+  const keep = issues.map((issue, n) => ({ issue, note: chosen[n]!.note, verdict: verdicts[n]! })).filter((k) => !k.verdict.overlap);
+  const refused = verdicts.filter((v) => v.overlap).map((v) => `"${v.title}" was not handed over: ${overlapReason(v.overlap!)}. Agree with ${v.overlap!.keeper.email} first, or hand it to them.`);
+  if (keep.length === 0) return { ok: false, message: "nothing was handed over", notHandedOver: refused };
+  if (!(await claimRun(ctx.db, { companyId, owner: person.email, agentId: person.agentId, handoverKey, kind: "now", startsAt: now, endsAt }))) {
+    return { ok: false, message: "a handover was just started; try again in a moment" };
+  }
+  for (const [n, v] of verdicts.entries()) {
+    if (v.overlap) await recordOverlap(ctx.db, { id: randomUUID(), companyId, handoverKey, owner: person.email, title: v.title, ticketId: issues[n]!.id, overlap: v.overlap });
+  }
+
+  const taskIds: string[] = [];
+  for (const { issue, note } of keep) {
+    await ensureTaskRow(ctx.db, { taskId: issue.id, companyId, owner: person.email, agent: person.agentId, taskKind: "task" });
+    await recordClaims(ctx.db, issue.id, note.claims);
+    await lockNote(ctx.db, issue.id, issue.title, note, "owner", now);
+    // A ticket the owner wrote in Paperclip may lack the task's own worktree: give it one before work starts.
+    if (!issue.executionWorkspaceId) await ctx.issues.update(issue.id, { executionWorkspaceSettings: taskWorkspaceSettings() }, companyId);
+    await ctx.issues.createComment(issue.id, noteComment(person.email, note, "owner"), companyId);
+    taskIds.push(issue.id);
+  }
+  // The owner's tap is the approval: proposed and approved at the same moment.
+  await stampTasks(ctx.db, taskIds, "proposed_at", now);
+  await stampTasks(ctx.db, taskIds, "approved_at", now);
+  const run = await getRun(ctx.db, companyId, person.email, handoverKey);
+  if (!run || !(await updateRun(ctx.db, run, { status: "approved", taskIds }))) return { ok: false, message: "the handover changed while starting; try again" };
+  await tickPerson(ctx, companyId, settings, person, now);
+  return { ok: true, handoverKey, planIssueId: null, taskIds, ...(refused.length ? { notHandedOver: refused } : {}) };
 }
 
 export async function tickPerson(ctx: PluginContext, companyId: string, settings: PluginSettings, person: Person, now: Date): Promise<HandoverDecision> {
@@ -117,6 +229,8 @@ async function decideAndApply(
   const run = (await getOpenRun(ctx.db, companyId, person.email)) ?? (await getRun(ctx.db, companyId, person.email, clock.handoverKey));
   // A finished scheduled handover for this date stays finished: one per person per day.
   if (run && !OPEN_STATUSES.includes(run.status)) return { kind: "none" };
+  // Agent-proposed tasks are off by default: the schedule opens no plan unless the owner turned it on.
+  if (!run && !person.agentProposesOnSchedule) return { kind: "none" };
 
   // The budget counts from the start of this handover's own window.
   const windowStart = run ? windowOf(run, clock).start : clock.startsAt;
@@ -449,8 +563,11 @@ export async function proposeHandover(
     }
     await ensureTaskRow(ctx.db, { taskId: issue.id, companyId, owner: person.email, agent: person.agentId, taskKind: "task" });
     await recordClaims(ctx.db, issue.id, t.claims);
+    // Locked now: the owner approves exactly this note with the plan.
+    await lockNote(ctx.db, issue.id, issue.title, t, "agent-proposal", new Date());
     taskIds.push(issue.id);
-    lines.push(`- ${ticket}: ${issue.title} (${claimsLine})`);
+    const tests = t.tests.length ? `; tests ${t.tests.map((x) => `"${x}"`).join(", ")}` : "; no test named, so you check it by hand";
+    lines.push(`- ${ticket}: ${issue.title} (${claimsLine})\n  Done when: ${t.doneWhen || "not written, so you check it by hand"}${t.doneWhen ? tests : ""}`);
   }
   const questions = ownerQuestions(moved);
   const now = new Date();

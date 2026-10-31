@@ -1,15 +1,15 @@
 import { definePlugin, runWorker, type PluginContext, type ToolResult } from "@paperclipai/plugin-sdk";
 import { formatReport, localRunner, refusingRunner, runChecksGate, type CommandRunner } from "./checks.js";
 import { sandboxRunner } from "./checksandbox.js";
-import { findPersonByAgent, findPersonByEmail, parseSettings, sandboxLogin, type Person, type PluginSettings } from "./config.js";
+import { findPersonByAgent, findPersonByEmail, MAX_TASKS_PER_HANDOVER, parseSettings, sandboxLogin, type Person, type PluginSettings } from "./config.js";
 import { ensureTaskRow, getTaskRow, recordChecks, recordHandoff } from "./eventlog.js";
 import { handoffDescription, HandoffRefused, parseHandoffRequest, planHandoff } from "./handoff.js";
 import { agentProblems, auditSettingsIsolation } from "./isolation.js";
 import { HANDOFF_ORIGIN, HANDOVER_TICK_JOB } from "./ids.js";
 import { numbersCsv } from "./numbers.js";
 import { loadNumbers } from "./numberstore.js";
-import { listRuns } from "./handoverstore.js";
-import { projectAreas, proposeHandover, ProposalRefused, startHandoverNow, tickAll } from "./handoverrunner.js";
+import { getOpenRun, listRuns } from "./handoverstore.js";
+import { parseHandoverRequest, projectAreas, proposeHandover, ProposalRefused, startHandoverNow, tickAll } from "./handoverrunner.js";
 import { startTicker, type Ticker } from "./ticker.js";
 import { renderBriefing } from "./briefing.js";
 import { getAction, getBriefingById, listPendingBriefings, markBriefingSent } from "./briefstore.js";
@@ -18,6 +18,7 @@ import { claimInvite, createInvite, finishInvite, previewInvite } from "./invite
 import { listWaitingPullRequests } from "./briefstore.js";
 import { HANDOFF_TOOL, PROPOSE_TOOL, RUN_CHECKS_TOOL, TOOL_HANDOFF, TOOL_PROPOSE, TOOL_RUN_CHECKS } from "./tools.js";
 import { taskWorkspaceSettings } from "./workspace.js";
+import { judgeDoneWhen, noteOf, recordDoneWhen } from "./handovernote.js";
 
 export { HANDOFF_ORIGIN } from "./ids.js";
 export const CHECKS_DOCUMENT_PREFIX = "vt-checks-";
@@ -201,6 +202,9 @@ const plugin = definePlugin({
             const issue = await ctx.issues.get(plan.issueId, run.companyId);
             if (!issue) throw new Refused("ticket not found");
             if (issue.assigneeAgentId !== plan.from.agentId) throw new Refused("you can only hand off tickets assigned to you");
+            // The owner handed this ticket to their own agent: the agent may not swap it away.
+            const handover = await getOpenRun(ctx.db, run.companyId, plan.from.email);
+            if (handover?.taskIds.includes(plan.issueId)) throw new Refused("this ticket is part of your owner's handover; only your owner can change it");
             await ctx.issues.update(plan.issueId, { assigneeAgentId: plan.to.agentId }, run.companyId, actor);
             const note = plan.note ? `\n\n${plan.note}` : "";
             await ctx.issues.createComment(
@@ -249,7 +253,9 @@ const plugin = definePlugin({
           if (!ws || ws.providerType !== "git_worktree" || !cwd) throw new Refused("ticket workspace is not a git worktree");
           if (!ws.baseRef) throw new Refused("ticket worktree has no base branch to compare with");
 
-          const report = await runChecksGate(cwd, ws.baseRef, settings.checks, await checksRunner(ctx, settings, owner, run.companyId, cwd));
+          // The owner's locked note: the tests that prove "done when" are watched for in the tests output.
+          const note = noteOf(await getTaskRow(ctx.db, issueId));
+          const report = await runChecksGate(cwd, ws.baseRef, settings.checks, await checksRunner(ctx, settings, owner, run.companyId, cwd), note?.tests ?? []);
           const body = formatReport(report);
           const documentKey = checksDocumentKey();
           await ctx.issues.documents.upsert({
@@ -275,9 +281,17 @@ const plugin = definePlugin({
             taskKind: "task",
           });
           await recordChecks(ctx.db, issueId, report.passed ? "passed" : "failed", report.headSha);
+          // Aurora's own verdict on the owner's "done when" (never the agent's word).
+          let doneWhen = "";
+          if (note) {
+            const tests = report.results.find((r) => r.name === "tests");
+            const verdict = judgeDoneWhen({ doneWhen: note.doneWhen ?? "", tests: note.tests }, tests ? { status: tests.status, summary: tests.summary, found: tests.found ?? {} } : null);
+            await recordDoneWhen(ctx.db, issueId, verdict, report.headSha);
+            doneWhen = ` Done when: ${verdict.result.replace(/-/g, " ")}.`;
+          }
           return {
-            content: `Checks ${report.passed ? "passed" : "failed"}: ${report.results.map((r) => `${r.name} ${r.status}`).join(", ")}.`,
-            data: { passed: report.passed, headSha: report.headSha, documentKey, results: report.results.map(({ output: _o, ...r }) => r) },
+            content: `Checks ${report.passed ? "passed" : "failed"}: ${report.results.map((r) => `${r.name} ${r.status}`).join(", ")}.${doneWhen}`,
+            data: { passed: report.passed, headSha: report.headSha, documentKey, results: report.results.map(({ output: _o, found: _f, ...r }) => r) },
           };
         } catch (err) {
           return refusal(err);
@@ -351,7 +365,10 @@ const plugin = definePlugin({
         // Hand over now. The email service calls this only for the owner signed in to Paperclip.
         const person = typeof body.email === "string" ? findPersonByEmail(settings, body.email) : undefined;
         if (!person) return { status: 404, body: { ok: false, message: "you are not on the team" } };
-        const started = await startHandoverNow(ctx, input.companyId, settings, person, now);
+        // Default: exactly the tickets the owner chose, with the owner's note on each. "proposals": the agent plans.
+        const request = parseHandoverRequest(body, person);
+        if (typeof request === "string") return { status: 400, body: { ok: false, message: request } };
+        const started = await startHandoverNow(ctx, input.companyId, settings, person, now, request);
         return { status: started.ok ? 201 : 409, body: started };
       }
       case "handover-status": {
@@ -359,9 +376,20 @@ const plugin = definePlugin({
         const person = findPersonByEmail(settings, email);
         if (!person) return { status: 404, body: { ok: false, message: "you are not on the team" } };
         const runs = (await listRuns(ctx.db, input.companyId, 50)).filter((r) => r.owner === person.email).slice(0, 5);
+        // The owner's agent's backlog: the tickets the owner can hand over.
+        const backlog = await ctx.issues.list({ companyId: input.companyId, assigneeAgentId: person.agentId, status: "backlog", limit: 20 });
         return {
           status: 200,
-          body: { ok: true, email: person.email, timezone: person.timezone, handoverStartHour: person.handoverStartHour, handovers: runs.map((r) => ({ handoverKey: r.handoverKey, kind: r.kind, status: r.status, stopReason: r.stopReason })) },
+          body: {
+            ok: true,
+            email: person.email,
+            timezone: person.timezone,
+            handoverStartHour: person.handoverStartHour,
+            agentProposesOnSchedule: person.agentProposesOnSchedule === true,
+            maxTasks: Math.min(person.maxTasksPerHandover, MAX_TASKS_PER_HANDOVER),
+            tickets: backlog.map((i) => ({ id: i.id, identifier: i.identifier ?? null, title: i.title })),
+            handovers: runs.map((r) => ({ handoverKey: r.handoverKey, kind: r.kind, status: r.status, stopReason: r.stopReason })),
+          },
         };
       }
       case "numbers":

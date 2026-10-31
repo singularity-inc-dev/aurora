@@ -56,6 +56,13 @@ export interface Person {
   handoverStartHour: number;
   maxTasksPerHandover: number;
   handoverBudgetCapCents: number;
+  /**
+   * Off by default: the owner chooses the tickets (Hand over now) and nothing is
+   * proposed by the agent. On: at the scheduled handover the agent proposes tasks
+   * and the owner approves the plan. The owner can always ask for proposals on
+   * the Hand over now page.
+   */
+  agentProposesOnSchedule?: boolean;
   secrets: PersonSecret[];
 }
 
@@ -296,6 +303,11 @@ export const instanceConfigSchema: JsonSchema = {
             title: "Budget cap per handover (US cents)",
             minimum: 0,
           },
+          agentProposesOnSchedule: {
+            type: "boolean",
+            title: "Let the agent propose tasks at the scheduled handover (off: only the tickets the owner hands over run)",
+            default: false,
+          },
           secrets: {
             type: "array",
             title: "Keys this person's agent may use",
@@ -445,6 +457,9 @@ export function parseSettings(stored: unknown): ParseResult {
       errors.push(`${at}.handoverBudgetCapCents: must be a whole number of cents, 0 or more`);
     }
 
+    const agentProposesOnSchedule = entry.agentProposesOnSchedule ?? false;
+    if (typeof agentProposesOnSchedule !== "boolean") errors.push(`${at}.agentProposesOnSchedule: must be true or false`);
+
     let githubLogin: string | null = null;
     if (entry.githubLogin !== undefined && entry.githubLogin !== null && entry.githubLogin !== "") {
       const login = typeof entry.githubLogin === "string" ? entry.githubLogin.trim().replace(/^@/, "") : "";
@@ -529,6 +544,7 @@ export function parseSettings(stored: unknown): ParseResult {
       handoverStartHour: handoverStartHour as number,
       maxTasksPerHandover: maxTasksPerHandover as number,
       handoverBudgetCapCents: handoverBudgetCapCents as number,
+      agentProposesOnSchedule: agentProposesOnSchedule === true,
       secrets,
     });
   });

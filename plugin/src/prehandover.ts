@@ -82,7 +82,7 @@ export function preHandoverCheck(
   }
 }
 
-function why(o: Overlap): string {
+export function overlapReason(o: Overlap): string {
   return o.kind === "area"
     ? `\`${o.claim}\` is in ${o.keeper.email}'s area (CODEOWNERS line ${o.rule.line})`
     : `\`${o.claim}\` overlaps \`${o.otherClaim}\`, claimed by ${o.keeper.email}'s task "${o.other.title}"`;
@@ -91,7 +91,7 @@ function why(o: Overlap): string {
 /** Why a moved task is now the keeper's ticket, for its description. */
 export function movedTicketNote(proposer: Person, v: Verdict & { overlap: Overlap }): string {
   return (
-    `Moved here by the pre-handover check: ${proposer.email}'s agent proposed this, but ${why(v.overlap)}. ` +
+    `Moved here by the pre-handover check: ${proposer.email}'s agent proposed this, but ${overlapReason(v.overlap)}. ` +
     `It waits in backlog until ${v.overlap.keeper.email} approves it in a handover plan.\n\nClaims: ${v.claims.map((c) => `\`${c}\``).join(", ")}`
   );
 }
@@ -102,7 +102,7 @@ export function movedTicketNote(proposer: Person, v: Verdict & { overlap: Overla
  */
 export function ownerQuestions(moved: ReadonlyArray<{ verdict: Verdict & { overlap: Overlap }; ticket: string }>): string[] {
   const ask = (m: (typeof moved)[number]) =>
-    `"${m.verdict.title}": ${why(m.verdict.overlap)}. It went to ${m.verdict.overlap.keeper.email}'s agent as ${m.ticket} and will not run in your handover. Is that right?`;
+    `"${m.verdict.title}": ${overlapReason(m.verdict.overlap)}. It went to ${m.verdict.overlap.keeper.email}'s agent as ${m.ticket} and will not run in your handover. Is that right?`;
   if (moved.length <= MAX_QUESTIONS) return moved.map(ask);
   const rest = moved.slice(MAX_QUESTIONS - 1);
   return [

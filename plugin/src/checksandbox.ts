@@ -6,6 +6,7 @@ import type { SandboxLogin } from "./config.js";
 import { git } from "./git.js";
 import { redact } from "./secretscan.js";
 import type { CommandOutcome, CommandRunner } from "./checks.js";
+import { LineWatcher } from "./handovernote.js";
 
 const OUTPUT_TAIL_CHARS = 4000;
 /** Extra seconds for copying files and starting before the runner's own time limit kills the command. */
@@ -52,7 +53,7 @@ export async function worktreeFiles(cwd: string): Promise<string[]> {
  * Paperclip's data or secrets) nor as another owner's.
  */
 export function sandboxRunner(cwd: string, sb: SandboxLogin, privateKey: string): CommandRunner {
-  return async (command, timeoutSeconds) => {
+  return async (command, timeoutSeconds, watch = []) => {
     const dir = await mkdtemp(path.join(tmpdir(), "vt-sandbox-"));
     try {
       const keyFile = path.join(dir, "key");
@@ -60,21 +61,24 @@ export function sandboxRunner(cwd: string, sb: SandboxLogin, privateKey: string)
       await writeFile(keyFile, privateKey.endsWith("\n") ? privateKey : `${privateKey}\n`, { mode: 0o600 });
       await writeFile(knownHostsFile, `${sb.knownHosts}\n`, { mode: 0o600 });
       const files = await worktreeFiles(cwd);
-      return await runOverSsh(cwd, files, sandboxSshArgs(sb, keyFile, knownHostsFile), `${timeoutSeconds} ${command}`, timeoutSeconds);
+      return await runOverSsh(cwd, files, sandboxSshArgs(sb, keyFile, knownHostsFile), `${timeoutSeconds} ${command}`, timeoutSeconds, watch);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
   };
 }
 
-function runOverSsh(cwd: string, files: string[], sshArgs: string[], remote: string, timeoutSeconds: number): Promise<CommandOutcome> {
+function runOverSsh(cwd: string, files: string[], sshArgs: string[], remote: string, timeoutSeconds: number, watch: readonly string[]): Promise<CommandOutcome> {
   return new Promise((resolve) => {
     const env = { PATH: process.env.PATH ?? "", LANG: "C.UTF-8" };
     const tar = spawn("tar", ["--null", "--no-recursion", "-T", "-", "-c", "-f", "-"], { cwd, env, stdio: ["pipe", "pipe", "ignore"] });
     const ssh = spawn("ssh", [...sshArgs, remote], { env, stdio: ["pipe", "pipe", "pipe"] });
     let output = "";
+    const watcher = new LineWatcher(watch);
     const collect = (chunk: Buffer) => {
-      output = (output + chunk.toString("utf8")).slice(-OUTPUT_TAIL_CHARS * 4);
+      const text = chunk.toString("utf8");
+      watcher.feed(text);
+      output = (output + text).slice(-OUTPUT_TAIL_CHARS * 4);
     };
     ssh.stdout.on("data", collect);
     ssh.stderr.on("data", collect);
@@ -99,7 +103,7 @@ function runOverSsh(cwd: string, files: string[], sshArgs: string[], remote: str
     ssh.on("close", (code) => {
       const tail = redact(output).slice(-OUTPUT_TAIL_CHARS);
       if (code === 255) finish({ exitCode: null, timedOut: false, output: `checks sandbox not reachable over ssh\n${tail}`.trim() });
-      else finish({ exitCode: code, timedOut: timedOut || code === TIMEOUT_EXIT, output: tail });
+      else finish({ exitCode: code, timedOut: timedOut || code === TIMEOUT_EXIT, output: tail, found: watcher.end() });
     });
     ssh.on("error", () => finish({ exitCode: null, timedOut: false, output: "could not start ssh for the checks sandbox" }));
   });
