@@ -1,6 +1,8 @@
 # aurora
 A platform where every person’s AI agent, and the sub-agents it manages, work together with other people’s agents on one shared project. Each agent handles the repetitive, long-running and logical work on its own, assists with the creative work, and keeps going while its owner is offline. Nothing ships until its owner approves.
 
+**Putting it on a real server for the first time:** follow [FIRST-REAL-RUN.md](FIRST-REAL-RUN.md) (it uses [DEPLOY.md](DEPLOY.md) for the server). Emergency stop on the server: `sudo vt-stop`.
+
 
 ## Run Paperclip with this plugin on your laptop
 
@@ -9,7 +11,7 @@ Every command below is copied from the source named in brackets. Nothing here wa
 
 - [ ] Check versions: Node 24.11+, pnpm 9.15+, git (`node -v`, `pnpm -v`, `git --version`) [Paperclip `doc/plugins/LOCAL_PLUGIN_DEVELOPMENT.md`, "Prerequisites"]
 - [ ] Start Paperclip: `npx paperclipai@latest onboard --yes`. The UI is at http://localhost:3100 [Paperclip's README, as you gave it to me; I did not re-read that file]
-- [ ] Clone this repo and use the working branch: `git clone https://github.com/singularity-inc-dev/aurora.git && cd aurora && git checkout claude/eloquent-hopper-9m2e04`
+- [ ] Clone this repo and use the working branch: `git clone https://github.com/singularity-inc-dev/aurora.git && cd aurora && git checkout main`
 - [ ] Build the plugin from its folder: `pnpm install`, then `pnpm dev` (watch build, leave it running) or `pnpm build` (one build) [`LOCAL_PLUGIN_DEVELOPMENT.md`, step 3, and "Troubleshooting"]
 - [ ] In a second terminal, install it from its absolute path: `npx -y paperclipai@2026.1012.0 plugin install /absolute/path/to/plugin` (add `--local` to be explicit) [`LOCAL_PLUGIN_DEVELOPMENT.md`, step 4]
 - [ ] Confirm it loaded: `npx -y paperclipai@2026.1012.0 plugin list`, then `... plugin inspect <plugin-key>` [`LOCAL_PLUGIN_DEVELOPMENT.md`, step 5]
@@ -33,7 +35,7 @@ Milestone 1 adds the plugin skeleton and its settings: one row per person (email
 ```bash
 git clone https://github.com/singularity-inc-dev/aurora.git
 cd aurora
-git checkout claude/eloquent-hopper-9m2e04
+git checkout main
 cd plugin
 pnpm install
 pnpm test
@@ -191,6 +193,45 @@ The rehearsal runs the real `deploy/` scripts inside a folder instead of the rea
 The rehearsal needs Linux and root (it starts a private PostgreSQL 16 as the `postgres` user); it is meant for the cloud machine.
 
 **B. On a real server:** follow [DEPLOY.md](DEPLOY.md).
+
+## How to test thin version 1 (pieces A to G)
+
+What each piece is, and what was checked, is in [PROGRESS.md](PROGRESS.md). On your laptop (Mac or Linux) you need Node 24 and pnpm (`scripts/cloud-setup.sh` shows the versions), git 2.38+, Python 3.9+ and, for the email checks, Mailpit (on a Mac: `brew install mailpit`).
+
+**1. Unit tests (about a minute)**
+
+```bash
+(cd plugin && pnpm install && pnpm test)            # 367 passed
+(cd email-service && pnpm install && pnpm test)     # 39 passed
+python3 -I tools/collision-audit/tests/test_audit.py   # 9 tests, OK
+```
+
+**2. The collision audit on a real repository (G)**
+
+```bash
+git clone https://github.com/OWNER/NAME.git /tmp/team-repo
+tools/collision-audit/collision-audit /tmp/team-repo OWNER/NAME
+```
+
+Open the `summary.md` it names at the end. It reads the history only and sends nothing anywhere. A busy repository with several people gives the most interesting result.
+
+**3. Live checks against a real Paperclip on your laptop (C, D, E, F)**
+
+```bash
+IT_ONLY=v1e scripts/integration-test.sh   # Hand over now, claims, the merge replay; about 10 minutes
+IT_ONLY=v1f scripts/integration-test.sh   # the numbers and the CSV; about 10 minutes
+```
+
+Each first runs the M4 checks it builds on (one handover for Ana and Bo, the handback emails, Approve and Reject), then:
+
+- **v1e:** Ana hands over now. Her agent claims only `notes.txt` but also changes `CHANGELOG.md`, which Bo's finished, undecided work changed too. Both get an email naming the conflict, and nothing is merged.
+- **v1f:** the numbers for that team: 5 work orders, 1 approved, 1 conflict, yield 20%, and the CSV file.
+
+Every check prints PASS or FAIL, with a total at the end.
+
+**4. Only on Linux as root (the cloud test machine)**
+
+`scripts/integration-test.sh` with no `IT_ONLY` runs everything. That includes v1a and v1b (agents as their own system users over SSH, and each owner's own Claude access, with stand-ins for real accounts), v1c, v1d (the pre-handover check with a real CODEOWNERS file) and the deployment rehearsal. These create system users and start an SSH server, so they are not for your laptop; their results are in PROGRESS.md.
 
 ## Cloud environment setup
 
