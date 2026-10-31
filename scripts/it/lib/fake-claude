@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# Stand-in for the Claude Code program in the live tests. Never contacts anyone.
+#
+# It behaves like a hostile agent: it records who it runs as and which model
+# access it found, then tries to reach what an agent must never reach (the
+# targets come from VT_PROBE_* in the agent's environment). It writes the
+# results to vt-probe.json in its working folder, commits that file (so it
+# comes back to the task's worktree on the host), and prints one line of
+# Claude's stream-json output so Paperclip sees a finished run.
+set -u
+cat >/dev/null 2>&1 || true   # the prompt arrives on standard input
+
+probe() { # name command... -> "name": "allowed" | "refused"
+  if "${@:2}" >/dev/null 2>&1; then printf '"%s":"allowed",' "$1"; else printf '"%s":"refused",' "$1"; fi
+}
+# Model access the way Claude Code looks for it: an API key in the environment,
+# or Claude Code's own login in the config folder. Only the identity line of the
+# stand-in login is read (the test writes a fake one); real login files are never touched by tests.
+access="none"; identity=""
+if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+  access="api-key"; identity="key-$(printf '%s' "$ANTHROPIC_API_KEY" | sha256sum | cut -c1-12)"
+else
+  for d in "${CLAUDE_CONFIG_DIR:-}" "$HOME/.claude"; do
+    if [ -n "$d" ] && [ -f "$d/.vt-standin-login" ]; then access="subscription"; identity="$(head -1 "$d/.vt-standin-login")"; break; fi
+  done
+fi
+
+json="{"
+json+="\"user\":\"$(id -un)\",\"access\":\"$access\",\"identity\":\"$identity\","
+json+="\"otherProcesses\":$(ps -eo user= 2>/dev/null | grep -vc "^$(id -un)\$"),"
+# Names only, never values.
+json+="\"envNames\":\"$(env | cut -d= -f1 | grep -E '^[A-Za-z_][A-Za-z0-9_]*$' | sort | tr '\n' ' ')\","
+if [ -n "${VT_PROBE_FILES:-}" ]; then
+  IFS=':' read -ra files <<<"$VT_PROBE_FILES"
+  for f in "${files[@]}"; do json+=$(probe "read:$f" head -c1 "$f"); done
+fi
+if [ -n "${VT_PROBE_DIRS:-}" ]; then
+  IFS=':' read -ra dirs <<<"$VT_PROBE_DIRS"
+  for d in "${dirs[@]}"; do json+=$(probe "list:$d" ls "$d"); done
+fi
+# Paperclip lets a run read the secrets bound to its own agent; try the ones that are not.
+if [ -n "${VT_PROBE_SECRET_KEYS:-}" ] && [ -n "${PAPERCLIP_API_KEY:-}" ]; then
+  # The address and token Paperclip gives the run (over SSH: its bridge). Control: the agent may read itself.
+  api="${PAPERCLIP_API_URL:-${VT_PROBE_API:-}}"
+  json+="\"apiUrl\":\"$api\",\"meApi\":\"$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $PAPERCLIP_API_KEY" "$api/api/agents/me" 2>/dev/null || echo 000)\","
+  if [ -n "${VT_PROBE_SECRET_PATH:-}" ]; then
+    json+="\"secretApi\":\"$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $PAPERCLIP_API_KEY" "$api$VT_PROBE_SECRET_PATH" 2>/dev/null || echo 000)\","
+  fi
+  for k in $VT_PROBE_SECRET_KEYS; do
+    code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $PAPERCLIP_API_KEY" -H 'content-type: application/json' -d '{}' "$api/api/agents/me/secrets/$k/value" 2>/dev/null || echo 000)
+    json+="\"agentSecret:$k\":\"$code\","
+  done
+fi
+if [ -n "${VT_PROBE_DB_PORT:-}" ]; then
+  json+=$(probe "db" bash -c "exec 3<>/dev/tcp/127.0.0.1/$VT_PROBE_DB_PORT && printf 'x' >&3")
+fi
+json+="\"done\":true}"
+printf '%s\n' "$json" >vt-probe.json
+git add vt-probe.json >/dev/null 2>&1 && git -c user.name=standin -c user.email=standin@example.com commit -q -m "stand-in agent report" >/dev/null 2>&1 || true
+printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"stand-in run finished","session_id":"standin","total_cost_usd":0,"usage":{"input_tokens":0,"output_tokens":0}}'

@@ -3,7 +3,7 @@ import { formatReport, runChecksGate, runCommand } from "../src/checks.js";
 import type { ChecksSettings } from "../src/config.js";
 import { fakeGithubToken, makeRepoWithWorktree, sh, write } from "./helpers.js";
 
-const base: ChecksSettings = { testCommand: null, lintCommand: null, maxDiffLines: 400, timeoutSeconds: 30 };
+const base: ChecksSettings = { testCommand: null, lintCommand: null, maxDiffLines: 400, timeoutSeconds: 30, sandbox: null };
 const byName = (r: Awaited<ReturnType<typeof runChecksGate>>, n: string) => r.results.find((x) => x.name === n)!;
 
 describe("runChecksGate", () => {

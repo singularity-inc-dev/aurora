@@ -172,7 +172,7 @@ person() { # email agentId [hour]
 }
 VALID="{\"people\":[$(person ana@example.com "$AID_A"),$(person bo@example.com "$AID_B")]}"
 DUP_AGENT="{\"people\":[$(person ana@example.com "$AID_A"),$(person bo@example.com "$AID_A")]}"
-BAD_HOUR="{\"people\":[$(person ana@example.com "$AID_A" 24)]}"
+BAD_HOUR="{\"people\":[{\"email\":\"ana@example.com\",\"agentId\":\"$AID_A\",\"timezone\":\"Europe/London\",\"handoverStartHour\":24,\"handoverBudgetCapCents\":500}]}"
 RAW_SECRET="{\"people\":[{\"email\":\"ana@example.com\",\"agentId\":\"$AID_A\",\"timezone\":\"Europe/London\",\"nightStartHour\":22,\"nightBudgetCapCents\":500,\"secrets\":[{\"name\":\"gh\",\"secret\":\"not-a-ref\"}]}]}"
 body() { echo "{\"companyId\":\"$CID\",\"configJson\":$1}"; }
 people() { api POST "/api/plugins/$PLUGIN_ID/data/people" "{\"companyId\":\"$CID\",\"params\":{}}"; }
@@ -185,12 +185,12 @@ check "save valid settings" "$API_STATUS" "200"
 people
 check "worker reads saved settings" "$(echo "$API_BODY" | json 'd.data.ok')" "true"
 check "worker sees 2 people" "$(echo "$API_BODY" | json 'd.data.people.length')" "2"
-check "default max tasks per night is 3" "$(echo "$API_BODY" | json 'd.data.people[0].maxTasksPerNight')" "3"
+check "default max tasks per handover is 3 (settings saved under the old names)" "$(echo "$API_BODY" | json 'd.data.people[0].maxTasksPerHandover')" "3"
 check "secret ids are not exposed" "$(echo "$API_BODY" | grep -c "$SID" || true)" "0"
 
 echo "== 5. Invalid settings that break the JSON schema are refused on save"
 api POST "/api/plugins/$PLUGIN_ID/config" "$(body "$BAD_HOUR")"
-check "night start hour 24 refused" "$API_STATUS" "400"
+check "handover start hour 24 refused" "$API_STATUS" "400"
 api POST "/api/plugins/$PLUGIN_ID/config" "$(body "$RAW_SECRET")"
 check "raw (non-reference) secret refused" "$API_STATUS" "400"
 

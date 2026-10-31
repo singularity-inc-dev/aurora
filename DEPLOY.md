@@ -10,11 +10,13 @@ This is a checklist. Do the steps in order and tick each box.
 
 - Paperclip, where everyone signs in with a password.
 - The Vision and Tom plugin.
-- The morning emails, with Approve and Reject links. Approve opens a pull request on GitHub and merges it.
+- The handback emails, with Approve and Reject links. Approve opens a pull request on GitHub and merges it.
 - Invite links for new teammates.
 - A backup every night, and everything starting again by itself after a restart.
 
 **Time:** about 1 hour, plus up to a day for the web address to start working (step 2).
+
+For the first real run (one email account, one protected test repository, your own Claude sign-in, one handover), follow **FIRST-REAL-RUN.md**; it points back here for the server.
 
 ---
 
@@ -32,7 +34,7 @@ Rent a "cloud server" (also called a VPS) from any provider. Hetzner, DigitalOce
 | Disk (SSD) | 40 GB | 80 GB |
 | Extra option | **Backups** (or "snapshots"). Turn them on. It keeps a copy outside the server. | same |
 
-These sizes are estimates, not measurements. At night, each person's agent runs at the same time as the others'. If the server feels slow, move up to the next size in your provider's control panel.
+These sizes are estimates, not measurements. During a handover, each person's agent runs at the same time as the others'. Measure it during your first real handover (see "During the first real handover: measure memory" in Part C). If the server feels slow, move up to the next size in your provider's control panel.
 
 When you create the server, the provider shows its **IP address** (four numbers, for example `203.0.113.10`) and either a **root password** or an SSH key setup. Write down the IP address.
 
@@ -50,7 +52,7 @@ Your web address is then `team.example.com`. It can take from a few minutes to a
 
 ### ☐ 3. 🔑 Get your email account's sending settings
 
-The morning emails and invites are sent from your own email account, through what is called "SMTP". Look up four things in your email provider's help pages (search for "SMTP settings"):
+The handback emails and invites are sent from your own email account, through what is called "SMTP". Look up four things in your email provider's help pages (search for "SMTP settings"):
 
 - **SMTP server**, for example `smtp.gmail.com` or `smtp.fastmail.com`
 - **Port**: use `587` if offered, otherwise `465`
@@ -78,6 +80,17 @@ Then protect the main branch. In the repository your agents work on: **Settings 
 - **Require a pull request before merging.**
 - If you want a second person to look at every change: **Require approvals: 1.** Then Approve in the email opens the pull request and it waits for that review. The email and the confirmation page say "waiting for review".
 - **Do not allow bypassing the above settings.** This matters: without it, your own token could skip the rules.
+
+Then say who owns which part. Add a file called `CODEOWNERS` at the top of the repository (or in `.github/`) with one line per area: the folder, then its owner, by email or GitHub login. For example:
+
+```
+/src/ui/    ana@example.com
+/src/api/   @bo-github-login
+```
+
+Name **people, not teams**: a GitHub team like `@your-org/web` matches nobody, because Aurora cannot see who is in a team. If the file names one, `vt-check` prints a WARNING naming the team and its line, and every plan says so too; list the people instead.
+
+Commit it to `main`. Before every handover, Vision and Tom reads this committed file (never an agent's unsaved copy). A task that reaches into another person's area goes to that person's agent instead. If you name people by GitHub login, also enter each person's login as "GitHub login" in the plugin settings (step 10), so the two can be matched.
 
 ---
 
@@ -174,7 +187,7 @@ This takes about 10 minutes. It installs these exact versions and checks every d
 - the plugin and the email service
 - the agents' Claude Code tool
 
-It also turns on the firewall (only SSH and web traffic are let in). The last line should be:
+It also turns on the firewall (only SSH and web traffic are let in), and sets up SSH so that each person's agent can run as a system user of its own, which cannot read Paperclip's data or secrets. For that it restarts the SSH service once: the window you are typing in stays connected. (If it ever drops, just log in again as in step 5.) The last line should be:
 
 ```
 ==> Installed. Next: sudo /opt/vision-and-tom/app/deploy/bin/vt-setup
@@ -193,7 +206,7 @@ It asks for your name, your email, your timezone (for example `Europe/London`) a
 - your Paperclip account, made the administrator
 - your company
 - the plugin and its settings
-- your own night agent
+- your own agent, with a system user of its own (its name starts with `vt-a-`)
 - the copy of your repository the agents work in
 - the email service
 
@@ -220,9 +233,32 @@ Then, on your own computer:
    ```
    Wait 2 minutes, log in again (step 5), and run `vt-check`. It should say **All good.** again.
 
-### ☐ 12. 🔑 Connect the agents to Claude (not tested yet; see "Known gaps")
+### ☐ 12. 🔑 Connect each agent to its owner's own Claude account
 
-The agents use the Claude Code tool installed in step 9. It needs your Anthropic account. In Paperclip, open each agent, follow its **Adapter** settings, and use **Test environment**. This step was not rehearsed in this milestone.
+Every agent uses **its own owner's** Claude access, never one shared account. Each owner chooses one of two ways, for themselves. Do this for yourself now, and for each teammate after they join (Part C).
+
+**Never sign in to Claude as `root` or as the `paperclip` user on the server**, and never put a key into an agent's settings by hand. `vt-check` warns if Paperclip's own user has a Claude login.
+
+**Way 1: the owner's own Claude subscription (Pro or Max).** The owner signs in with Claude Code's own sign-in page. The login stays with their agent; you never see it, and Vision and Tom never reads it.
+
+1. The owner sends you their **SSH public key**: one line starting with `ssh-ed25519` (on their computer: `cat ~/.ssh/id_ed25519.pub`; if they have none, `ssh-keygen -t ed25519` makes one). A public key is not a secret.
+2. On the server, type (with their email and their key in the quotes):
+   ```
+   vt-model-access ana@example.com subscription "ssh-ed25519 AAAA... ana@laptop"
+   ```
+   It prints a line like `ssh -t vt-a-1234567890@team.example.com`. Send that line to the owner.
+3. 🔑 The owner types that line **on their own computer**. Claude Code's sign-in opens; they follow it with their own Claude account. That key can do nothing else on the server. Later, adding `status` or `logout` at the end of the line shows or ends the sign-in.
+
+**Way 2: the owner's own API key.** The owner stores their key in Paperclip themselves; you only point their agent at it.
+
+1. 🔑 The owner signs in to Paperclip, opens the company's **Secrets**, and adds a secret with the key `anthropic-api-key-THEIRNAME` and their own Anthropic API key as the value.
+2. On the server, type:
+   ```
+   vt-model-access ana@example.com api-key anthropic-api-key-ana
+   ```
+   Only that owner's agent gets that key. Giving the same key to a second person is refused.
+
+Then run `vt-check`. A person without a choice shows as a problem, and their agent does no work until they choose.
 
 ---
 
@@ -236,9 +272,66 @@ vt-invite ana@example.com Europe/London
 
 Ana gets an email with a link. The command also prints the link, so you can send it another way.
 
+- The command also makes the system user Ana's agent will run as. Only an admin (root on the server) can invite.
 - The link works **once** and expires after 2 days.
-- Opening it, Ana picks her name and a password. That creates her Paperclip account, her own night agent with safe settings, and her row in the plugin settings.
+- Opening it, Ana picks her name and a password. That creates her Paperclip account, her own agent with safe settings (running as that system user), and her row in the plugin settings.
+- Then connect her agent to her own Claude account (step 12, for Ana).
 - A used or expired link shows "Invite already used" or "Invite expired" and creates nothing. Just run `vt-invite` again.
+
+### Hand over now
+
+Each person's agent works at their scheduled handover hour (set in the plugin settings). To start one at any other time, the person opens this page **while signed in to Paperclip**:
+
+```
+https://YOUR-DOMAIN/vt/handover
+```
+
+and taps **Hand over now**. Their agent plans up to three tasks right away. Nothing runs until they approve the plan in Paperclip, and nothing shared changes until they approve each result in the handback email. Only one handover per person runs at a time, and the page only ever acts for the person who is signed in.
+
+### Before each handover: the pre-handover check
+
+When an agent proposes its tasks, each task has to list the files and folders it may change (its "claims"). Vision and Tom compares them with everyone's areas in `CODEOWNERS` (step 4) and with the files other people's open tasks have already claimed:
+
+- A task inside your own area, or in files nobody owns, stays in your plan.
+- A task that reaches into someone else's area, or into files someone else's task claimed first, does not run in your handover. It becomes a waiting ticket for that person's agent, and they decide about it in one of their own plans. Plans already proposed are never changed.
+- Your plan in Paperclip shows what was moved, as at most three questions. If something looks wrong, choose "Not this time" and say why.
+
+A task's claim ends when you decide it in the handback email, or when its plan expires without approval.
+
+### At handback: the merge replay
+
+Before your handback email goes out, Vision and Tom test-merges each finished branch against everyone else's finished, undecided branches. It does this in git's memory only and merges nothing. If two branches change the same lines, both owners see it in their email (the other owner may get a short separate email), with the files involved. Agree who goes first, approve that one, and reject or redo the other.
+
+### The pilot's numbers
+
+Log in to the server (step 5) and type:
+
+```
+sudo vt-numbers numbers.csv
+```
+
+It prints the team's numbers and each person's (handover yield, minutes to approve, decisions per handback, overlaps caught before a handover, conflicts found after), and writes `numbers.csv`: one line per work order, in the measurement sheet's columns. Copy it to your computer with `scp root@YOUR-SERVER:numbers.csv .` and open it in any spreadsheet. "Minutes to approve" is the time from the email being sent to your last decision on it, not the time you spent reading.
+
+### Before the pilot: the collision audit
+
+Each pilot team can run this on its own computer, on its own copy of its repository. It reads the history, changes nothing and sends nothing anywhere. It needs git 2.38+ and Python 3.9+:
+
+```
+git clone https://github.com/OWNER/NAME.git team-repo
+tools/collision-audit/collision-audit team-repo OWNER/NAME
+```
+
+It writes a folder with `summary.md`, the one page to read with the team. `tools/collision-audit/README.md` explains what it counts.
+
+### During the first real handover: measure memory
+
+The server sizes in step 1 are estimates. During your first real handover, while the agents work, log in (step 5) and type:
+
+```
+free -m && ps -eo user=,rss= | awk '{m[$1]+=$2} END {for (u in m) if (m[u] > 51200) printf "%-14s %6d MB\n", u, m[u]/1024}'
+```
+
+The first part shows how much memory is used and free. The second shows the memory each user takes: `paperclip` is Paperclip, and each `vt-a-...` line is one person's agent. Do it two or three times during the handover. If "available" in the `Mem:` line falls under about 500 MB, move up one server size (step 1). Note the numbers in PROGRESS.md so the sizes become measurements.
 
 ### Backups
 
@@ -286,7 +379,29 @@ Run `vt-check` afterwards. Delete the `before-restore-...` folder only once you'
    vt-restore /root/vt-backup-XXXX.tar && vt-check
    ```
 
+### Update to a new version
+
+```
+vt-update
+```
+
+It brings the server to the newest version of the branch it runs (from step 6), without a reinstall. When GitHub asks, use your GitHub user name and the `vt-download` token. In order, it:
+
+1. Shows what changes: the old and new version, the plugin's version, and whether Node, Caddy or Paperclip change.
+2. Refuses while a handover is running (run it after the handover, or add `--now` to stop it mid-task).
+3. Makes a backup.
+4. Installs the new version, changing only what is different.
+5. Restarts only what changed.
+6. Takes the new plugin into Paperclip. Its settings and data are kept.
+7. Ends with `vt-check`.
+
+A folder changed by hand is refused before anything changes.
+
+To go back, type the line it prints at the end, for example `vt-update 1a2b3c4d5e6f`. If something fails halfway, it stops and prints that same line, plus the backup to restore if Paperclip's data looks wrong (`vt-restore`). To go to another branch or a tag: `vt-update NAME`.
+
 ### If something is wrong
+
+- **Stop everything at once:** `vt-stop`. It stops Paperclip, every agent (also programs they left running) and the email service; links stop working, and it stays stopped after a restart, until `vt-start`. Nothing is deleted.
 
 - `vt-check` says which part is wrong.
 - See a part's latest messages: `journalctl -u paperclip -n 50`. The other parts are `vt-email` (emails and links), `caddy` (HTTPS) and `postgresql` (database).
@@ -300,11 +415,13 @@ Run `vt-check` afterwards. Delete the `before-restore-...` folder only once you'
 | Part | Runs as | Reachable |
 |---|---|---|
 | Caddy (HTTPS, certificates from Let's Encrypt) | user `caddy` | from the internet, ports 80 and 443 |
-| Paperclip and the agents | user `paperclip` | only through Caddy (it listens on 127.0.0.1:3100) |
-| Email service (morning emails, Approve/Reject/invite pages at `/vt/...`) | user `vt-mail` | only through Caddy (127.0.0.1:3299) |
+| Paperclip | user `paperclip` | only through Caddy (it listens on 127.0.0.1:3100) |
+| Each person's agent | its own user `vt-a-...`, not in the `paperclip` group | Paperclip logs in to it over SSH on 127.0.0.1 only; the owner's own key may only start Claude Code's sign-in (step 12) |
+| Email service (handback emails; Approve/Reject, invite and Hand over now pages at `/vt/...`) | user `vt-mail` | only through Caddy (127.0.0.1:3299) |
 | PostgreSQL 16 | user `postgres` | only on the server |
 
 - **Sign-up through the web address is closed.** New accounts are only made by invite links.
+- **Each agent runs as a system user of its own.** It cannot read Paperclip's files, its database password, its secrets or the key that signs Approve links, nor another person's agent. Nothing started over SSH can see other users' running programs. The checks (tests and lint) run as that same agent user, in a fresh folder each time, never as Paperclip's own user.
 - **The GitHub token that can push and merge** is read only by the email service. It is handed over by the system, and only when Approve is used (and to check pull requests that wait for review). It is not stored in Paperclip at all.
 - **Everything restarts by itself** if it crashes, and starts by itself after a reboot. The backup runs even if the server was off at 03:30 (it catches up).
 
@@ -312,15 +429,15 @@ All versions are listed in `deploy/versions.env` and in the lockfiles next to it
 
 ## Known gaps
 
-- **Agents run as the same system user as Paperclip.** A badly behaved agent could read Paperclip's own database and its stored secrets. What it still can't do:
-  - read the GitHub push token or the email password
-  - push or merge on GitHub by itself
-
-  But in principle it could forge an Approve link. Your branch protection (step 4, "Require approvals") is the backstop: even a forged Approve only opens a pull request that waits for a human review. The real fix is to run agents in Paperclip's separate "ssh" or "sandbox" environment. That's a decision for a later milestone.
+- **What an agent can still do.** It can use Paperclip's API as itself (with the run token Paperclip gives it), read and change its own working copy, and run its owner's own checks. Checks run as the agent's own user, so an agent could interfere with its own checks; Hardy's separate, locked sandbox for checks comes in a later milestone (M4). Your branch protection (step 4) stays the backstop for anything it merges.
+- **Never run real agents on Paperclip's built-in database** (the laptop "quickstart" setup): its password is a fixed, well-known one. This server uses PostgreSQL with a random password.
+- **Two plans at the very same moment.** If two people's agents propose overlapping tasks within the same second or so, both can pass the pre-handover check. The merge replay at handback is the backstop.
+- **CODEOWNERS teams.** Entries like `@org/team` are not matched to people (Aurora cannot see who is in a team), so nobody is protected in those areas. `vt-check` and every plan name each team and its line; list people by email or login instead.
 - **Email account approval power.** Anyone who can read your email can use its links. There is no second step before Approve or Reject applies (your decision, M4).
 - **Not tested for real:**
   - a real server and a real reboot (rehearsed in a folder on the build machine instead)
   - real Let's Encrypt certificates (rehearsed with Caddy's local certificate authority)
   - a real email provider (rehearsed with a mail server that needs a password and STARTTLS)
   - real GitHub (rehearsed with a stand-in that runs real git and the same pull-request calls)
-  - the agents' Claude Code login (step 12)
+  - a real Claude Code sign-in and a real API key (step 12 was rehearsed with stand-ins)
+  - the SSH rules and the hidden processes on a real Ubuntu SSH service (rehearsed on this build machine's own SSH server)

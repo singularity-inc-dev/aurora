@@ -27,6 +27,8 @@ ExecStart=@OPT@/node/bin/node src/main.ts
 Restart=always
 RestartSec=5
 NoNewPrivileges=yes
+# Sees only its own user's processes (Paperclip puts run tokens on command lines).
+ProtectProc=invisible
 PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=yes
