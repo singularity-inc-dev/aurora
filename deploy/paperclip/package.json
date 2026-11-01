@@ -1,9 +1,14 @@
 {
   "name": "vision-and-tom-paperclip-runtime",
   "private": true,
-  "description": "Paperclip as it runs on the server. Install with pnpm install --frozen-lockfile --prod (exact versions from pnpm-lock.yaml). The overrides replace only the vulnerable versions of packages inside Paperclip with their patched releases (see PROGRESS.md, dependency fixes); Paperclip itself stays pinned.",
+  "description": "Paperclip as it runs on the server. Install with pnpm install --frozen-lockfile --prod (exact versions from pnpm-lock.yaml). The overrides replace only the vulnerable versions of packages inside Paperclip with their patched releases (see PROGRESS.md, dependency fixes); Paperclip itself stays pinned. The @opentelemetry packages are Paperclip's optional tracing add-ons at the exact versions its package.json asks for (it checks them); they do nothing unless sudo vt-tracing on is run (docs/TRACING.md).",
   "dependencies": {
-    "paperclipai": "2026.1012.0"
+    "paperclipai": "2026.1012.0",
+    "@opentelemetry/sdk-node": "0.221.0",
+    "@opentelemetry/auto-instrumentations-node": "0.79.0",
+    "@opentelemetry/exporter-trace-otlp-http": "0.221.0",
+    "@opentelemetry/resources": "2.10.0",
+    "@opentelemetry/semantic-conventions": "1.43.0"
   },
   "pnpm": {
     "overrides": {

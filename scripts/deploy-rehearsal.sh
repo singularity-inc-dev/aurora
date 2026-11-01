@@ -141,6 +141,14 @@ check "the agents' tools are installed from their lockfile" "$("$VT_ROOT/opt/vis
 check "Paperclip runs in authenticated mode on the system database" "$(node -p "const c=require('$VT_ROOT/var/lib/paperclip/instances/default/config.json');[c.server.deploymentMode,c.server.exposure,c.server.host,c.database.mode].join('/')")" "authenticated/public/127.0.0.1/postgres"
 check "without signing in, Paperclip shows nothing" "$(curl -s -o /dev/null -w '%{http_code}' "$PC/api/companies")" "403"
 
+echo "== 4b. Tracing: Paperclip's own OpenTelemetry export is on from its first start (into a stand-in for Jaeger)"
+OTLP_PORT=54318
+OTLP_FILE="$R/otlp-sink.ndjson"
+node "$ROOT/scripts/rehearsal/otlp-sink.mjs" "$OTLP_PORT" "$OTLP_FILE" >"$LOGS/otlp-sink.log" 2>&1 &
+EXTRA="$EXTRA $!"
+TRACING_OUT=$(bash "$KIT_BIN/vt-tracing" on --endpoint "http://127.0.0.1:$OTLP_PORT" --no-restart 2>&1)
+check "vt-tracing on saved the setting (root-only) and left Paperclip alone" "$(echo "$TRACING_OUT" | grep -c '^Tracing is on')/$(stat -c %a "$VT_ROOT/etc/vision-and-tom/tracing.env")" "1/600"
+
 echo "== 5. HTTPS through Caddy"
 CA="$VT_ROOT/var/lib/caddy/caddy/pki/authorities/local/root.crt"
 for _ in $(seq 1 30); do [ -f "$CA" ] && break; sleep 1; done
@@ -393,6 +401,72 @@ check "Fay can still sign in and sees the company" "$("${HTTPS[@]}" -H "cookie: 
 OUT=$("${UPD[@]}" "$(echo "$OLD_COMMIT" | cut -c1-12)" 2>&1); echo "$OUT" >"$LOGS/update-back.log"
 check "going back: vt-update to the earlier version" "$(echo "$OUT" | grep -c '^==> Updated to')/$(git -C "$APP_DIR" rev-parse HEAD)/$(installed)" "1/$OLD_COMMIT/$OLD_V/ready"
 check "after going back the data is still there" "$(people | json 'd.data.people.length')/$("${HTTPS[@]}" "$LINK" | grep -oE '<h1>[^<]*</h1>')" "3/<h1>Invite already used</h1>"
+
+
+echo "== 16. Tracing: what left Paperclip (nothing may carry a secret or personal data)"
+PC_LOG="$STATE/paperclip.service.log"
+# Every value the rehearsal knows that must never appear in a trace. Names are reported, values never.
+CANARIES="$R/canaries.json"
+node -e '
+const fs=require("fs");
+const read=(f)=>{try{return fs.readFileSync(f,"utf8").trim()}catch{return ""}};
+const link=process.env.LINK||"";
+const c={
+  "the GitHub token": process.env.GH_TOKEN_VALUE,
+  "the SMTP password": read(process.env.SECRETS+"/smtp-password"),
+  "the owner password": process.env.OWNER_PW,
+  "Fay password": process.env.FAY_PW,
+  "the board API key": process.env.API_KEY,
+  "the owner email": "owner@example.com",
+  "an invitee email": "fay@example.com",
+  "Dee email": "dee@example.com",
+  "an invite token": link.split(/[=\/]/).filter((x)=>x.length>=24).pop()||"",
+  "this machine host name": require("os").hostname(),
+  "the rehearsal folder": process.env.R,
+  "a stranger email": "stranger.canary@example.org",
+  "a stranger password": "Stranger-Canary-pw-7731",
+  "a stranger name": "Stranger Canary Name",
+};
+fs.writeFileSync(process.argv[1], JSON.stringify(c), {mode:0o600});
+' "$CANARIES"
+export LINK GH_TOKEN_VALUE OWNER_PW FAY_PW API_KEY SECRETS R
+AUDIT() { node "$ROOT/scripts/rehearsal/otlp-audit.mjs" "$OTLP_FILE" "$CANARIES"; }
+ALLOWED_KEYS='["better_auth.operation_id","db.collection.name","db.operation.name","exception.message","exception.stacktrace","exception.type","http.route","nodejs.eventloop.state","service.name","service.version","v8js.gc.type","v8js.heap.space.name","v8js.resource.type"]'
+
+echo "-- as shipped (traces only, host details off): the whole rehearsal above, including sign-ins, invites, approvals, backup and restore"
+check "Paperclip's OpenTelemetry started (it logged its service version)" "$(grep -c 'OpenTelemetry service.version=' "$PC_LOG" | tr -d ' ' | sed 's/^[1-9][0-9]*$/yes/')" "yes"
+A1=$(AUDIT)
+echo "$A1" >"$LOGS/otlp-audit-shipped.json"
+check "traces really arrived (so the checks below are not empty)" "$(echo "$A1" | json 'd.spans>0')" "true"
+check "they come from one source only, Paperclip's sign-in library (web requests, agent runs and plugin calls create none in this version; a new source would fail here so a person looks at it)" "$(echo "$A1" | json 'd.scopes.join(",")')" "better-auth"
+check "they use only these names: route template, operation, table, error type, message and stack" "$(echo "$A1" | json "d.attributeKeys.filter(k=>!($ALLOWED_KEYS).includes(k)).join(',')")" ""
+check "no host name, machine id, user name, process id or folder is sent" "$(echo "$A1" | json 'd.attributeKeys.filter(k=>/^(host|process|os)\./.test(k)).length')" "0"
+check "no secret, address, password, token or name from the rehearsal is in what was sent" "$(echo "$A1" | json 'd.leaked.length')" "0"
+
+echo "-- with host metrics switched on, so that something is sent: only the allowed details, and no canary value"
+export PAPERCLIP_PORT=3398
+bash "$KIT_BIN/vt-tracing" on --endpoint "http://127.0.0.1:$OTLP_PORT" --with-metrics >"$LOGS/tracing-metrics.log" 2>&1
+check "Paperclip restarted with metrics on" "$(grep -c '^Paperclip was restarted' "$LOGS/tracing-metrics.log")" "1"
+# Traffic with canaries in the places a trace tends to keep them: URLs, query strings, bodies, sign-in.
+curl -s -o /dev/null "$PC/api/health?owner=owner@example.com&token=$GH_TOKEN_VALUE"
+curl -s -o /dev/null -H "authorization: Bearer $API_KEY" "$PC/api/companies?q=owner@example.com"
+curl -s -o /dev/null -X POST -H 'content-type: application/json' -d "{\"email\":\"owner@example.com\",\"password\":\"$OWNER_PW\"}" "$PC/api/auth/sign-in/email"
+# Unknown user, wrong password, and a sign-up for someone new: the places a library might echo what it was given.
+curl -s -o /dev/null -X POST -H 'content-type: application/json' -d '{"email":"stranger.canary@example.org","password":"Stranger-Canary-pw-7731"}' "$PC/api/auth/sign-in/email"
+curl -s -o /dev/null -X POST -H 'content-type: application/json' -d '{"email":"owner@example.com","password":"Stranger-Canary-pw-7731","name":"Stranger Canary Name"}' "$PC/api/auth/sign-up/email"
+curl -s -o /dev/null -X POST -H 'content-type: application/json' -d '{"email":"stranger.canary@example.org","password":"Stranger-Canary-pw-7731","name":"Stranger Canary Name"}' "$PC/api/auth/sign-up/email"
+curl -s -o /dev/null "$PC/api/invites/$(node -p "JSON.parse(require('fs').readFileSync('$CANARIES','utf8'))['an invite token']||'none'")"
+sleep 2
+# Stopping Paperclip makes it flush what it holds (it exports on shutdown).
+bash "$KIT_BIN/vt-tracing" on --endpoint "http://127.0.0.1:$OTLP_PORT" --with-metrics >"$LOGS/tracing-metrics2.log" 2>&1
+A2=$(AUDIT)
+check "something really was sent (so the checks below are not empty)" "$(echo "$A2" | json 'd.requests>0')" "true"
+echo "$A2" >"$LOGS/otlp-audit-metrics.json"
+check "everything sent uses only the names above (now with event loop, garbage collection and memory)" "$(echo "$A2" | json "d.attributeKeys.filter(k=>!($ALLOWED_KEYS).includes(k)).join(',')")" ""
+check "no host name, machine id, user name, process id or folder is sent (resource details are limited to the service name and version)" "$(echo "$A2" | json 'd.attributeKeys.filter(k=>/^(host|process|os)\./.test(k)).length')" "0"
+check "no secret, address, password, token or name from the rehearsal is in what was sent" "$(echo "$A2" | json 'd.leaked.length')" "0"
+bash "$KIT_BIN/vt-tracing" off >"$LOGS/tracing-off.log" 2>&1
+check "vt-tracing off removes the setting and restarts Paperclip, which answers again" "$([ -f "$VT_ROOT/etc/vision-and-tom/tracing.env" ] && echo still-there || echo gone)/$(curl -s -o /dev/null -w '%{http_code}' "$PC/api/health")" "gone/200"
 
 echo
 echo "Result: $PASS passed, $FAIL failed"

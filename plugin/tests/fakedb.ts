@@ -4,7 +4,7 @@
  * scripts/integration-test.sh.
  */
 type Row = Record<string, unknown>;
-type TableName = "task_events" | "handover_runs" | "briefings" | "link_actions" | "invites" | "pull_requests" | "overlaps" | "conflicts";
+type TableName = "task_events" | "handover_runs" | "briefings" | "link_actions" | "invites" | "pull_requests" | "overlaps" | "conflicts" | "saved_tasks";
 
 export interface FakeDb {
   namespace: string;
@@ -23,6 +23,7 @@ const KEYS: Record<TableName, string[]> = {
   pull_requests: ["task_id"],
   overlaps: ["id"],
   conflicts: ["company_id", "task_a", "task_b", "head_a", "head_b"],
+  saved_tasks: ["task_id"],
 };
 const DEFAULTS: Record<TableName, Row> = {
   task_events: {},
@@ -33,6 +34,7 @@ const DEFAULTS: Record<TableName, Row> = {
   pull_requests: { state: "waiting" },
   overlaps: {},
   conflicts: {},
+  saved_tasks: { inputs_redacted: false, description_truncated: false, description: "" },
 };
 
 function tableOf(sql: string): TableName {
@@ -78,7 +80,7 @@ function applySet(row: Row, set: string, params: unknown[]): void {
 }
 
 export function createFakeDb(namespace = "ns"): FakeDb {
-  const tables: Record<TableName, Row[]> = { task_events: [], handover_runs: [], briefings: [], link_actions: [], invites: [], pull_requests: [], overlaps: [], conflicts: [] };
+  const tables: Record<TableName, Row[]> = { task_events: [], handover_runs: [], briefings: [], link_actions: [], invites: [], pull_requests: [], overlaps: [], conflicts: [], saved_tasks: [] };
   const costs: FakeDb["costs"] = [];
   return {
     namespace,

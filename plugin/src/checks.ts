@@ -31,6 +31,8 @@ export interface ChecksReport {
   /** The commit that was checked: committed files only, never the working folder. */
   headSha: string | null;
   baseRef: string;
+  /** The commit the work forked from (merge base of baseRef and headSha); null when it could not be found. */
+  baseSha: string | null;
   results: CheckResult[];
 }
 
@@ -173,7 +175,7 @@ export async function runChecksGate(
     // One commit for every check, fixed now: later commits are not mixed in.
     head = await headSha(cwd);
   } catch {
-    return { passed: false, result: "failed", headSha: null, baseRef, results: [{ name: "diff-size", status: "failed", summary: "could not read the worktree's commit" }] };
+    return { passed: false, result: "failed", headSha: null, baseRef, baseSha: null, results: [{ name: "diff-size", status: "failed", summary: "could not read the worktree's commit" }] };
   }
   try {
     base = await mergeBase(cwd, baseRef, head);
@@ -183,6 +185,7 @@ export async function runChecksGate(
       result: "failed",
       headSha: head,
       baseRef,
+      baseSha: null,
       results: [{ name: "diff-size", status: "failed", summary: `could not compare with ${baseRef}` }],
     };
   }
@@ -195,6 +198,7 @@ export async function runChecksGate(
       result: "no-changes",
       headSha: head,
       baseRef,
+      baseSha: base,
       results: [{ name: "diff-size", status: "failed", summary: `no changes to check: nothing is committed beyond ${baseRef}` }],
     };
   }
@@ -218,7 +222,7 @@ export async function runChecksGate(
   const failed = results.some((r) => r.status === "failed");
   const tested = results.find((r) => r.name === "tests")?.status === "passed";
   const result: GateResult = failed ? "failed" : tested ? "passed" : "not-tested";
-  return { passed: result === "passed", result, headSha: head, baseRef, results };
+  return { passed: result === "passed", result, headSha: head, baseRef, baseSha: base, results };
 }
 
 export function formatReport(report: ChecksReport): string {

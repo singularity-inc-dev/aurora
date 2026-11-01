@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Evals: save real handover tasks, and rerun them with two prompts (docs/REPLAY.md).
+#   sudo vt-replay save tasks.json [--limit N] [--include-undecided]
+#        (root: reads the event log through the board key; writes tasks.json, mode 600)
+#   vt-replay run --tasks tasks.json --repo DIR --baseline a.md --candidate b.md --agent-cmd 'CMD' ...
+#        (an ordinary user, NOT root: it runs the agent and the tests)
+KIT="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+. "$KIT/lib/common.sh"
+case "${1:-}" in
+  save)
+    need_root
+    shift
+    OUT="${1:-}"
+    [ -n "$OUT" ] || die "usage: sudo vt-replay save FILE [--limit N] [--include-undecided]"
+    shift
+    while IFS= read -r line; do
+      case "$line" in '' | \#*) continue ;; *=*) export "${line%%=*}=${line#*=}" ;; esac
+    done <"$ETC/email-service.env"
+    [ -n "${VT_COMPANY_ID:-}" ] || die "run vt-setup first"
+    export PAPERCLIP_API_KEY_FILE="$SECRETS/paperclip-api-key"
+    unset GITHUB_TOKEN GITHUB_TOKEN_FILE SMTP_PASS_FILE
+    OUT="$(cd "$(dirname "$OUT")" && pwd)/$(basename "$OUT")"
+    cd "$APP/email-service" && exec "$NODE_BIN/node" src/replay.ts save "$OUT" "$@"
+    ;;
+  run)
+    shift
+    [ "$(id -u)" != "0" ] || die "vt-replay run must not run as root: it runs the agent and the tests. Use an ordinary user."
+    exec "$NODE_BIN/node" "$APP/plugin/dist/replay-cli.js" run "$@"
+    ;;
+  *)
+    echo "Usage: sudo vt-replay save FILE [--limit N] [--include-undecided]"
+    echo "       vt-replay run --tasks FILE --repo DIR --baseline FILE --candidate FILE --agent-cmd 'COMMAND' [options]"
+    echo "See docs/REPLAY.md."
+    exit 2
+    ;;
+esac

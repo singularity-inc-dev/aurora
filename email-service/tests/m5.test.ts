@@ -50,6 +50,7 @@ function plugin(over: Partial<PluginApi> = {}): PluginApi & { calls: string[] } 
     startHandover: async (email) => (calls.push(`start:${email}`), { ok: true, handoverKey: "2026-10-24T14:05:00" }),
     numbers: async () => ({ team: {} }),
     numbersCsv: async () => "Date\r\n",
+    replaySave: async () => ({ added: 0, skipped: [], tasks: [], checks: {} }),
     finishInvite: async (_id, r) => {
       calls.push(`finish:${r.ok ? "ok" : r.message}`);
       return r.ok ? { ok: true, message: "joined" } : { ok: true, message: "recorded", retry: true };

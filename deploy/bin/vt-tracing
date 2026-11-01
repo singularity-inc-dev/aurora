@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+# Send Paperclip's own OpenTelemetry export to Jaeger or Langfuse on this server (docs/TRACING.md).
+#   sudo vt-tracing on --endpoint http://127.0.0.1:4318 [--protocol http/json|http/protobuf]
+#                      [--headers-stdin] [--service-name NAME] [--with-metrics] [--allow-remote] [--no-restart]
+#   sudo vt-tracing off [--no-restart]
+#   vt-tracing status
+# Only the endpoint and (if you pipe them in) headers are stored, in a file only root can read.
+# Headers are read from standard input, never from the command line, so a Langfuse key
+# does not show in `ps` or shell history.
+. "$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)/lib/common.sh"
+FILE="$ETC/tracing.env"
+
+usage() {
+  echo "Usage: sudo vt-tracing on --endpoint URL [--protocol http/json|http/protobuf] [--headers-stdin] [--service-name NAME] [--with-metrics] [--allow-remote] [--no-restart]"
+  echo "       sudo vt-tracing off [--no-restart]"
+  echo "       vt-tracing status"
+  exit 2
+}
+
+restart_paperclip() {
+  if rehearsal; then svc restart paperclip.service; else
+    systemctl daemon-reload
+    systemctl is-active --quiet paperclip.service || { echo "Paperclip is not running; it will use this setting when it starts."; return 0; }
+    svc restart paperclip.service
+  fi
+  wait_http "http://127.0.0.1:${PAPERCLIP_PORT:-3100}/api/health" 180 || die "Paperclip did not come back (see: journalctl -u paperclip -n 50)"
+}
+
+case "${1:-}" in
+  on)
+    need_root
+    shift
+    ENDPOINT="" PROTOCOL="http/json" SERVICE="paperclip" HEADERS="" METRICS=0 REMOTE=0 RESTART=1 HEADERS_STDIN=0
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --endpoint) ENDPOINT="${2:-}"; shift 2 ;;
+        --protocol) PROTOCOL="${2:-}"; shift 2 ;;
+        --service-name) SERVICE="${2:-}"; shift 2 ;;
+        --headers-stdin) HEADERS_STDIN=1; shift ;;
+        --with-metrics) METRICS=1; shift ;;
+        --allow-remote) REMOTE=1; shift ;;
+        --no-restart) RESTART=0; shift ;;
+        *) usage ;;
+      esac
+    done
+    [ -n "$ENDPOINT" ] || usage
+    case "$PROTOCOL" in http/json | http/protobuf) ;; *) die "--protocol must be http/json or http/protobuf (gRPC is not supported here)" ;; esac
+    [[ "$SERVICE" =~ ^[A-Za-z0-9._-]{1,64}$ ]] || die "--service-name may only hold letters, digits, dot, dash and underscore"
+    [[ "$ENDPOINT" =~ ^https?://[^[:space:]\'\"\\\$\`]+$ ]] || die "--endpoint must look like http://127.0.0.1:4318 (no spaces or quotes)"
+    HOST="${ENDPOINT#*://}"; HOST="${HOST%%/*}"; HOST="${HOST%%:*}"
+    if [ "$REMOTE" != "1" ]; then
+      case "$HOST" in 127.0.0.1 | localhost | "[::1]") ;; *) die "traces would leave this server ($HOST). Jaeger or Langfuse should run on this server (127.0.0.1). If you really mean it, add --allow-remote." ;; esac
+    fi
+    if [ "$HEADERS_STDIN" = "1" ]; then
+      if [ -t 0 ]; then read -r -s -p "Paste the headers (Name=value, comma separated) and press Enter (nothing will show): " HEADERS; echo; else read -r HEADERS; fi
+      [[ "$HEADERS" =~ ^[^[:cntrl:]]+$ ]] || die "the headers were empty or held control characters; nothing was changed"
+    fi
+    mkdir -p "$ETC"
+    {
+      echo "# Written by vt-tracing. Paperclip's own OpenTelemetry export (docs/TRACING.md). Root only."
+      echo "OTEL_EXPORTER_OTLP_ENDPOINT=$ENDPOINT"
+      echo "OTEL_EXPORTER_OTLP_PROTOCOL=$PROTOCOL"
+      echo "OTEL_SERVICE_NAME=$SERVICE"
+      # Send no host name, machine id, user name, process id or folder paths: only service name and version.
+      echo "OTEL_NODE_RESOURCE_DETECTORS=env"
+      # Jaeger and Langfuse take traces only. Host metrics stay off unless asked for.
+      [ "$METRICS" = "1" ] || echo "OTEL_METRICS_EXPORTER=none"
+      echo "OTEL_LOGS_EXPORTER=none"
+      [ -z "$HEADERS" ] || echo "OTEL_EXPORTER_OTLP_HEADERS=$HEADERS"
+    } >"$FILE.new"
+    chmod 600 "$FILE.new" && mv "$FILE.new" "$FILE"
+    unset HEADERS
+    echo "Tracing is on: $ENDPOINT ($PROTOCOL)."
+    [ "$HEADERS_STDIN" != "1" ] || echo "Headers were saved (only root can read them)."
+    if [ "$RESTART" = "1" ]; then restart_paperclip; echo "Paperclip was restarted to use it."; else echo "Paperclip was not restarted; it uses this the next time it starts."; fi
+    ;;
+  off)
+    need_root
+    rm -f "$FILE"
+    echo "Tracing is off."
+    [ "${2:-}" != "--no-restart" ] || { echo "Paperclip was not restarted; it stops sending the next time it starts."; exit 0; }
+    if ! rehearsal && ! systemctl is-active --quiet paperclip.service 2>/dev/null; then exit 0; fi
+    restart_paperclip
+    echo "Paperclip was restarted."
+    ;;
+  status)
+    if [ -f "$FILE" ]; then
+      echo "Tracing is ON."
+      # Show the settings; a header value (it can hold a key) is never shown.
+      sed -e 's/^\(OTEL_EXPORTER_OTLP_HEADERS\)=.*/\1=(saved, hidden)/' -e '/^#/d' "$FILE" 2>/dev/null || echo "(run with sudo to see the settings)"
+    else
+      echo "Tracing is OFF."
+    fi
+    ;;
+  *) usage ;;
+esac

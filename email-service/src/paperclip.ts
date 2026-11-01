@@ -47,6 +47,14 @@ export interface StuckApproval {
   publish: PublishRequest;
 }
 
+/** What the plugin's replay-save route answers (plugin/src/replaysave.ts). Contract-tested live by scripts/it/v1g.sh. */
+export interface ReplaySaveResult {
+  added: number;
+  skipped: Array<{ taskId: string; reason: string }>;
+  tasks: Array<Record<string, unknown>>;
+  checks: Record<string, unknown>;
+}
+
 export interface WaitingPullRequest {
   taskId: string;
   number: number;
@@ -116,6 +124,8 @@ export interface PluginApi {
   /** The pilot's numbers from the event log (piece F): a summary, and the measurement sheet as CSV. */
   numbers(): Promise<Record<string, unknown>>;
   numbersCsv(): Promise<string>;
+  /** Save decided tasks for the replay tool and return them (see docs/REPLAY.md). */
+  replaySave(limit: number, includeUndecided: boolean): Promise<ReplaySaveResult>;
   finishInvite(
     inviteId: string,
     result: { ok: true; agentId: string; userId: string; attempt?: number } | { ok: false; message: string; attempt?: number; userId?: string | null; agentId?: string | null },
@@ -183,6 +193,7 @@ export function paperclipApi(cfg: ServiceConfig, fetchImpl: typeof fetch = fetch
     async numbersCsv() {
       return (await call<{ csv: string }>("GET", `/numbers/csv?${company}`)).csv;
     },
+    replaySave: (limit, includeUndecided) => call<ReplaySaveResult>("POST", "/replay/save", { limit, includeUndecided }),
   };
 }
 

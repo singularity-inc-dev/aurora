@@ -33,11 +33,15 @@ export async function recordHandoff(db: Db, row: TaskEventRow, handedOffTo: stri
   ]);
 }
 
-/** Store the checks result together with the commit it was run on. */
-export async function recordChecks(db: Db, taskId: string, result: ChecksResult, head: string | null): Promise<void> {
-  await db.execute(`UPDATE ${table(db)} SET checks_result = $1, checks_head = $2, updated_at = now() WHERE task_id = $3`, [
+/**
+ * Store the checks result together with the commit it was run on and the commit
+ * the work forked from (the replay needs both: where the task started, where it ended).
+ */
+export async function recordChecks(db: Db, taskId: string, result: ChecksResult, head: string | null, base: string | null = null): Promise<void> {
+  await db.execute(`UPDATE ${table(db)} SET checks_result = $1, checks_head = $2, checks_base = $3, updated_at = now() WHERE task_id = $4`, [
     result,
     head,
+    base,
     taskId,
   ]);
 }

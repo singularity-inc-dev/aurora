@@ -8,6 +8,7 @@ import { agentProblems, auditSettingsIsolation } from "./isolation.js";
 import { HANDOFF_ORIGIN, HANDOVER_TICK_JOB } from "./ids.js";
 import { numbersCsv } from "./numbers.js";
 import { loadNumbers } from "./numberstore.js";
+import { saveReplayTasks } from "./replaysave.js";
 import { listRuns } from "./handoverstore.js";
 import { projectAreas, proposeHandover, ProposalRefused, startHandoverNow, tickAll } from "./handoverrunner.js";
 import { startTicker, type Ticker } from "./ticker.js";
@@ -275,7 +276,7 @@ const plugin = definePlugin({
             agent: run.agentId,
             taskKind: "task",
           });
-          await recordChecks(ctx.db, issueId, report.result, report.headSha);
+          await recordChecks(ctx.db, issueId, report.result, report.headSha, report.baseSha);
           return {
             content: `Checks ${report.result === "passed" || report.result === "failed" ? report.result : gateWord(report.result)}: ${report.results.map((r) => `${r.name} ${r.status}`).join(", ")}.`,
             data: { passed: report.passed, result: report.result, headSha: report.headSha, documentKey, results: report.results.map(({ output: _o, ...r }) => r) },
@@ -371,6 +372,11 @@ const plugin = definePlugin({
         // Paperclip 2026.1012.0 sends plugin route bodies as JSON (headers are not passed on),
         // so the CSV text travels inside JSON; vt-numbers writes it to a file.
         return { status: 200, body: { csv: numbersCsv(await loadNumbers(ctx, input.companyId)) } };
+      case "replay-save": {
+        // Save decided tasks for the replay script (evals). Board-only, like every route here.
+        const limit = typeof body.limit === "number" && Number.isFinite(body.limit) ? body.limit : 20;
+        return { status: 200, body: await saveReplayTasks(ctx, input.companyId, settings.checks, { limit, includeUndecided: body.includeUndecided === true }) };
+      }
       case "invite-create": {
         const created = await createInvite(ctx, settings, input.companyId, body, now);
         return { status: created.ok ? 201 : 409, body: created };
