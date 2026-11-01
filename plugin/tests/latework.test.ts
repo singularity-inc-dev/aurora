@@ -144,4 +144,23 @@ describe("work that finishes just after the handover ends (B4)", () => {
     expect(text).not.toContain("Approve: ");
     expect(t.event().outcome).toBe("blocked");
   });
+
+  it("a task failed by its time-outs (the agent was just slow) is approvable when it lands later (B5)", async () => {
+    const t = await setup();
+    // Last allowed attempt, past its time limit, window still open.
+    Object.assign(t.db.tables.handover_runs[0]!, { current_attempt: 2, step_started_at: at(-200).toISOString() });
+    await t.tick(at(-120));
+    expect(t.event().outcome).toBe("failed");
+    await t.tick(at(1)); // a scheduled handover's handback comes after its window
+    expect(await t.emailText()).toContain("FAILED (1)");
+    for (const b of t.db.tables.briefings) b.status = "sent";
+
+    const head = await t.agentFinishes(); // the slow run was still going, and finishes
+    await t.tick(new Date("2026-10-23T08:00:00Z"));
+    const text = await t.emailText();
+    expect(text).toContain("READY (1)");
+    const token = /Approve: http:\/\/mail\.test\/l\/(\S+)/.exec(text!)![1]!;
+    expect((await t.api("link-execute", { token })).body.status).toBe("merged");
+    expect(t.merged(head)).toBe(true);
+  });
 });

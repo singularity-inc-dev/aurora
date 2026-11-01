@@ -8,7 +8,7 @@ import {
   insertAction,
   insertBriefing,
   newId,
-  reopenBlocked,
+  reopenStopped,
   type Briefing,
   type BriefingConflict,
   type BriefingItem,
@@ -45,7 +45,7 @@ export interface Classified {
   reason: string | null;
   /** Only Ready tasks can be approved; every task can be rejected. */
   approvable: boolean;
-  /** Blocked by the handover, but Ready now: its blocked outcome must be cleared before it is offered (B4). */
+  /** Blocked or failed by the handover, but Ready now: that outcome must be cleared before it is offered (B4, B5). */
   reopen?: boolean;
 }
 
@@ -58,11 +58,12 @@ export function classify(f: TaskFacts): Classified {
     f.checksResult === "not-tested" ? "NOT TESTED (no test command is set up; check it yourself before you approve)" : f.checksResult === "no-changes" ? "found no changes" : f.checksResult;
   const checks = f.checksResult ? `checks ${result}${f.checksHead ? ` on ${f.checksHead.slice(0, 7)}` : ""}` : "checks not run";
   const no = (category: Category, reason: string): Classified => ({ category, checks, reason, approvable: false });
-  if (f.outcome === "failed") return no("failed", "timed out after its retries");
-  if (f.outcome === "blocked") {
-    // Blocked is not final (B4): work that landed after the stop and is Ready by the same rules may be approved.
+  if (f.outcome === "failed" || f.outcome === "blocked") {
+    // Not final (B4, B5): the plugin cannot stop a run, so work may land after the handover
+    // stopped it or its time-outs ran out. If it is Ready by the same rules, it may be approved.
     const asIfOpen = classify({ ...f, outcome: null });
-    return asIfOpen.approvable ? { ...asIfOpen, reopen: true } : no("blocked", "stopped by the handover");
+    if (asIfOpen.approvable) return { ...asIfOpen, reopen: true };
+    return f.outcome === "failed" ? no("failed", "timed out after its retries") : no("blocked", "stopped by the handover");
   }
   if (!f.startedAt) return no("blocked", "not started in this handover");
   if (f.issueStatus && !["done", "in_review"].includes(f.issueStatus)) return no("blocked", `agent left it ${f.issueStatus}`);
@@ -179,8 +180,8 @@ export async function createBriefing(
     }
     let c = classify(f);
     if (c.reopen) {
-      if (await reopenBlocked(ctx.db, taskId)) f.outcome = null;
-      else c = { ...c, category: "blocked", reason: "stopped by the handover", approvable: false };
+      if (await reopenStopped(ctx.db, taskId, f.outcome === "failed" ? "failed" : "blocked")) f.outcome = null;
+      else c = f.outcome === "failed" ? { ...c, category: "failed", reason: "timed out after its retries", approvable: false } : { ...c, category: "blocked", reason: "stopped by the handover", approvable: false };
     }
     const ready = c.approvable ? readyBranch(f, person.email) : null;
     if (ready) mine.push(ready);

@@ -202,13 +202,13 @@ export async function claimDecision(db: Db, taskId: string, actionId: string, cu
 }
 
 /**
- * Clear a "blocked" outcome so the task can be approved after all (B4). Only
- * while nobody is deciding it; returns false if it changed meanwhile.
+ * Clear a "blocked" or "failed" outcome so the task can be approved after all
+ * (B4, B5). Only while nobody is deciding it; returns false if it changed meanwhile.
  */
-export async function reopenBlocked(db: Db, taskId: string): Promise<boolean> {
+export async function reopenStopped(db: Db, taskId: string, outcome: "blocked" | "failed"): Promise<boolean> {
   const { rowCount } = await db.execute(
-    `UPDATE ${t(db, "task_events")} SET outcome = NULL, updated_at = now() WHERE task_id = $1 AND outcome = 'blocked' AND decision_action_id IS NULL`,
-    [taskId],
+    `UPDATE ${t(db, "task_events")} SET outcome = NULL, updated_at = now() WHERE task_id = $1 AND outcome = $2 AND decision_action_id IS NULL`,
+    [taskId, outcome],
   );
   return rowCount === 1;
 }

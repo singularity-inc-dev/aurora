@@ -36,11 +36,12 @@ describe("classify", () => {
   it("blocked by the handover is not final: Ready by the same rules means it can be reopened and approved (B4)", () => {
     expect(classify(facts({ outcome: "blocked" }))).toMatchObject({ category: "ready", approvable: true, reopen: true });
     expect(classify(facts()).reopen).toBeUndefined();
-    expect(classify(facts({ outcome: "failed" })).approvable).toBe(false);
+    expect(classify(facts({ outcome: "failed" }))).toMatchObject({ category: "ready", approvable: true, reopen: true });
+    expect(classify(facts({ outcome: "failed", checksResult: "failed" }))).toMatchObject({ category: "failed", approvable: false });
   });
 
   it.each([
-    [{ outcome: "failed" }, "failed", "timed out"],
+    [{ outcome: "failed", issueStatus: "in_progress" }, "failed", "timed out"],
     [{ outcome: "blocked", checksResult: "failed" }, "blocked", "stopped by the handover"],
     [{ outcome: "blocked", issueStatus: "in_progress" }, "blocked", "stopped by the handover"],
     [{ startedAt: null }, "blocked", "not started"],
