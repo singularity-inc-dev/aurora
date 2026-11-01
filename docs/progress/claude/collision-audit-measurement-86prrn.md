@@ -112,7 +112,7 @@ In the 10 teams of 5 to 10 core people, two people changed the same code file on
 - **It is people's history, not agents.** The "agent volume" in the trigger is not measured here; the three-day proxy is an assumption from the research.
 - **Textual conflicts only.** Two changes that merge cleanly and break each other are not counted, and the research's trigger counts those too.
 - **Small sample.** 5 teams per bin, a sample of organisation-owned, topic-searched projects (section 3), not a random draw of product teams.
-- **Not comparable to the 33%.** Different repositories, filters, scripts and counting. The textual rate here is 0.5% to 1.3% for teams of 5 and up, in line with the earlier 56-day audit (1 conflict in more than 100 clean replays), but I am not claiming that refutes anything.
+- **Not comparable to the 33%.** Different repositories, filters, scripts and counting. The textual rate here is 0% to 1.3% per size bin for teams of 5 and up (0.5% pooled for 5-10), in line with the earlier 56-day audit (1 conflict in more than 100 clean replays), but I am not claiming that refutes anything.
 - **The 2-3 person row is not usable.** It is 20 independent pairs from 4 teams (one team, decap-cms, had none and used the bin's pooled rate), and one team (mercur) has 96% of its 1,658 overlaps on a single day (2026-02-24), which looks like one bulk change and also dominates its replay sample. The 1.4 a week for that bin is that artefact. It plays no part in the Hardy test.
 
 So the pilot still has to answer the question, as the playbook says. If the pilot teams produce conflicts at a pace nothing in this history predicts, that would be new information.
