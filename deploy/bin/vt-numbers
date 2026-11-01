@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# The raw counts from the event log (milestone 6), per person and per task kind:
+# handed over, ready, approved, rejected, failed, not tested, teammate overlaps and
+# would-be conflicts, plus how many tasks carry each run flag. Counts only: no
+# percentages. Only an admin (root on the server) can read them.
+#   sudo vt-numbers                      print the counts
+#   sudo vt-numbers --events log.csv     also write the event log (one row per task) to log.csv
+#   sudo vt-numbers --events - > log.csv event log on standard output (counts go to standard error)
+#   sudo vt-numbers numbers.csv          also write the pilot's measurement sheet (the earlier command)
+# The same counts are on the page https://<your domain>/vt/numbers for people on the team.
+. "$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)/lib/common.sh"
+need_root
+while IFS= read -r line; do
+  case "$line" in '' | \#*) continue ;; *=*) export "${line%%=*}=${line#*=}" ;; esac
+done <"$ETC/email-service.env"
+[ -n "${VT_COMPANY_ID:-}" ] || die "run vt-setup first"
+export PAPERCLIP_API_KEY_FILE="$SECRETS/paperclip-api-key"
+unset GITHUB_TOKEN GITHUB_TOKEN_FILE SMTP_PASS_FILE
+# The node program runs in another folder, so file names are made absolute first ("-" stays "-").
+abs() {
+  case "$1" in
+    - | /*) printf '%s' "$1" ;;
+    *) printf '%s/%s' "$(cd "$(dirname "$1")" 2>/dev/null && pwd)" "$(basename "$1")" ;;
+  esac
+}
+ARGS=()
+prev=""
+for a in "$@"; do
+  if [ "$prev" = "--events" ] || [ "$prev" = "--sheet" ] || { [ "${a#-}" = "$a" ] && [ -n "$a" ]; }; then
+    ARGS+=("$(abs "$a")")
+  else
+    ARGS+=("$a")
+  fi
+  prev="$a"
+done
+cd "$APP/email-service" && "$NODE_BIN/node" src/numbers.ts "${ARGS[@]}"

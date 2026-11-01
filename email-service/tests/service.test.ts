@@ -4,7 +4,11 @@ import { loadConfig } from "../src/config.ts";
 import { sendPending } from "../src/mailer.ts";
 import { esc } from "../src/pages.ts";
 import type { Email, LinkCheck, LinkOutcome, PluginApi } from "../src/paperclip.ts";
+import { parseRawCounts } from "../src/counts.ts";
+
 import { createLinkServer } from "../src/server.ts";
+
+const ZERO = { handedOver: 0, ready: 0, approved: 0, rejected: 0, failed: 0, notTested: 0, teammateOverlaps: 0, wouldBeConflicts: 0, toolErrors: 0, checksFailed: 0, timedOut: 0, budgetStops: 0 };
 
 const TOKEN = "eyJ2IjoxLCJhIjoiYWN0In0." + "s".repeat(43);
 
@@ -37,6 +41,18 @@ function fakeApi(over: Partial<PluginApi> = {}): PluginApi & { calls: string[] }
     async waitingPullRequests() {
       return { repo: null, pullRequests: [] };
     },
+    async numbers() {
+      return { team: {} };
+    },
+    async numbersCsv() {
+      return "Date\r\n";
+    },
+    async counts() {
+      return parseRawCounts({ team: ZERO, people: [] });
+    },
+    async eventsCsv() {
+      return "task id\r\n";
+    },
     async pullRequestUpdate(taskId, state) {
       calls.push(`pr-update:${taskId}:${state}`);
     },
@@ -48,11 +64,23 @@ function fakeApi(over: Partial<PluginApi> = {}): PluginApi & { calls: string[] }
     },
     async claimInvite() {
       calls.push("claim");
-      return { ok: true, status: "claimed", plan: { inviteId: "inv-1", email: "cy@example.com", timezone: "Europe/Berlin", defaults: { nightStartHour: 22, nightBudgetCapCents: 300, maxTasksPerNight: 3, agentAdapterType: "process", agentAdapterConfig: {}, agentMonthlyBudgetCents: 3000 } } };
+      return { ok: true, status: "claimed", plan: { inviteId: "inv-1", email: "cy@example.com", timezone: "Europe/Berlin", defaults: { handoverStartHour: 22, handoverBudgetCapCents: 300, maxTasksPerHandover: 3, agentAdapterType: "process", agentAdapterConfig: {}, agentMonthlyBudgetCents: 3000 }, agent: null } };
+    },
+    async handoverStatus() {
+      return { ok: false, message: "not in this test" };
+    },
+    async startHandover() {
+      return { ok: false, message: "not in this test" };
     },
     async finishInvite(_id, result) {
       calls.push(`finish:${result.ok}`);
       return { ok: true, message: "joined" };
+    },
+    async stuckApprovals() {
+      return [];
+    },
+    async recoverApproval(): Promise<LinkOutcome> {
+      return { ok: false, status: "refused", message: "not in this test" };
     },
     ...over,
   };

@@ -2,7 +2,7 @@ import type { PluginToolDeclaration } from "@paperclipai/plugin-sdk";
 
 export const TOOL_HANDOFF = "handoff_to_teammate";
 export const TOOL_RUN_CHECKS = "run_checks";
-export const TOOL_PROPOSE = "propose_tonight";
+export const TOOL_PROPOSE = "propose_handover";
 
 export const HANDOFF_TOOL: PluginToolDeclaration = {
   name: TOOL_HANDOFF,
@@ -35,9 +35,9 @@ export const RUN_CHECKS_TOOL: PluginToolDeclaration = {
 
 export const PROPOSE_TOOL: PluginToolDeclaration = {
   name: TOOL_PROPOSE,
-  displayName: "Propose tonight's tasks",
+  displayName: "Propose this handover's tasks",
   description:
-    "Propose up to 3 tasks for tonight. Each task is either an existing backlog ticket assigned to you (issueId) or a new one (title, description). Your owner approves the plan with one tap; nothing runs before that.",
+    "Propose up to 3 tasks for this handover. Each task is either an existing backlog ticket assigned to you (issueId) or a new one (title, description), and lists the files and folders it may change (claims). A task that reaches into another owner's files goes to that owner's agent instead. A person (never an agent) approves the plan on the plan ticket; nothing runs before that.",
   parametersSchema: {
     type: "object",
     properties: {
@@ -51,7 +51,16 @@ export const PROPOSE_TOOL: PluginToolDeclaration = {
             issueId: { type: "string", description: "An existing backlog ticket assigned to you." },
             title: { type: "string", description: "Title for a new ticket." },
             description: { type: "string", description: "What needs doing and how to know it is done." },
+            claims: {
+              type: "array",
+              minItems: 1,
+              maxItems: 20,
+              items: { type: "string" },
+              description:
+                'The files and folders this task may change, relative to the repository root (e.g. "src/ui/", "README.md", "src/**/*.css"). Checked against the other owners\' areas and claims before the handover.',
+            },
           },
+          required: ["claims"],
         },
       },
     },

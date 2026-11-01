@@ -4,7 +4,7 @@
  * scripts/integration-test.sh.
  */
 type Row = Record<string, unknown>;
-type TableName = "task_events" | "night_runs" | "briefings" | "link_actions" | "invites" | "pull_requests";
+type TableName = "task_events" | "handover_runs" | "briefings" | "link_actions" | "invites" | "pull_requests" | "overlaps" | "conflicts" | "run_flags";
 
 export interface FakeDb {
   namespace: string;
@@ -16,19 +16,25 @@ export interface FakeDb {
 
 const KEYS: Record<TableName, string[]> = {
   task_events: ["task_id"],
-  night_runs: ["company_id", "owner", "night_date"],
-  briefings: ["company_id", "owner", "night_date"],
+  handover_runs: ["company_id", "owner", "handover_key"],
+  briefings: ["company_id", "owner", "handover_key"],
   link_actions: ["id"],
   invites: ["id"],
   pull_requests: ["task_id"],
+  overlaps: ["id"],
+  conflicts: ["company_id", "task_a", "task_b", "head_a", "head_b"],
+  run_flags: ["task_id", "kind"],
 };
 const DEFAULTS: Record<TableName, Row> = {
   task_events: {},
-  night_runs: { task_ids: "[]", current_index: -1, current_attempt: 0 },
-  briefings: { status: "pending", items: "[]", notes: "[]" },
+  handover_runs: { task_ids: "[]", current_index: -1, current_attempt: 0, kind: "scheduled" },
+  briefings: { status: "pending", items: "[]", notes: "[]", conflicts: "[]", shared_files: "[]" },
   link_actions: { state: "new" },
-  invites: { state: "new" },
+  invites: { state: "new", attempts: 0 },
   pull_requests: { state: "waiting" },
+  overlaps: {},
+  conflicts: {},
+  run_flags: {},
 };
 
 function tableOf(sql: string): TableName {
@@ -74,7 +80,7 @@ function applySet(row: Row, set: string, params: unknown[]): void {
 }
 
 export function createFakeDb(namespace = "ns"): FakeDb {
-  const tables: Record<TableName, Row[]> = { task_events: [], night_runs: [], briefings: [], link_actions: [], invites: [], pull_requests: [] };
+  const tables: Record<TableName, Row[]> = { task_events: [], handover_runs: [], briefings: [], link_actions: [], invites: [], pull_requests: [], overlaps: [], conflicts: [], run_flags: [] };
   const costs: FakeDb["costs"] = [];
   return {
     namespace,
@@ -90,8 +96,10 @@ export function createFakeDb(namespace = "ns"): FakeDb {
       }
       const where = sql.split(/\bWHERE\b/)[1]?.split(/\bORDER BY\b|\bLIMIT\b/)[0] ?? "";
       let rows = tables[tableOf(sql)].filter((r) => matches(r, where, params));
-      if (/ORDER BY night_date DESC/.test(sql)) rows = rows.sort((a, b) => String(b.night_date).localeCompare(String(a.night_date)));
-      else if (/ORDER BY night_date/.test(sql)) rows = rows.sort((a, b) => String(a.night_date).localeCompare(String(b.night_date)));
+      if (/ORDER BY created_at DESC/.test(sql)) rows = rows.reverse(); // rows are kept in insertion order
+      else if (/ORDER BY created_at\b/.test(sql)) rows = [...rows];
+      else if (/ORDER BY handover_key DESC/.test(sql)) rows = rows.sort((a, b) => String(b.handover_key).localeCompare(String(a.handover_key)));
+      else if (/ORDER BY handover_key/.test(sql)) rows = rows.sort((a, b) => String(a.handover_key).localeCompare(String(b.handover_key)));
       const limit = /LIMIT (\d+)/.exec(sql);
       if (limit) rows = rows.slice(0, Number(limit[1]));
       return rows.map((r) => ({ ...r })) as T[];
