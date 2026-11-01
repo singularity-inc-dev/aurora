@@ -1,0 +1,40 @@
+#!/bin/sh
+# Runs one check command for the checks gate, as the owner's own agent user.
+# It is the forced command of a second SSH key on that user (the server tools
+# write, in a root-owned authorized_keys file):
+#   restrict,command="/opt/vision-and-tom/app/deploy/bin/vt-check-runner" ssh-ed25519 ...
+# So code an agent wrote is never run as Paperclip's own user, nor as another
+# owner's. (Hardy's own locked sandbox for checks comes with milestone M4.)
+#
+# Request: SSH_ORIGINAL_COMMAND = "<seconds> <check command>" (the operator's test
+# or lint command from the plugin settings). Standard input: a tar of the task's
+# files (no .git). It unpacks them into a fresh private folder, runs the command
+# with a clean environment and a time limit, then deletes the folder.
+set -u
+umask 077
+CHECK_PATH="/opt/vision-and-tom/node/bin:/usr/local/bin:/usr/bin:/bin"
+
+req="${SSH_ORIGINAL_COMMAND:-}"
+secs="${req%% *}"
+cmd="${req#* }"
+case "$secs" in '' | *[!0-9]*) echo "vt-check-runner: bad request" >&2; exit 2 ;; esac
+if [ "$cmd" = "$req" ] || [ -z "$cmd" ] || [ "$secs" -lt 1 ] || [ "$secs" -gt 3600 ]; then
+  echo "vt-check-runner: bad request" >&2; exit 2
+fi
+
+work=$(mktemp -d "${TMPDIR:-/tmp}/vt-check.XXXXXXXX") || exit 2
+trap 'rm -rf "$work"' EXIT
+if ! tar -x -C "$work" --no-same-owner --no-same-permissions -f - 2>/dev/null; then
+  echo "vt-check-runner: could not unpack the task's files" >&2; exit 2
+fi
+cd "$work" || exit 2
+# timeout puts the command in a process group of its own (its pid). Whatever the
+# check leaves running in that group is killed afterwards, so it cannot hold the
+# SSH channel open or keep using the folder.
+env -i PATH="$CHECK_PATH" HOME="$work" TMPDIR="$work" LANG=C.UTF-8 CI=1 \
+  timeout -k 5 "$secs" sh -c "$cmd" </dev/null &
+group=$!
+wait "$group"
+rc=$?
+kill -9 "-$group" 2>/dev/null
+exit "$rc"

@@ -53,13 +53,13 @@ describe("signed invite links", () => {
 });
 
 describe("action tiers", () => {
-  it("merge, reject, publishing to GitHub and joining from an invite need a tap; nothing else does", () => {
-    expect(actionsIn("needs-tap").sort()).toEqual(["join-from-invite", "merge-task", "publish-to-github", "reject-task"]);
+  it("merge, reject, publishing to GitHub and joining from an invite and Hand over now need a tap; nothing else does", () => {
+    expect(actionsIn("needs-tap").sort()).toEqual(["join-from-invite", "merge-task", "publish-to-github", "reject-task", "start-handover-now"]);
     expect(() => assertTier("merge-task", "needs-tap")).not.toThrow();
   });
 
   it("an automatic action cannot pose as a tapped one, and the reverse", () => {
-    expect(() => assertTier("send-morning-briefing", "needs-tap")).toThrow(TierRefused);
+    expect(() => assertTier("send-handback-email", "needs-tap")).toThrow(TierRefused);
     expect(() => assertTier("merge-task", "automatic")).toThrow(TierRefused);
   });
 

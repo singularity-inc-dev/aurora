@@ -1,5 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { describe, expect, it } from "vitest";
+import type { PluginContext } from "@paperclipai/plugin-sdk";
+import { listCompanies } from "../src/handoverrunner.js";
 import { startTicker } from "../src/ticker.js";
 
 describe("startTicker", () => {
@@ -35,5 +37,29 @@ describe("startTicker", () => {
     expect(n).toBeGreaterThanOrEqual(1);
     expect(n).toBeLessThanOrEqual(3);
     ticker.stop();
+  });
+});
+
+describe("listCompanies", () => {
+  const ctxWith = (list: () => Promise<Array<{ id: string }>>) => ({ companies: { list } }) as unknown as PluginContext;
+  const noPause = async () => undefined;
+
+  it("retries when Paperclip refuses the call because another request is in flight", async () => {
+    let calls = 0;
+    const ctx = ctxWith(async () => {
+      calls += 1;
+      if (calls < 3) throw new Error("the worker referenced a missing, expired, or unknown invocation scope");
+      return [{ id: "co-1" }];
+    });
+    expect(await listCompanies(ctx, noPause)).toEqual([{ id: "co-1" }]);
+    expect(calls).toBe(3);
+  });
+
+  it("falls back to the last list that worked, and fails only when there is none", async () => {
+    await listCompanies(ctxWith(async () => [{ id: "co-2" }]), noPause);
+    const refusing = ctxWith(async () => {
+      throw new Error("invalid invocation scope");
+    });
+    expect(await listCompanies(refusing, noPause)).toEqual([{ id: "co-2" }]);
   });
 });

@@ -7,11 +7,22 @@ import { loadConfig } from "../src/config.ts";
 import type { GithubClient } from "../src/github.ts";
 import { checkJoinForm, join } from "../src/join.ts";
 import type { BoardApi, LinkCheck, LinkOutcome, PersonApi, PluginApi, PublishResult } from "../src/paperclip.ts";
+import { paperclipApi, PaperclipError } from "../src/paperclip.ts";
 import { syncPullRequests } from "../src/prsync.ts";
+import { recoverStuckApprovals } from "../src/recover.ts";
 import { createLinkServer } from "../src/server.ts";
 
 const TOKEN = "eyJ2IjoxLCJhIjoiYWN0In0." + "s".repeat(43);
-const PUBLISH = { repo: "acme/app", worktree: "/w", branch: "vt/T-1", baseBranch: "main", expectedHead: "a".repeat(40), title: "T-1", body: "b" };
+const PUBLISH = { actionId: "act-1", repo: "acme/app", worktree: "/w", branch: "vt/T-1", baseBranch: "main", expectedHead: "a".repeat(40), title: "T-1", body: "b" };
+
+const PLAN = {
+  inviteId: "inv-1",
+  email: "cy@example.com",
+  timezone: "Europe/Berlin",
+  defaults: { handoverStartHour: 22, handoverBudgetCapCents: 300, maxTasksPerHandover: 3, agentAdapterType: "claude_local", agentAdapterConfig: { model: "x" }, agentMonthlyBudgetCents: 3000 },
+  // made by vt-invite: the new agent's own system user and environment
+  agent: { agentEnvironmentId: "env-cy", agentUser: "vt-a-cy", checksKey: { type: "secret_ref" as const, secretId: "ck-cy" } },
+};
 
 function plugin(over: Partial<PluginApi> = {}): PluginApi & { calls: string[] } {
   const calls: string[] = [];
@@ -33,21 +44,35 @@ function plugin(over: Partial<PluginApi> = {}): PluginApi & { calls: string[] } 
     previewInvite: async () => ({ ok: true, status: "valid", message: "ok", email: "cy@example.com", timezone: "Europe/Berlin" }),
     claimInvite: async () => {
       calls.push("claim");
-      return { ok: true, status: "claimed", plan: { inviteId: "inv-1", email: "cy@example.com", timezone: "Europe/Berlin", defaults: { nightStartHour: 22, nightBudgetCapCents: 300, maxTasksPerNight: 3, agentAdapterType: "process", agentAdapterConfig: { command: "pwd" }, agentMonthlyBudgetCents: 3000 } } };
+      return { ok: true, status: "claimed", plan: PLAN };
     },
+    handoverStatus: async (email) => ({ ok: true, email, timezone: "UTC", handoverStartHour: 22, handovers: [] }),
+    startHandover: async (email) => (calls.push(`start:${email}`), { ok: true, handoverKey: "2026-10-24T14:05:00" }),
+    numbers: async () => ({ team: {} }),
+    numbersCsv: async () => "Date\r\n",
     finishInvite: async (_id, r) => {
       calls.push(`finish:${r.ok ? "ok" : r.message}`);
-      return { ok: true, message: "joined" };
+      return r.ok ? { ok: true, message: "joined" } : { ok: true, message: "recorded", retry: true };
+    },
+    stuckApprovals: async () => [{ actionId: "act-1", taskId: "t1", publish: PUBLISH }, { actionId: "act-2", taskId: "t2", publish: { ...PUBLISH, actionId: "act-2" } }],
+    recoverApproval: async (id, minutes, r): Promise<LinkOutcome> => {
+      calls.push(`recover:${id}:${minutes}:${r.result}`);
+      return { ok: true, status: "merged", message: "merged" };
     },
   };
   return Object.assign(base, over, { calls });
 }
 
-function github(result: PublishResult | Error): GithubClient & { published: number } {
+function github(result: PublishResult | Error, onPublish: () => Promise<void> = async () => undefined): GithubClient & { published: number } {
   const g = {
     published: 0,
     async publish() {
       g.published += 1;
+      await onPublish();
+      if (result instanceof Error) throw result;
+      return result;
+    },
+    async resume() {
       if (result instanceof Error) throw result;
       return result;
     },
@@ -101,6 +126,31 @@ describe("Approve with GitHub", () => {
     expect(api.calls).toEqual(["execute", "result:failed"]);
   });
 
+  it("an approval being published is marked in flight until it reports back", async () => {
+    const api = plugin();
+    const inFlight = new Set<string>();
+    let seen: string[] = [];
+    const gh = github({ result: "merged", number: 3, url: "https://github.com/acme/app/pull/3", mergeSha: "c".repeat(40) }, async () => void (seen = [...inFlight]));
+    const base = await start(api, { github: gh, inFlight });
+    await post(`${base}/l/${TOKEN}`);
+    expect(seen).toEqual(["act-1"]);
+    expect(inFlight.size).toBe(0);
+  });
+
+  // Spec gap 27: a crash mid-approval must not leave a task "in progress".
+  it("interrupted approvals are finished on GitHub and reported; ones still in flight are left alone", async () => {
+    const api = plugin();
+    const n = await recoverStuckApprovals(api, github({ result: "merged", number: 3, url: "u", mergeSha: "c".repeat(40) }), new Set(["act-2"]), 15);
+    expect(n).toBe(1);
+    expect(api.calls).toEqual(["recover:act-1:15:merged"]);
+  });
+
+  it("when GitHub cannot be asked, the interrupted approval is left for the next round", async () => {
+    const api = plugin();
+    expect(await recoverStuckApprovals(api, github(new Error("GitHub answered 502 when listing pull requests")), new Set(), 15)).toBe(0);
+    expect(api.calls).toEqual([]);
+  });
+
   it("the sync reports merged pull requests and leaves open ones waiting", async () => {
     const api = plugin();
     expect(await syncPullRequests(api, github({ result: "failed", message: "" }))).toBe(1);
@@ -108,21 +158,44 @@ describe("Approve with GitHub", () => {
   });
 });
 
+/** A stand-in Paperclip that remembers what earlier join tries made (accounts, members, agents). */
 function fakePaperclip() {
   const log: string[] = [];
   let config: Record<string, unknown> = { links: { baseUrl: "x" }, people: [{ email: "ana@example.com", agentId: "a1" }] };
+  const accounts = new Map<string, string>(); // email -> password
+  const members = new Set<string>();
+  const agents: Array<{ id: string; defaultEnvironmentId: string | null }> = [];
   const board: BoardApi = {
     createHumanInvite: async () => (log.push("paperclip-invite"), "pc-invite"),
-    createAgent: async (input) => (log.push(`agent:${input.name}:${input.adapterType}:${input.budgetMonthlyCents}`), "agent-cy"),
+    createAgent: async (input) => {
+      log.push(`agent:${input.name}:${input.adapterType}:${input.budgetMonthlyCents}:${input.defaultEnvironmentId}:${JSON.stringify(input.adapterConfig)}`);
+      const id = agents.length === 0 ? "agent-cy" : `agent-cy-${agents.length + 1}`;
+      agents.push({ id, defaultEnvironmentId: input.defaultEnvironmentId ?? null });
+      return id;
+    },
+    request: async <T,>() => ({}) as T,
     getAgent: async () => ({}),
+    findAgentByEnvironment: async (env) => agents.find((a) => a.defaultEnvironmentId === env)?.id ?? null,
+    lockAgent: async (id) => void log.push(`lock:${id}`),
+    isMember: async (userId) => members.has(userId),
     getPluginConfig: async () => config,
     savePluginConfig: async (c) => void ((config = c), log.push("saved")),
   };
   const person: PersonApi = {
-    signUp: async (i) => (log.push(`signup:${i.email}:${i.name}`), { cookie: "s=1", userId: "u-cy" }),
-    acceptInvite: async (cookie, token) => void log.push(`accept:${cookie}:${token}`),
+    signUp: async (i) => {
+      if (accounts.has(i.email)) throw new PaperclipError(409, "an account with this email already exists");
+      accounts.set(i.email, i.password);
+      log.push(`signup:${i.email}:${i.name}`);
+      return { cookie: "s=1", userId: "u-cy" };
+    },
+    signIn: async (i) => {
+      if (accounts.get(i.email) !== i.password) throw new PaperclipError(401, "the password does not match the existing account");
+      log.push(`signin:${i.email}`);
+      return { cookie: "s=2", userId: "u-cy" };
+    },
+    acceptInvite: async (cookie, token) => void (members.add("u-cy"), log.push(`accept:${cookie}:${token}`)),
   };
-  return { board, person, log, config: () => config };
+  return { board, person, log, agents, config: () => config };
 }
 
 describe("invite page and join", () => {
@@ -139,8 +212,20 @@ describe("invite page and join", () => {
     expect(res.status).toBe(200);
     expect(html).toContain("<h1>You&#39;re in</h1>");
     expect(html).toContain('href="https://team.example.com"');
-    expect(pc.log).toEqual(["paperclip-invite", "signup:cy@example.com:Cy Ng", "accept:s=1:pc-invite", "agent:Cy Ng's night agent:process:3000", "saved"]);
-    expect((pc.config().people as unknown[])[1]).toEqual({ email: "cy@example.com", agentId: "agent-cy", timezone: "Europe/Berlin", nightStartHour: 22, maxTasksPerNight: 3, nightBudgetCapCents: 300, secrets: [] });
+    // The agent runs in its own environment (its own system user), with Claude's CLI engine.
+    expect(pc.log).toEqual(["signup:cy@example.com:Cy Ng", "paperclip-invite", "accept:s=1:pc-invite", `agent:Cy Ng's agent:claude_local:3000:env-cy:{"model":"x","engine":"cli"}`, "saved"]);
+    expect((pc.config().people as unknown[])[1]).toEqual({
+      email: "cy@example.com",
+      agentId: "agent-cy",
+      agentEnvironmentId: "env-cy",
+      agentUser: "vt-a-cy",
+      checksKey: { type: "secret_ref", secretId: "ck-cy" },
+      timezone: "Europe/Berlin",
+      handoverStartHour: 22,
+      maxTasksPerHandover: 3,
+      handoverBudgetCapCents: 300,
+      secrets: [],
+    });
     expect(api.calls).toEqual(["claim", "finish:ok"]);
   });
 
@@ -168,7 +253,7 @@ describe("invite page and join", () => {
     }
   });
 
-  it("a failure part-way is recorded on the invite, and the page says to ask for a new link", async () => {
+  it("a failure part-way is recorded on the invite with what was made, and the page says the link still works", async () => {
     const api = plugin();
     const pc = fakePaperclip();
     pc.board.createAgent = async () => {
@@ -177,7 +262,69 @@ describe("invite page and join", () => {
     const out = await join(api, pc.board, pc.person, TOKEN, { name: "Cy", password: "correct-horse-battery", timezone: null });
     expect(out).toMatchObject({ ok: false, status: "failed" });
     expect(out.message).toContain("creating your agent");
+    expect(out.message).toContain("Your invite link still works");
     expect(api.calls.at(-1)).toContain("failed while creating your agent");
+  });
+
+  // Spec gap 27: a join that fails halfway must not use up the invite.
+  it("a second try after a failure halfway reuses the account and the agent the first try made", async () => {
+    const pc = fakePaperclip();
+    const finishes: unknown[] = [];
+    const resume = { userId: null as string | null, agentId: null as string | null };
+    const api = plugin({
+      claimInvite: async () => ({ ok: true, status: "claimed", plan: { ...PLAN, attempt: finishes.length + 1, resume } }),
+      finishInvite: async (_id, r) => (finishes.push(r), r.ok ? { ok: true, message: "joined" } : { ok: true, message: "recorded", retry: true }),
+    });
+    const save = pc.board.savePluginConfig;
+    pc.board.savePluginConfig = async () => {
+      throw new PaperclipError(500, "Paperclip answered 500 for POST /api/plugins/:id/config");
+    };
+    const form = { name: "Cy", password: "correct-horse-battery", timezone: null };
+    const first = await join(api, pc.board, pc.person, TOKEN, form);
+    expect(first).toMatchObject({ ok: false, status: "failed" });
+    expect(first.message).toContain("saving your settings");
+    expect(finishes[0]).toMatchObject({ ok: false, attempt: 1, userId: "u-cy", agentId: "agent-cy" });
+
+    pc.board.savePluginConfig = save;
+    pc.log.length = 0;
+    const second = await join(api, pc.board, pc.person, TOKEN, form);
+    expect(second).toMatchObject({ ok: true, status: "joined" });
+    // Signed in to the account from the first try, already a member, the same agent (found by its own environment) locked again.
+    expect(pc.log).toEqual(["signin:cy@example.com", "lock:agent-cy", "saved"]);
+    expect(pc.agents).toHaveLength(1);
+    expect(finishes[1]).toMatchObject({ ok: true, attempt: 2, agentId: "agent-cy", userId: "u-cy" });
+    expect((pc.config().people as Array<{ email: string }>).filter((p) => p.email === "cy@example.com")).toHaveLength(1);
+
+    // A third run (as if the report back was lost) changes nothing: the settings row is already there.
+    pc.log.length = 0;
+    expect(await join(api, pc.board, pc.person, TOKEN, form)).toMatchObject({ ok: true });
+    expect(pc.log).toEqual(["signin:cy@example.com", "lock:agent-cy"]);
+  });
+
+  it("a later try with a different password shows the form again; the invite stays usable", async () => {
+    const pc = fakePaperclip();
+    const api = plugin();
+    pc.board.createAgent = async () => {
+      throw new PaperclipError(503, "Paperclip answered 503");
+    };
+    await join(api, pc.board, pc.person, TOKEN, { name: "Cy", password: "correct-horse-battery", timezone: null });
+    const base = await start(api, { board: pc.board, person: pc.person });
+    const res = await post(`${base}/join/${TOKEN}`, "name=Cy&password=another-password-here");
+    expect(res.status).toBe(400);
+    const html = await res.text();
+    expect(html).toContain("Please type the same password you chose then.");
+    expect(html).toContain('<form method="post"');
+    expect(api.calls.at(-1)).toContain("failed while creating your account");
+  });
+
+  it("after the last allowed try the page says to ask for a new link", async () => {
+    const pc = fakePaperclip();
+    const api = plugin({ finishInvite: async () => ({ ok: true, message: "recorded", retry: false }) });
+    pc.board.createAgent = async () => {
+      throw new PaperclipError(503, "Paperclip answered 503");
+    };
+    const out = await join(api, pc.board, pc.person, TOKEN, { name: "Cy", password: "correct-horse-battery", timezone: null });
+    expect(out.message).toContain("This link is now used up; please ask for a new one.");
   });
 
   it("checks the form", () => {
@@ -218,5 +365,47 @@ describe("secrets come from files", () => {
 
   it("a missing secret file names the setting, not the value", () => {
     expect(() => loadConfig({ VT_COMPANY_ID: "c", SMTP_PASS_FILE: "/nonexistent/x" })).toThrow("cannot read the file named by SMTP_PASS_FILE");
+  });
+});
+
+describe("Hand over now page", () => {
+  const SITE = "https://team.example.com";
+  const session = { whoIs: async (cookie: string) => (cookie.includes("ana-session") ? { email: "ana@example.com" } : null) };
+
+  it("is only for the person signed in to Paperclip", async () => {
+    const api = plugin();
+    const base = await start(api, { session, signInUrl: SITE });
+    const anon = await fetch(`${base}/handover`);
+    expect(anon.status).toBe(401);
+    expect(await anon.text()).toContain("sign in to Paperclip");
+    const page = await (await fetch(`${base}/handover`, { headers: { cookie: "s=ana-session" } })).text();
+    expect(page).toContain("Signed in as <strong>ana@example.com</strong>");
+    expect(page).toContain("Hand over now</button>");
+    expect(api.calls).toEqual([]);
+  });
+
+  it("starts the signed-in owner's handover, and only from this site's own page", async () => {
+    const api = plugin();
+    const base = await start(api, { session, signInUrl: SITE });
+    const elsewhere = await fetch(`${base}/handover`, { method: "POST", headers: { cookie: "s=ana-session", origin: "https://evil.example" } });
+    expect(elsewhere.status).toBe(403);
+    expect(api.calls).toEqual([]);
+    const res = await fetch(`${base}/handover`, { method: "POST", headers: { cookie: "s=ana-session", origin: SITE } });
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain("Started.");
+    expect(api.calls).toEqual(["start:ana@example.com"]);
+  });
+});
+
+describe("numbers (piece F)", () => {
+  it("unwraps the CSV the plugin sends inside JSON", async () => {
+    const seen: string[] = [];
+    const fake = (async (url: string) => {
+      seen.push(String(url));
+      return new Response(JSON.stringify({ csv: "Date,Owner\r\n2026-10-24,ana@example.com\r\n" }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const api = paperclipApi({ paperclipUrl: "http://pc", plugin: "p", companyId: "co", paperclipApiKey: null } as never, fake);
+    expect(await api.numbersCsv()).toBe("Date,Owner\r\n2026-10-24,ana@example.com\r\n");
+    expect(seen).toEqual(["http://pc/api/plugins/p/api/numbers/csv?companyId=co"]);
   });
 });

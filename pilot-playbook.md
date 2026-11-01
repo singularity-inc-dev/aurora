@@ -30,7 +30,7 @@ Yes. Nothing in the build has to wait for the pilot except the order in which yo
 
 | Question the pilot answers | Why code alone can't answer it |
 | --- | --- |
-| Do this team's agents collide every week? | Our 33% conflict rate comes from people's git history; agents may collide more or less often |
+| Do this team's agents collide every week? | An earlier, unreproduced estimate put people's conflict rate at 33%; our corrected run measured 1 conflict in more than 100 clean replays. Agents may collide more or less often |
 | Will owners write and approve contracts? | It's a new habit, and only watching people shows whether they'll keep it |
 | Is one to two hours the right size for a work order? | It depends on their codebase and their agents |
 | How long does approving a handback take? | Review time is people's time |

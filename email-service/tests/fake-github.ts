@@ -29,6 +29,10 @@ export interface FakeGithub {
   /** Every request: what it asked for and whether it carried the right token. */
   requests: Array<{ method: string; path: string; authorized: boolean }>;
   protection: boolean;
+  /** While true, merge requests get no answer (a stand-in for a slow GitHub, to crash the caller mid-approval). */
+  holdMerges: boolean;
+  /** Merge requests being held; when holding stops they are answered 503 and nothing is merged. */
+  held: Array<() => void>;
   git(...args: string[]): string;
 }
 
@@ -47,7 +51,7 @@ export function createFakeGithub(opts: { dir: string; repo: string; token: strin
   git("init", "-q", "--bare", "-b", "main");
   git("config", "http.receivepack", "true");
   const basic = `Basic ${Buffer.from(`x-access-token:${opts.token}`).toString("base64")}`;
-  const state: FakeGithub = { server: null as unknown as Server, repoDir, pulls: [], requests: [], protection: false, git };
+  const state: FakeGithub = { server: null as unknown as Server, repoDir, pulls: [], requests: [], protection: false, holdMerges: false, held: [], git };
 
   const squash = (pr: FakePull): string => {
     const base = git("rev-parse", `refs/heads/${pr.base}`).trim();
@@ -71,6 +75,10 @@ export function createFakeGithub(opts: { dir: string; repo: string; token: strin
       const [, , what, n] = url.pathname.split("/");
       const pr = state.pulls.find((p) => p.number === Number(n));
       if (what === "protection") state.protection = url.searchParams.get("on") === "1";
+      else if (what === "hold-merges") {
+        state.holdMerges = url.searchParams.get("on") === "1";
+        if (!state.holdMerges) state.held.splice(0).forEach((answer) => answer());
+      }
       else if (what === "merge" && pr) squash(pr);
       else if (what === "close" && pr) pr.state = "closed";
       else if (what === "push-other") {
@@ -79,7 +87,7 @@ export function createFakeGithub(opts: { dir: string; repo: string; token: strin
         const tree = git("rev-parse", `${base}^{tree}`).trim();
         git("update-ref", "refs/heads/main", execFileSync("git", [...ID, "commit-tree", tree, "-p", base, "-m", "other work"], { cwd: repoDir, encoding: "utf8" }).trim(), base);
       }
-      return json(200, { protection: state.protection, pulls: state.pulls, requests: state.requests });
+      return json(200, { protection: state.protection, pulls: state.pulls, requests: state.requests, held: state.held.length });
     }
 
     if (url.pathname.startsWith("/api/")) {
@@ -95,13 +103,15 @@ export function createFakeGithub(opts: { dir: string; repo: string; token: strin
         state: p.state,
         merged: p.merged,
         mergeable: true,
+        merged_at: p.merged ? "2026-10-25T00:00:00Z" : null,
         merge_commit_sha: p.mergeSha,
         head: { ref: p.head, sha: p.headSha },
         base: { ref: p.base },
       });
       if (req.method === "GET" && !m[2]) {
         const head = url.searchParams.get("head")?.split(":")[1];
-        return json(200, state.pulls.filter((p) => p.state === "open" && (!head || p.head === head)).map(view));
+        const which = url.searchParams.get("state") ?? "open";
+        return json(200, state.pulls.filter((p) => (which === "all" || p.state === which) && (!head || p.head === head)).map(view));
       }
       if (req.method === "POST" && !m[2]) {
         const b = JSON.parse((await body(req)).toString() || "{}");
@@ -120,6 +130,10 @@ export function createFakeGithub(opts: { dir: string; repo: string; token: strin
       if (req.method === "GET") return json(200, view(pr));
       if (req.method === "PUT" && m[3]) {
         const b = JSON.parse((await body(req)).toString() || "{}");
+        if (state.holdMerges) {
+          state.held.push(() => json(503, { message: "Service unavailable" }));
+          return;
+        }
         pr.headSha = git("rev-parse", `refs/heads/${pr.head}`).trim();
         if (pr.state !== "open") return json(405, { message: "Pull Request is not mergeable" });
         if (b.sha && b.sha !== pr.headSha) return json(409, { message: "Head branch was modified. Review and try the merge again." });
