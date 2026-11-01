@@ -76,7 +76,18 @@ never finishing, finishing after the handback, failed checks stay Reject-only, s
 comment, the planning retry), `email-service/tests/timeouts.test.ts` (silent and flaky servers, no retry for
 one-time actions or 4xx, a stuck push, SMTP limits). B1 tests are in `plugin/tests/handoverrunner.test.ts`.
 
-Live (`scripts/integration-test.sh`, cold start, includes the deployment rehearsal): **running; result to follow in this file.** A first run failed in the deployment rehearsal only (38 passed, 71 failed) because this fresh cloud machine had no OpenSSH and no test users; `scripts/it/lib/setup-test-users.sh` was then run (allowed on throwaway cloud test machines, CLAUDE.md 2026-10-25) and the suite restarted from a cold start.
+Live (`scripts/integration-test.sh`, cold start, includes the deployment rehearsal): **361 passed, 0 failed**;
+deployment rehearsal **109 passed, 0 failed** (same totals as PR #7's last run). How it got there, honestly:
+
+1. First run: the deployment rehearsal failed (38 passed, 71 failed) because this fresh cloud machine had no
+   OpenSSH and no test users. `scripts/it/lib/setup-test-users.sh` was run (allowed on throwaway cloud test
+   machines, CLAUDE.md 2026-10-25). Everything outside the rehearsal had passed, m3 included (33/33).
+2. Second run: 335 passed, 26 failed, all in m3. Cause: **a timing flaw in `scripts/it/m3.sh`, not in the plugin.**
+   m3 picks a timezone where it is "about 10:00" and sets the handover start to 11:00 local, but the local
+   minutes equal the UTC minutes. m3 started at 17:59 UTC (10:59 local); at 11:00 the plan, still waiting for a
+   proposal, expired as designed, and every later m3 check failed in a chain. **Still open:** m3 fails whenever it
+   starts in the last minute or two of a UTC hour. Fix the test (pick the offset from the minutes too).
+3. Third run, started mid-hour from a cold start: 361 passed, 0 failed.
 
 ## How to test it yourself
 
