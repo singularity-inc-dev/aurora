@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Choose how one person's agent uses Claude (thin version 1, piece B). Admins only.
+# Never one shared account: each owner uses their own subscription or their own key.
+#
+#   sudo vt-model-access ana@example.com subscription "ssh-ed25519 AAAA... ana@laptop"
+#       Ana signs in herself with Claude Code's own login, on her agent only:
+#       her SSH public key (not a secret) is allowed to run that sign-in and
+#       nothing else. She then types the command this prints.
+#
+#   sudo vt-model-access ana@example.com api-key anthropic-api-key-ana
+#       Ana first stores her own API key in Paperclip herself (Company > Secrets,
+#       key "anthropic-api-key-ana"). This only points her agent at it; you never
+#       see the key.
+. "$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)/lib/common.sh"
+. "$KIT/lib/agents.sh"
+need_root
+load_conf
+[ $# -ge 2 ] || die 'usage: sudo vt-model-access <email> subscription "<their SSH public key>"  |  <email> api-key <secret key>'
+email="$1" mode="$2"
+COMPANY=$(sed -n 's/^VT_COMPANY_ID=//p' "$ETC/email-service.env")
+[ -n "$COMPANY" ] || die "run vt-setup first"
+pubkey=""
+if [ "$mode" = "subscription" ]; then
+  [ -n "${3:-}" ] || die "give the owner's SSH public key (one line, starting with ssh-ed25519 or ssh-rsa); it is not a secret"
+  # Only the key itself (type and value) is kept; options or comments in what was pasted are dropped.
+  pubkey=$(printf '%s\n' "$3" | awk '{for (i=1;i<=NF;i++) if ($i ~ /^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(256|384|521)|sk-ssh-ed25519@openssh.com)$/) {print $i" "$(i+1); exit}}')
+  [ -n "$pubkey" ] && printf '%s\n' "$pubkey" | ssh-keygen -l -f - >/dev/null 2>&1 || die "that does not look like an SSH public key"
+fi
+out=$("$NODE_BIN/node" "$KIT/bin/vt-model-access.mjs" "http://127.0.0.1:${PAPERCLIP_PORT:-3100}" "$SECRETS/paperclip-api-key" "$COMPANY" "$email" "$mode" "${3:-}" || true)
+field() { printf '%s' "$out" | "$NODE_BIN/node" -e "let s='';process.stdin.on('data',c=>s+=c).on('end',()=>{try{process.stdout.write(String(JSON.parse(s)['$1']??''))}catch{}})"; }
+[ "$(field ok)" = "true" ] || die "$(field message)"
+user=$(field agentUser)
+if [ "$mode" = "subscription" ]; then
+  [ -n "$user" ] || die "this person's agent has no system user of its own yet (run vt-setup or invite them again)"
+  file="$AGENT_AUTH_DIR/$user"
+  [ -f "$file" ] || die "no key file for $user (run vt-setup or invite them again)"
+  # The owner's key may only start Claude Code's own sign-in, as their agent's user.
+  { grep -v ' vt-owner-login$' "$file" || true
+    printf 'restrict,pty,command="%s" %s vt-owner-login\n' "$APP/deploy/bin/vt-claude-login" "$pubkey"
+  } >"$file.new" && chmod 644 "$file.new" && mv "$file.new" "$file"
+  say "Done. $email now signs in with their own Claude subscription. Send them this, to type on their own computer:"
+  echo "    ssh -t $user@$DOMAIN"
+  echo "  It opens Claude Code's own sign-in for their agent and nothing else. (Later: add 'status' or 'logout' at the end.)"
+else
+  # A switch from subscription to API key ends the owner's sign-in key.
+  [ -n "$user" ] && [ -f "$AGENT_AUTH_DIR/$user" ] && { grep -v ' vt-owner-login$' "$AGENT_AUTH_DIR/$user" >"$AGENT_AUTH_DIR/$user.new" || true; chmod 644 "$AGENT_AUTH_DIR/$user.new"; mv "$AGENT_AUTH_DIR/$user.new" "$AGENT_AUTH_DIR/$user"; }
+  say "Done. $email's agent now uses their own API key (the secret \"$3\"). Nobody else's agent can use it."
+fi

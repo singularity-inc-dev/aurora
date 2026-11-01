@@ -1,6 +1,12 @@
 # Milestone 4 live checks. Sourced by scripts/integration-test.sh (uses its helpers).
-# Morning briefing email (caught by Mailpit, nothing is really sent) and its
-# signed, expiring, one-time Approve / Reject links served by email-service/.
+# Agents here run as Paperclip's own user, so isolation is off ("isolation":{"required":false});
+# the isolation itself is proven in scripts/it/v1a.sh.
+# Handback email (caught by Mailpit, nothing is really sent) and its signed,
+# expiring, one-time Approve / Reject links served by email-service/.
+# Only the task's owner, signed in to Paperclip, can use them. This test bed has
+# one signed-in person ($IT_SIGNED_IN, see integration-test.sh, section 8), so Ana
+# uses that address: her links work in this "browser", and Bo's are refused here.
+M4_ANA="$IT_SIGNED_IN"
 
 MAILPIT_VERSION="v1.27.0"
 MAILPIT_SHA256="629d29442499976ebe271570bac07106c2a0667ba37d2358efbbaff25fd583a1"
@@ -69,10 +75,10 @@ check "M4: store the link signing key as a Paperclip secret" "$API_STATUS" "201"
 M4_SID=$(echo "$API_BODY" | json 'd.id')
 
 m4_config() { # nightStartHour for both
-  api POST "/api/plugins/$PLUGIN_ID/config" "{\"companyId\":\"$M4_CID\",\"configJson\":{
+  api POST "/api/plugins/$PLUGIN_ID/config" "{\"companyId\":\"$M4_CID\",\"configJson\":{\"serviceUserId\":\"$IT_SERVICE_USER\",\"isolation\":{\"required\":false},
     \"links\":{\"baseUrl\":\"$M4_LINKS\",\"signingSecret\":{\"type\":\"secret_ref\",\"secretId\":\"$M4_SID\"},\"expiresMinutes\":$M4_EXPIRES_MINUTES},
     \"night\":{\"projectId\":\"$M4_PID\"},\"checks\":{\"testCommand\":\"test -f README.md\"},\"people\":[
-    {\"email\":\"ana@example.com\",\"agentId\":\"$M4_A\",\"timezone\":\"$M4_TZ\",\"nightStartHour\":$1,\"nightBudgetCapCents\":1000},
+    {\"email\":\"$M4_ANA\",\"agentId\":\"$M4_A\",\"timezone\":\"$M4_TZ\",\"nightStartHour\":$1,\"nightBudgetCapCents\":1000},
     {\"email\":\"bo@example.com\",\"agentId\":\"$M4_B\",\"timezone\":\"$M4_TZ\",\"nightStartHour\":$1,\"nightBudgetCapCents\":1000}]}}"
 }
 m4_config 11
@@ -85,7 +91,7 @@ for _ in $(seq 1 20); do curl -s -m 1 "$M4_LINKS/health" >/dev/null 2>&1 && brea
 check "M4: email service is up" "$(curl -s "$M4_LINKS/health")" "ok"
 
 api GET "/api/plugins/$PLUGIN_ID/jobs"
-M4_JOB=$(echo "$API_BODY" | json 'd.find(j=>j.jobKey==="night-tick").id')
+M4_JOB=$(echo "$API_BODY" | json 'd.find(j=>j.jobKey==="handover-tick").id')
 m4_tick() {
   api POST "/api/plugins/$PLUGIN_ID/jobs/$M4_JOB/trigger" '{}'
   local run; run=$(echo "$API_BODY" | json 'd.runId')
@@ -95,7 +101,7 @@ m4_tick() {
     sleep 1
   done
 }
-m4_night() { api POST "/api/plugins/$PLUGIN_ID/data/night-status" "{\"companyId\":\"$M4_CID\",\"params\":{}}"; echo "$API_BODY" | json "(d.data.find(r=>r.owner==='$1')||{}).$2"; }
+m4_night() { api POST "/api/plugins/$PLUGIN_ID/data/handover-status" "{\"companyId\":\"$M4_CID\",\"params\":{}}"; echo "$API_BODY" | json "(d.data.find(r=>r.owner==='$1')||{}).$2"; }
 m4_issue() { api GET "/api/issues/$1"; echo "$API_BODY" | json "d.$2"; }
 m4_event() { api POST "/api/plugins/$PLUGIN_ID/data/task-event" "{\"companyId\":\"$M4_CID\",\"params\":{\"taskId\":\"$1\"}}"; echo "$API_BODY" | json "d.data.$2"; }
 m4_run_of() {
@@ -110,11 +116,6 @@ m4_run_of() {
 m4_tool() { # tool agentId params
   local run; run=$(m4_run_of "$2")
   api POST /api/plugins/tools/execute "{\"tool\":\"$PLUGIN_KEY:$1\",\"parameters\":$3,\"runContext\":{\"agentId\":\"$2\",\"runId\":\"$run\",\"companyId\":\"$M4_CID\",\"projectId\":\"$M4_PID\"}}"
-}
-m4_approve_plan() { # owner email
-  local plan; plan=$(m4_night "$1" planIssueId)
-  api GET "/api/issues/$plan/interactions"
-  api POST "/api/issues/$plan/interactions/$(echo "$API_BODY" | json '(Array.isArray(d)?d:d.items).find(i=>i.kind==="request_confirmation").id')/accept" '{}'
 }
 m4_worktree() { # taskId -> worktree path once Paperclip made it
   local ew=""
@@ -137,16 +138,15 @@ m4_work() { # taskId agentId file -> the "agent" commits a change and runs the c
   echo "$wt"
 }
 
-echo "-- a night's work for Ana (3 tasks) and Bo (1 task)"
+echo "-- Ana hands over 3 tasks and Bo 1, for their scheduled time"
+M4_T1=$(it_ticket "$M4_CID" "$M4_A" "$M4_PID" "Add greeting"); M4_T2=$(it_ticket "$M4_CID" "$M4_A" "$M4_PID" "Add farewell")
+M4_T3=$(it_ticket "$M4_CID" "$M4_A" "$M4_PID" "Refactor everything"); M4_TB=$(it_ticket "$M4_CID" "$M4_B" "$M4_PID" "Add a changelog")
+it_handover "$M4_CID" "$M4_ANA" scheduled "[$(it_note "$M4_T1" greeting.txt),$(it_note "$M4_T2" farewell.txt),$(it_note "$M4_T3" src/)]"
+check "Ana hands over her three tickets" "$API_STATUS" "201"
+it_handover "$M4_CID" bo@example.com scheduled "[$(it_note "$M4_TB" CHANGELOG.md)]"
+check "Bo hands over his ticket" "$API_STATUS" "201"
 m4_tick
-m4_tool propose_tonight "$M4_A" '{"tasks":[{"title":"Add greeting"},{"title":"Add farewell"},{"title":"Refactor everything"}]}'
-[ -n "${IT_DEBUG:-}" ] && echo "    debug propose: $(echo "$API_BODY" | head -c 300) | night: $(m4_night ana@example.com status)"
-M4_T1=$(echo "$API_BODY" | json 'd.result.data.taskIds[0]'); M4_T2=$(echo "$API_BODY" | json 'd.result.data.taskIds[1]'); M4_T3=$(echo "$API_BODY" | json 'd.result.data.taskIds[2]')
-m4_tool propose_tonight "$M4_B" '{"tasks":[{"title":"Add a changelog"}]}'
-M4_TB=$(echo "$API_BODY" | json 'd.result.data.taskIds[0]')
-m4_approve_plan ana@example.com; m4_approve_plan bo@example.com
-m4_tick
-m4_config 10 && m4_tick # the night has started
+m4_config 10 && m4_tick # the scheduled handover has started
 M4_WT1=$(m4_work "$M4_T1" "$M4_A" greeting.txt | tail -1)
 M4_WTB=$(m4_work "$M4_TB" "$M4_B" CHANGELOG.md | tail -1)
 m4_idle "$M4_A"; m4_idle "$M4_B"
@@ -160,25 +160,27 @@ m4_worktree "$M4_T3" >/dev/null
 m4_idle "$M4_A"
 api PATCH "/api/issues/$M4_T3" '{"status":"cancelled"}' # the agent gives up on the refactor
 m4_tick
-check "Ana's night finished" "$(m4_night ana@example.com status)" "finished"
-check "Bo's night finished" "$(m4_night bo@example.com status)" "finished"
-check "nothing is merged during the night" "$(git -C "$M4_REPO" log --merges --oneline main | wc -l | tr -d ' ')" "0"
+check "Ana's handover finished" "$(m4_night "$M4_ANA" status)" "finished"
+check "Bo's handover finished" "$(m4_night bo@example.com status)" "finished"
+check "nothing is merged during the handover" "$(git -C "$M4_REPO" log --merges --oneline main | wc -l | tr -d ' ')" "0"
 
-echo "-- morning briefing"
-m4_config 1 && m4_tick # the night is over: morning
+echo "-- the handback email"
+m4_config 1 && m4_tick # the handover window is over
 M4_SENT_AT=$(date +%s)
 for _ in $(seq 1 30); do [ "$(curl -s "$MAILPIT_API/messages" | json 'd.total')" = "2" ] && break; sleep 1; done
-check "one email per person arrives (caught by Mailpit)" "$(curl -s "$MAILPIT_API/messages" | json 'd.messages.map(m=>m.To[0].Address).sort().join(",")')" "ana@example.com,bo@example.com"
+check "one email per person arrives (caught by Mailpit)" "$(curl -s "$MAILPIT_API/messages" | json 'd.messages.map(m=>m.To[0].Address).sort().join(",")')" "bo@example.com,$M4_ANA"
 m4_mail() { # address -> plain text of their email
   local id; id=$(curl -s "$MAILPIT_API/messages" | json "d.messages.find(m=>m.To[0].Address==='$1').ID")
   curl -s "$MAILPIT_API/message/$id" | json 'd.Text' | tr -d '\r'
 }
-M4_MAIL_A=$(m4_mail ana@example.com); M4_MAIL_B=$(m4_mail bo@example.com)
-check "subject counts Ready, Blocked and Failed" "$(curl -s "$MAILPIT_API/messages" | json 'd.messages.find(m=>m.To[0].Address==="ana@example.com").Subject')" "Your night of $(m4_night ana@example.com nightDate): 2 ready, 1 blocked, 0 failed"
+M4_MAIL_A=$(m4_mail "$M4_ANA"); M4_MAIL_B=$(m4_mail bo@example.com)
+check "subject counts Ready, Blocked and Failed" "$(curl -s "$MAILPIT_API/messages" | json "d.messages.find(m=>m.To[0].Address==='$M4_ANA').Subject")" "Your handover of $(m4_night "$M4_ANA" handoverKey): 2 ready, 1 blocked, 0 failed"
+check "each task shows the owner's note: what, done when (the owner judges it), limits" "$(echo "$M4_MAIL_A" | grep -c '^  You asked: Work on greeting.txt$')/$(echo "$M4_MAIL_A" | grep -c '^  Done when (your words; Aurora does not check this, you do): greeting.txt is there$')/$(echo "$M4_MAIL_A" | grep -c '^  Limits: only greeting.txt; ')" "1/1/1"
+check "the email says only the owner can use the links" "$(echo "$M4_MAIL_A" | grep -c "Only you can use these links: the button works only while you are signed in to Paperclip as $M4_ANA.")" "1"
 check "email has Ready, Blocked and Failed sections" "$(echo "$M4_MAIL_A" | grep -cE '^(READY \(2\)|BLOCKED \(1\)|FAILED \(0\))$')" "3"
 check "each task says what changed in one line" "$(echo "$M4_MAIL_A" | grep -c 'Add greeting: 1 file changed, 1 insertion(+)')" "1"
 check "each task shows its checks result" "$(echo "$M4_MAIL_A" | grep -c 'checks passed on ')" "2"
-check "blocked task says why" "$(echo "$M4_MAIL_A" | grep -c 'stopped by the night routine')" "1"
+check "blocked task says why" "$(echo "$M4_MAIL_A" | grep -c 'stopped by the handover')" "1"
 check "Approve links only for Ready tasks, Reject for every task" "$(echo "$M4_MAIL_A" | grep -c '^  Approve: ')/$(echo "$M4_MAIL_A" | grep -c '^  Reject: ')" "2/3"
 m4_link() { echo "$1" | grep "^  $2: " | sed -n "${3}p" | sed "s/^  $2: //"; } # mail kind n
 M4_APPROVE1=$(m4_link "$M4_MAIL_A" Approve 1); M4_APPROVE2=$(m4_link "$M4_MAIL_A" Approve 2)
@@ -188,10 +190,13 @@ check "links point at the email service" "$(echo "$M4_APPROVE1" | grep -c "^$M4_
 
 m4_merges() { git -C "$M4_REPO" log --merges --format=%P main | grep -c "$1" || true; } # branch head -> merges into main
 m4_head() { git -C "$1" rev-parse HEAD; }
-m4_post() { curl -s -w '\n%{http_code}' -X POST -H 'content-type: application/x-www-form-urlencoded' --data "${2:-}" "$1"; }
+# The browser's Paperclip cookie: the email service asks Paperclip who is signed in (in this bed always $M4_ANA).
+m4_post() { curl -s -w '\n%{http_code}' -X POST -H 'cookie: it=1' -H 'content-type: application/x-www-form-urlencoded' --data "${2:-}" "$1"; }
+m4_get() { curl -s -H 'cookie: it=1' "$1"; }
 
 echo "-- Approve: opening the link changes nothing; a double click merges once"
-M4_PAGE=$(curl -s "$M4_APPROVE1")
+check "without a Paperclip sign-in the page has no button, and pressing it does nothing" "$(curl -s "$M4_APPROVE1" | grep -c '<button')/$(curl -s -o /dev/null -w '%{http_code}' -X POST "$M4_APPROVE1")/$(m4_event "$M4_T1" outcome)" "0/401/"
+M4_PAGE=$(m4_get "$M4_APPROVE1")
 check "opening the Approve link shows a confirm button" "$(echo "$M4_PAGE" | grep -c '<button type="submit">Approve and merge</button>')" "1"
 check "opening the link alone merges nothing" "$(m4_merges "$(m4_head "$M4_WT1")")" "0"
 m4_post "$M4_APPROVE1" >"$LOG_DIR/m4-click1.out" & M4_P1=$!
@@ -216,11 +221,17 @@ check "changed branch: task stays undecided" "$(m4_event "$M4_T2" outcome)" ""
 echo "-- Reject asks for a one-line reason and stores it"
 M4_OUT=$(m4_post "$M4_REJECT3" "reason=")
 check "reject without a reason asks for one (task stays as the night left it)" "$(echo "$M4_OUT" | grep -c 'one-line reason')/$(m4_event "$M4_T3" outcome)" "1/blocked"
-check "reject page has a one-line reason box" "$(curl -s "$M4_REJECT3" | grep -c 'name="reason" maxlength="200"')" "1"
+check "reject page has a one-line reason box" "$(m4_get "$M4_REJECT3" | grep -c 'name="reason" maxlength="200"')" "1"
 M4_OUT=$(m4_post "$M4_REJECT3" "reason=Too+risky+for+one+night")
 check "reject with a reason" "$(echo "$M4_OUT" | grep -oE '<h1>[^<]*</h1>')" "<h1>Rejected</h1>"
 check "event log stores the reason" "$(m4_event "$M4_T3" outcome)/$(m4_event "$M4_T3" reject_reason)" "rejected/Too risky for one night"
 check "a second reject click does nothing" "$(m4_post "$M4_REJECT3" "reason=changed+my+mind" | grep -oE '<h1>[^<]*</h1>')/$(m4_event "$M4_T3" reject_reason)" "<h1>Already done</h1>/Too risky for one night"
+
+echo "-- only the owner: Bo's own link, pressed by someone signed in as Ana, does nothing"
+check "Bo's link opened by Ana shows no button" "$(m4_get "$M4_APPROVE_B" | grep -c '<button')/$(m4_get "$M4_APPROVE_B" | grep -c "Only bo@example.com can decide it.")" "0/1"
+M4_OUT=$(m4_post "$M4_APPROVE_B")
+check "Bo's Approve pressed while signed in as Ana is refused" "$(echo "$M4_OUT" | grep -oE '<h1>[^<]*</h1>')/$(echo "$M4_OUT" | grep -c 'Only bo@example.com can approve this task.')" "<h1>Not done</h1>/1"
+check "...nothing merged, Bo's task undecided, and his link is not used up" "$(m4_merges "$(m4_head "$M4_WTB")")/$(m4_event "$M4_TB" outcome)/$(m4_get "$M4_APPROVE_B" | grep -c 'already used')" "0//0"
 
 echo "-- forged links and other people's links are refused"
 M4_TOKEN_B=${M4_APPROVE_B##*/l/}
@@ -244,5 +255,5 @@ M4_WAIT=$(( M4_SENT_AT + M4_EXPIRES_MINUTES * 60 + 5 - $(date +%s) ))
 if [ "$M4_WAIT" -gt 0 ]; then echo "  waiting ${M4_WAIT}s for the ${M4_EXPIRES_MINUTES}-minute links to expire..."; sleep "$M4_WAIT"; fi
 check "an expired Approve link is refused" "$(m4_post "$M4_APPROVE_B" | grep -oE '<h1>[^<]*</h1>')" "<h1>Link expired</h1>"
 check "an expired link merged nothing" "$(m4_merges "$(m4_head "$M4_WTB")")" "0"
-check "opening an expired link says so" "$(curl -s "$M4_APPROVE_B" | grep -c 'expired')" "1"
+check "opening an expired link says so" "$(m4_get "$M4_APPROVE_B" | grep -c 'expired')" "1"
 unset M4_SIG

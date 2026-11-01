@@ -1,20 +1,23 @@
 import type { JsonSchema } from "@paperclipai/plugin-sdk";
 
-export const DEFAULT_MAX_TASKS_PER_NIGHT = 3;
+export const DEFAULT_MAX_TASKS_PER_HANDOVER = 3;
 export const MAX_PEOPLE = 10;
 export const DEFAULT_MAX_DIFF_LINES = 400;
 export const DEFAULT_CHECK_TIMEOUT_SECONDS = 600;
-/** Hard upper bound on tasks per agent per night (evening proposal of up to 3). */
-export const MAX_TASKS_PER_NIGHT = 3;
-export const DEFAULT_NIGHT: NightSettings = {
+/** Hard upper bound on tasks per agent per handover (a plan of up to 3). */
+export const MAX_TASKS_PER_HANDOVER = 3;
+export const DEFAULT_HANDOVER: HandoverSettings = {
   projectId: null,
   proposalLeadHours: 2,
-  nightLengthHours: 8,
+  handoverLengthHours: 8,
   stepTimeoutMinutes: 60,
   maxRetries: 1,
 };
 
 export type SecretAccess = "read-only" | "read-write";
+export type ModelAccess = "subscription" | "api-key";
+/** Name, in a person's own keys, of their Anthropic API key (model access "api-key"). */
+export const MODEL_KEY_NAME = "anthropic-api-key";
 
 /** Shared Paperclip secret reference shape. Never a raw secret value. */
 export interface SecretRef {
@@ -32,10 +35,33 @@ export interface PersonSecret {
 export interface Person {
   email: string;
   agentId: string;
+  /**
+   * The Paperclip environment (SSH, to this person's own system user) that this
+   * person's agent must run in. Set by the server tools (vt-setup, vt-invite).
+   */
+  agentEnvironmentId: string | null;
+  /** That environment's system user (where this person's checks run too). */
+  agentUser: string | null;
+  /** Key for running checks as agentUser; on the server its only command is vt-check-runner. */
+  checksKey: SecretRef | null;
+  /**
+   * How this person's agent uses Claude (piece B): their own subscription, signed
+   * in with Claude Code's own login on their agent's user, or their own API key
+   * (a secret named MODEL_KEY_NAME in their own keys). Never one shared account.
+   */
+  modelAccess: ModelAccess | null;
+  /** GitHub login, so CODEOWNERS entries like "@login" name this person (piece D). Emails match too. */
+  githubLogin?: string | null;
   timezone: string;
-  nightStartHour: number;
-  maxTasksPerNight: number;
-  nightBudgetCapCents: number;
+  handoverStartHour: number;
+  maxTasksPerHandover: number;
+  handoverBudgetCapCents: number;
+  /**
+   * "Help me plan": the owner may ask their agent to suggest tasks. Off by
+   * default. Suggestions are only drafts on the owner's Hand over page; nothing
+   * runs until the owner hands them over (the same tap as their own work).
+   */
+  helpMePlan: boolean;
   secrets: PersonSecret[];
 }
 
@@ -45,15 +71,43 @@ export interface ChecksSettings {
   lintCommand: string | null;
   maxDiffLines: number;
   timeoutSeconds: number;
+  /**
+   * Where test and lint commands run: as the task owner's own agent user over SSH
+   * (each person's agentUser and checksKey), never as Paperclip's own user.
+   */
+  sandbox: ChecksSandbox | null;
 }
 
-/** Night routine settings shared by everyone. */
-export interface NightSettings {
-  /** Project (with the repo) that night tasks are created in. */
+/** The SSH server of the agents' system users. */
+export interface ChecksSandbox {
+  host: string;
+  port: number;
+  /** known_hosts line(s) for the host; the host key is always checked. */
+  knownHosts: string;
+}
+
+/** Everything one checks run needs to log in as the owner's agent user. */
+export interface SandboxLogin extends ChecksSandbox {
+  username: string;
+  privateKey: SecretRef;
+}
+
+/**
+ * Agent isolation (spec gap 1). When required, an agent only works if it runs in
+ * its owner's own environment (its own system user over SSH) and test commands
+ * run in the checks sandbox, never as Paperclip's own user. Turn it off only in a test bed.
+ */
+export interface IsolationSettings {
+  required: boolean;
+}
+
+/** Handover settings shared by everyone. */
+export interface HandoverSettings {
+  /** Project (with the repo) that handover tasks are created in. */
   projectId: string | null;
-  /** How many hours before a person's night start the evening plan opens. */
+  /** How many hours before a person's scheduled handover the plan opens. */
   proposalLeadHours: number;
-  nightLengthHours: number;
+  handoverLengthHours: number;
   /** Time limit for one task (step) before it is retried or failed. */
   stepTimeoutMinutes: number;
   maxRetries: number;
@@ -83,9 +137,9 @@ export interface GithubSettings {
 export interface InviteSettings {
   expiresMinutes: number;
   defaultTimezone: string;
-  nightStartHour: number;
-  nightBudgetCapCents: number;
-  maxTasksPerNight: number;
+  handoverStartHour: number;
+  handoverBudgetCapCents: number;
+  maxTasksPerHandover: number;
   agentAdapterType: string;
   agentAdapterConfig: Record<string, unknown>;
   agentMonthlyBudgetCents: number;
@@ -94,9 +148,9 @@ export interface InviteSettings {
 export const DEFAULT_INVITES: InviteSettings = {
   expiresMinutes: 48 * 60,
   defaultTimezone: "UTC",
-  nightStartHour: 22,
-  nightBudgetCapCents: 300,
-  maxTasksPerNight: DEFAULT_MAX_TASKS_PER_NIGHT,
+  handoverStartHour: 22,
+  handoverBudgetCapCents: 300,
+  maxTasksPerHandover: DEFAULT_MAX_TASKS_PER_HANDOVER,
   agentAdapterType: "claude_local",
   agentAdapterConfig: {},
   agentMonthlyBudgetCents: 3000,
@@ -104,11 +158,21 @@ export const DEFAULT_INVITES: InviteSettings = {
 
 export interface PluginSettings {
   people: Person[];
+  isolation: IsolationSettings;
   checks: ChecksSettings;
-  night: NightSettings;
+  handover: HandoverSettings;
+  /** Old ("night") setting names still in the stored settings; vt-setup rewrites them. */
+  legacyNames: string[];
   links: LinkSettings | null;
   github: GithubSettings | null;
   invites: InviteSettings;
+  /**
+   * The Paperclip user the Aurora service (email service) calls the plugin as:
+   * the owner of its board API key. Every plugin route refuses any other caller,
+   * so a signed-in teammate cannot act for someone else. Null: every route is
+   * refused (fail closed). vt-setup and vt-update set it.
+   */
+  serviceUserId: string | null;
 }
 
 /**
@@ -120,6 +184,21 @@ export const instanceConfigSchema: JsonSchema = {
   type: "object",
   required: ["people"],
   properties: {
+    serviceUserId: {
+      type: "string",
+      title: "Paperclip user id of the Aurora service (only it may call the plugin's routes; set by vt-setup)",
+    },
+    isolation: {
+      type: "object",
+      title: "Agent isolation",
+      properties: {
+        required: {
+          type: "boolean",
+          title: "Each agent must run as its own system user, and checks in the checks sandbox (turn off only in a test bed)",
+          default: true,
+        },
+      },
+    },
     github: {
       type: "object",
       title: "GitHub (Approve opens and merges a pull request)",
@@ -135,9 +214,9 @@ export const instanceConfigSchema: JsonSchema = {
       properties: {
         expiresMinutes: { type: "integer", title: "Invite links expire after (minutes)", minimum: 1, maximum: 10080, default: DEFAULT_INVITES.expiresMinutes },
         defaultTimezone: { type: "string", title: "Default timezone", default: DEFAULT_INVITES.defaultTimezone },
-        nightStartHour: { type: "integer", title: "Night start hour", minimum: 0, maximum: 23, default: DEFAULT_INVITES.nightStartHour },
-        nightBudgetCapCents: { type: "integer", title: "Night budget cap (US cents)", minimum: 0, default: DEFAULT_INVITES.nightBudgetCapCents },
-        maxTasksPerNight: { type: "integer", title: "Max tasks per night", minimum: 1, maximum: MAX_TASKS_PER_NIGHT, default: DEFAULT_INVITES.maxTasksPerNight },
+        handoverStartHour: { type: "integer", title: "Scheduled handover hour", minimum: 0, maximum: 23, default: DEFAULT_INVITES.handoverStartHour },
+        handoverBudgetCapCents: { type: "integer", title: "Budget cap per handover (US cents)", minimum: 0, default: DEFAULT_INVITES.handoverBudgetCapCents },
+        maxTasksPerHandover: { type: "integer", title: "Max tasks per handover", minimum: 1, maximum: MAX_TASKS_PER_HANDOVER, default: DEFAULT_INVITES.maxTasksPerHandover },
         agentAdapterType: { type: "string", title: "Agent adapter", default: DEFAULT_INVITES.agentAdapterType },
         agentAdapterConfig: { type: "object", title: "Agent adapter settings" },
         agentMonthlyBudgetCents: { type: "integer", title: "Agent monthly budget in Paperclip (US cents)", minimum: 0, default: DEFAULT_INVITES.agentMonthlyBudgetCents },
@@ -158,13 +237,13 @@ export const instanceConfigSchema: JsonSchema = {
         },
       },
     },
-    night: {
+    handover: {
       type: "object",
-      title: "Night routine",
+      title: "Handovers",
       properties: {
-        projectId: { type: "string", title: "Project for night tasks (its repo gets the worktrees)" },
-        proposalLeadHours: { type: "integer", title: "Evening plan opens this many hours before night start", minimum: 1, maximum: 12, default: 2 },
-        nightLengthHours: { type: "integer", title: "Night length (hours)", minimum: 1, maximum: 16, default: 8 },
+        projectId: { type: "string", title: "Project for handover tasks (its repo gets the worktrees)" },
+        proposalLeadHours: { type: "integer", title: "The plan for a scheduled handover opens this many hours before it", minimum: 1, maximum: 12, default: 2 },
+        handoverLengthHours: { type: "integer", title: "How long a handover may run (hours)", minimum: 1, maximum: 16, default: 8 },
         stepTimeoutMinutes: { type: "integer", title: "Time limit per task (minutes)", minimum: 5, maximum: 480, default: 60 },
         maxRetries: { type: "integer", title: "Retries after a time-out", minimum: 0, maximum: 3, default: 1 },
       },
@@ -189,6 +268,15 @@ export const instanceConfigSchema: JsonSchema = {
           maximum: 3600,
           default: DEFAULT_CHECK_TIMEOUT_SECONDS,
         },
+        sandbox: {
+          type: "object",
+          title: "Checks sandbox: the agents' SSH server (checks run as the owner's own agent user; set by vt-setup)",
+          properties: {
+            host: { type: "string", title: "Host", default: "127.0.0.1" },
+            port: { type: "integer", title: "Port", minimum: 1, maximum: 65535, default: 22 },
+            knownHosts: { type: "string", title: "Host key (known_hosts line)" },
+          },
+        },
       },
     },
     people: {
@@ -198,23 +286,37 @@ export const instanceConfigSchema: JsonSchema = {
       maxItems: MAX_PEOPLE,
       items: {
         type: "object",
-        required: ["email", "agentId", "timezone", "nightStartHour", "nightBudgetCapCents"],
+        required: ["email", "agentId", "timezone"],
         properties: {
           email: { type: "string", title: "Email", format: "email", minLength: 3 },
           agentId: { type: "string", title: "Agent id", minLength: 1 },
-          timezone: { type: "string", title: "Timezone (IANA, e.g. Europe/London)", minLength: 1 },
-          nightStartHour: { type: "integer", title: "Night start hour (0-23)", minimum: 0, maximum: 23 },
-          maxTasksPerNight: {
-            type: "integer",
-            title: "Max tasks per night",
-            minimum: 1,
-            maximum: MAX_TASKS_PER_NIGHT,
-            default: DEFAULT_MAX_TASKS_PER_NIGHT,
+          agentEnvironmentId: { type: "string", title: "Agent environment id (this person's own system user; set by vt-setup or the invite)" },
+          agentUser: { type: "string", title: "That environment's system user" },
+          checksKey: { type: "object", title: "Key for running checks as that user", format: "secret-ref" },
+          modelAccess: {
+            type: "string",
+            title: "Claude access: the owner's own subscription (signed in on their agent) or their own API key (key named anthropic-api-key)",
+            enum: ["subscription", "api-key"],
           },
-          nightBudgetCapCents: {
+          githubLogin: { type: "string", title: "GitHub login (to match CODEOWNERS entries like @login)", pattern: "^@?[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$" },
+          timezone: { type: "string", title: "Timezone (IANA, e.g. Europe/London)", minLength: 1 },
+          handoverStartHour: { type: "integer", title: "Scheduled handover hour (0-23); Hand over now works any time", minimum: 0, maximum: 23 },
+          maxTasksPerHandover: {
             type: "integer",
-            title: "Night budget cap (US cents)",
+            title: "Max tasks per handover",
+            minimum: 1,
+            maximum: MAX_TASKS_PER_HANDOVER,
+            default: DEFAULT_MAX_TASKS_PER_HANDOVER,
+          },
+          handoverBudgetCapCents: {
+            type: "integer",
+            title: "Budget cap per handover (US cents)",
             minimum: 0,
+          },
+          helpMePlan: {
+            type: "boolean",
+            title: "Help me plan: the agent may suggest tasks (drafts only; nothing runs until the owner hands them over)",
+            default: false,
           },
           secrets: {
             type: "array",
@@ -239,6 +341,47 @@ export const instanceConfigSchema: JsonSchema = {
     },
   },
 };
+
+/** Old names (the night-only plan) and the new ones. Old settings keep working. */
+const LEGACY_PERSON_KEYS: Record<string, string> = {
+  nightStartHour: "handoverStartHour",
+  maxTasksPerNight: "maxTasksPerHandover",
+  nightBudgetCapCents: "handoverBudgetCapCents",
+};
+const LEGACY_HANDOVER_KEYS: Record<string, string> = { nightLengthHours: "handoverLengthHours" };
+
+function renameKeys(obj: Record<string, unknown>, map: Record<string, string>, at: string, found: string[]): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...obj };
+  for (const [old, now] of Object.entries(map)) {
+    if (!(old in out)) continue;
+    found.push(`${at}${old}`);
+    if (!(now in out)) out[now] = out[old];
+    delete out[old];
+  }
+  return out;
+}
+
+/**
+ * Settings saved under the old night-only names, rewritten to the new ones (a copy;
+ * the new name wins when both are set). parseSettings applies it, so old settings
+ * keep working; vt-setup saves the result, so the stored settings move over too.
+ */
+export function migrateLegacySettings(stored: unknown): { config: unknown; legacyNames: string[] } {
+  if (!isRecord(stored)) return { config: stored, legacyNames: [] };
+  const found: string[] = [];
+  const config: Record<string, unknown> = { ...stored };
+  if ("night" in config) {
+    found.push("night");
+    if (!("handover" in config)) config.handover = config.night;
+    delete config.night;
+  }
+  if (isRecord(config.handover)) config.handover = renameKeys(config.handover, LEGACY_HANDOVER_KEYS, "handover.", found);
+  if (isRecord(config.invites)) config.invites = renameKeys(config.invites, LEGACY_PERSON_KEYS, "invites.", found);
+  if (Array.isArray(config.people)) {
+    config.people = config.people.map((p, i) => (isRecord(p) ? renameKeys(p, LEGACY_PERSON_KEYS, `people[${i}].`, found) : p));
+  }
+  return { config, legacyNames: found };
+}
 
 export type ParseResult = { ok: true; settings: PluginSettings } | { ok: false; errors: string[] };
 
@@ -271,7 +414,8 @@ function parseSecretRef(value: unknown): SecretRef | null {
  * Validate raw config and apply defaults. Error messages name fields only and
  * never echo values, so a misplaced secret can't leak into logs or the UI.
  */
-export function parseSettings(raw: unknown): ParseResult {
+export function parseSettings(stored: unknown): ParseResult {
+  const { config: raw, legacyNames } = migrateLegacySettings(stored);
   const errors: string[] = [];
   if (!isRecord(raw) || !Array.isArray(raw.people)) {
     return { ok: false, errors: ["people: must be a list"] };
@@ -281,6 +425,9 @@ export function parseSettings(raw: unknown): ParseResult {
   const people: Person[] = [];
   const seenAgents = new Set<string>();
   const seenEmails = new Set<string>();
+  const seenEnvironments = new Set<string>();
+  const seenUsers = new Set<string>();
+  const seenLogins = new Set<string>();
 
   raw.people.forEach((entry, i) => {
     const at = `people[${i}]`;
@@ -301,23 +448,68 @@ export function parseSettings(raw: unknown): ParseResult {
     const timezone = typeof entry.timezone === "string" ? entry.timezone : "";
     if (!timezone || !isValidTimezone(timezone)) errors.push(`${at}.timezone: must be an IANA timezone`);
 
-    const nightStartHour = entry.nightStartHour;
-    if (!Number.isInteger(nightStartHour) || (nightStartHour as number) < 0 || (nightStartHour as number) > 23) {
-      errors.push(`${at}.nightStartHour: must be a whole number 0-23`);
+    const handoverStartHour = entry.handoverStartHour;
+    if (!Number.isInteger(handoverStartHour) || (handoverStartHour as number) < 0 || (handoverStartHour as number) > 23) {
+      errors.push(`${at}.handoverStartHour: must be a whole number 0-23`);
     }
 
-    const maxTasksPerNight = entry.maxTasksPerNight ?? DEFAULT_MAX_TASKS_PER_NIGHT;
+    const maxTasksPerHandover = entry.maxTasksPerHandover ?? DEFAULT_MAX_TASKS_PER_HANDOVER;
     if (
-      !Number.isInteger(maxTasksPerNight) ||
-      (maxTasksPerNight as number) < 1 ||
-      (maxTasksPerNight as number) > MAX_TASKS_PER_NIGHT
+      !Number.isInteger(maxTasksPerHandover) ||
+      (maxTasksPerHandover as number) < 1 ||
+      (maxTasksPerHandover as number) > MAX_TASKS_PER_HANDOVER
     ) {
-      errors.push(`${at}.maxTasksPerNight: must be a whole number 1-${MAX_TASKS_PER_NIGHT}`);
+      errors.push(`${at}.maxTasksPerHandover: must be a whole number 1-${MAX_TASKS_PER_HANDOVER}`);
     }
 
-    const nightBudgetCapCents = entry.nightBudgetCapCents;
-    if (!Number.isInteger(nightBudgetCapCents) || (nightBudgetCapCents as number) < 0) {
-      errors.push(`${at}.nightBudgetCapCents: must be a whole number of cents, 0 or more`);
+    const handoverBudgetCapCents = entry.handoverBudgetCapCents;
+    if (!Number.isInteger(handoverBudgetCapCents) || (handoverBudgetCapCents as number) < 0) {
+      errors.push(`${at}.handoverBudgetCapCents: must be a whole number of cents, 0 or more`);
+    }
+
+    const helpMePlan = entry.helpMePlan ?? false;
+    if (typeof helpMePlan !== "boolean") errors.push(`${at}.helpMePlan: must be true or false`);
+
+    let githubLogin: string | null = null;
+    if (entry.githubLogin !== undefined && entry.githubLogin !== null && entry.githubLogin !== "") {
+      const login = typeof entry.githubLogin === "string" ? entry.githubLogin.trim().replace(/^@/, "") : "";
+      if (!GITHUB_LOGIN_RE.test(login)) errors.push(`${at}.githubLogin: must be a GitHub login`);
+      else if (seenLogins.has(login.toLowerCase())) errors.push(`${at}.githubLogin: already used by another person`);
+      else {
+        githubLogin = login;
+        seenLogins.add(login.toLowerCase());
+      }
+    }
+
+    let agentEnvironmentId: string | null = null;
+    if (entry.agentEnvironmentId !== undefined && entry.agentEnvironmentId !== null && entry.agentEnvironmentId !== "") {
+      if (typeof entry.agentEnvironmentId !== "string") errors.push(`${at}.agentEnvironmentId: must be text`);
+      else if (seenEnvironments.has(entry.agentEnvironmentId.trim())) errors.push(`${at}.agentEnvironmentId: already used by another person's agent`);
+      else {
+        agentEnvironmentId = entry.agentEnvironmentId.trim();
+        seenEnvironments.add(agentEnvironmentId);
+      }
+    }
+
+    let agentUser: string | null = null;
+    if (entry.agentUser !== undefined && entry.agentUser !== null && entry.agentUser !== "") {
+      if (typeof entry.agentUser !== "string" || !USER_RE.test(entry.agentUser.trim())) errors.push(`${at}.agentUser: must be a system user name`);
+      else if (seenUsers.has(entry.agentUser.trim())) errors.push(`${at}.agentUser: already used by another person's agent`);
+      else {
+        agentUser = entry.agentUser.trim();
+        seenUsers.add(agentUser);
+      }
+    }
+    let checksKey: SecretRef | null = null;
+    if (entry.checksKey !== undefined && entry.checksKey !== null) {
+      checksKey = parseSecretRef(entry.checksKey);
+      if (!checksKey) errors.push(`${at}.checksKey: must be a Paperclip secret reference`);
+    }
+
+    let modelAccess: ModelAccess | null = null;
+    if (entry.modelAccess !== undefined && entry.modelAccess !== null && entry.modelAccess !== "") {
+      if (entry.modelAccess !== "subscription" && entry.modelAccess !== "api-key") errors.push(`${at}.modelAccess: must be subscription or api-key`);
+      else modelAccess = entry.modelAccess;
     }
 
     const secrets: PersonSecret[] = [];
@@ -353,21 +545,43 @@ export function parseSettings(raw: unknown): ParseResult {
     people.push({
       email,
       agentId,
+      agentEnvironmentId,
+      agentUser,
+      checksKey,
+      modelAccess,
+      githubLogin,
       timezone,
-      nightStartHour: nightStartHour as number,
-      maxTasksPerNight: maxTasksPerNight as number,
-      nightBudgetCapCents: nightBudgetCapCents as number,
+      handoverStartHour: handoverStartHour as number,
+      maxTasksPerHandover: maxTasksPerHandover as number,
+      handoverBudgetCapCents: handoverBudgetCapCents as number,
+      helpMePlan: helpMePlan === true,
       secrets,
     });
   });
 
+  // Never one shared account: an API key belongs to exactly one person.
+  const keyOwners = new Map<string, string>();
+  people.forEach((p, i) => {
+    const key = p.secrets.find((s) => s.name === MODEL_KEY_NAME);
+    if (p.modelAccess === "api-key" && !key) errors.push(`people[${i}].secrets: model access api-key needs the person's own key named ${MODEL_KEY_NAME}`);
+    if (!key) return;
+    if (keyOwners.has(key.secret.secretId)) errors.push(`people[${i}].secrets: ${MODEL_KEY_NAME} is already another person's key (never one shared account)`);
+    else keyOwners.set(key.secret.secretId, p.email);
+  });
+
+  const isolation = parseIsolation(raw.isolation, errors);
   const checks = parseChecks(raw.checks, errors);
-  const night = parseNight(raw.night, errors);
+  const handover = parseHandover(raw.handover, errors);
   const links = parseLinks(raw.links, errors);
   const github = parseGithub(raw.github, errors);
   const invites = parseInvites(raw.invites, errors);
+  let serviceUserId: string | null = null;
+  if (raw.serviceUserId !== undefined && raw.serviceUserId !== null && raw.serviceUserId !== "") {
+    if (typeof raw.serviceUserId !== "string" || raw.serviceUserId.trim().length > 200) errors.push("serviceUserId: must be a Paperclip user id");
+    else serviceUserId = raw.serviceUserId.trim();
+  }
 
-  return errors.length > 0 ? { ok: false, errors } : { ok: true, settings: { people, checks, night, links, github, invites } };
+  return errors.length > 0 ? { ok: false, errors } : { ok: true, settings: { people, isolation, checks, handover, links, github, invites, legacyNames, serviceUserId } };
 }
 
 const REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
@@ -404,9 +618,9 @@ function parseInvites(raw: unknown, errors: string[]): InviteSettings {
     else (inv as unknown as Record<string, unknown>)[key] = v;
   };
   int("expiresMinutes", 1, 10080);
-  int("nightStartHour", 0, 23);
-  int("nightBudgetCapCents", 0, Number.MAX_SAFE_INTEGER);
-  int("maxTasksPerNight", 1, MAX_TASKS_PER_NIGHT);
+  int("handoverStartHour", 0, 23);
+  int("handoverBudgetCapCents", 0, Number.MAX_SAFE_INTEGER);
+  int("maxTasksPerHandover", 1, MAX_TASKS_PER_HANDOVER);
   int("agentMonthlyBudgetCents", 0, Number.MAX_SAFE_INTEGER);
   if (raw.defaultTimezone !== undefined) {
     if (typeof raw.defaultTimezone !== "string" || !isValidTimezone(raw.defaultTimezone)) errors.push("invites.defaultTimezone: must be an IANA timezone");
@@ -453,30 +667,67 @@ function intInRange(raw: Record<string, unknown>, key: string, min: number, max:
   const value = raw[key];
   if (value === undefined) return fallback;
   if (!Number.isInteger(value) || (value as number) < min || (value as number) > max) {
-    errors.push(`night.${key}: must be a whole number ${min}-${max}`);
+    errors.push(`handover.${key}: must be a whole number ${min}-${max}`);
     return fallback;
   }
   return value as number;
 }
 
-function parseNight(raw: unknown, errors: string[]): NightSettings {
-  if (raw === undefined) return { ...DEFAULT_NIGHT };
+function parseHandover(raw: unknown, errors: string[]): HandoverSettings {
+  if (raw === undefined) return { ...DEFAULT_HANDOVER };
   if (!isRecord(raw)) {
-    errors.push("night: must be an object");
-    return { ...DEFAULT_NIGHT };
+    errors.push("handover: must be an object");
+    return { ...DEFAULT_HANDOVER };
   }
   let projectId: string | null = null;
   if (raw.projectId !== undefined && raw.projectId !== null && raw.projectId !== "") {
-    if (typeof raw.projectId !== "string") errors.push("night.projectId: must be text");
+    if (typeof raw.projectId !== "string") errors.push("handover.projectId: must be text");
     else projectId = raw.projectId.trim();
   }
   return {
     projectId,
-    proposalLeadHours: intInRange(raw, "proposalLeadHours", 1, 12, errors, DEFAULT_NIGHT.proposalLeadHours),
-    nightLengthHours: intInRange(raw, "nightLengthHours", 1, 16, errors, DEFAULT_NIGHT.nightLengthHours),
-    stepTimeoutMinutes: intInRange(raw, "stepTimeoutMinutes", 5, 480, errors, DEFAULT_NIGHT.stepTimeoutMinutes),
-    maxRetries: intInRange(raw, "maxRetries", 0, 3, errors, DEFAULT_NIGHT.maxRetries),
+    proposalLeadHours: intInRange(raw, "proposalLeadHours", 1, 12, errors, DEFAULT_HANDOVER.proposalLeadHours),
+    handoverLengthHours: intInRange(raw, "handoverLengthHours", 1, 16, errors, DEFAULT_HANDOVER.handoverLengthHours),
+    stepTimeoutMinutes: intInRange(raw, "stepTimeoutMinutes", 5, 480, errors, DEFAULT_HANDOVER.stepTimeoutMinutes),
+    maxRetries: intInRange(raw, "maxRetries", 0, 3, errors, DEFAULT_HANDOVER.maxRetries),
   };
+}
+
+function parseIsolation(raw: unknown, errors: string[]): IsolationSettings {
+  if (raw === undefined || raw === null) return { required: true };
+  if (!isRecord(raw)) {
+    errors.push("isolation: must be an object");
+    return { required: true };
+  }
+  if (raw.required === undefined) return { required: true };
+  if (typeof raw.required !== "boolean") {
+    errors.push("isolation.required: must be true or false");
+    return { required: true };
+  }
+  return { required: raw.required };
+}
+
+// Values that end up as ssh arguments: never option-like, never with spaces.
+const HOST_RE = /^[A-Za-z0-9][A-Za-z0-9.:-]*$/;
+const USER_RE = /^[a-z_][a-z0-9_-]{0,31}$/;
+const GITHUB_LOGIN_RE = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
+
+function parseSandbox(raw: unknown, errors: string[]): ChecksSandbox | null {
+  if (raw === undefined || raw === null) return null;
+  if (!isRecord(raw)) {
+    errors.push("checks.sandbox: must be an object");
+    return null;
+  }
+  const host = typeof raw.host === "string" && raw.host.trim() ? raw.host.trim() : "127.0.0.1";
+  const hostOk = HOST_RE.test(host);
+  if (!hostOk) errors.push("checks.sandbox.host: must be a host name or address");
+  const port = raw.port ?? 22;
+  const portOk = Number.isInteger(port) && (port as number) >= 1 && (port as number) <= 65535;
+  if (!portOk) errors.push("checks.sandbox.port: must be a whole number 1-65535");
+  const knownHosts = typeof raw.knownHosts === "string" ? raw.knownHosts.trim() : "";
+  const knownOk = knownHosts !== "" && !knownHosts.startsWith("-");
+  if (!knownOk) errors.push("checks.sandbox.knownHosts: needs the host's known_hosts line");
+  return hostOk && portOk && knownOk ? { host, port: port as number, knownHosts } : null;
 }
 
 function parseChecks(raw: unknown, errors: string[]): ChecksSettings {
@@ -485,6 +736,7 @@ function parseChecks(raw: unknown, errors: string[]): ChecksSettings {
     lintCommand: null,
     maxDiffLines: DEFAULT_MAX_DIFF_LINES,
     timeoutSeconds: DEFAULT_CHECK_TIMEOUT_SECONDS,
+    sandbox: null,
   };
   if (raw === undefined) return checks;
   if (!isRecord(raw)) {
@@ -508,12 +760,20 @@ function parseChecks(raw: unknown, errors: string[]): ChecksSettings {
       errors.push("checks.timeoutSeconds: must be a whole number 10-3600");
     } else checks.timeoutSeconds = t as number;
   }
+  checks.sandbox = parseSandbox(raw.sandbox, errors);
   return checks;
 }
 
 export function findPersonByEmail(settings: PluginSettings, email: string): Person | undefined {
   const wanted = email.trim().toLowerCase();
   return settings.people.find((p) => p.email === wanted);
+}
+
+/** How to run checks as this person's own agent user, or null when not set up. */
+export function sandboxLogin(settings: PluginSettings, person: Person): SandboxLogin | null {
+  const sb = settings.checks.sandbox;
+  if (!sb || !person.agentUser || !person.checksKey) return null;
+  return { ...sb, username: person.agentUser, privateKey: person.checksKey };
 }
 
 export function findPersonByAgent(settings: PluginSettings, agentId: string): Person | undefined {

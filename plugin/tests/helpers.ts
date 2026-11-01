@@ -28,6 +28,16 @@ export function makeRepoWithWorktree(): { repo: string; worktree: string } {
   return { repo, worktree };
 }
 
+/**
+ * Agent fields that pass the isolation audit: an adapter that runs in its
+ * environment, Claude's CLI engine, and the owner's own environment (`env-<id>`).
+ */
+export function isolatedAgentFields(id: string): Record<string, unknown> {
+  return { adapterType: "claude_local", adapterConfig: { engine: "cli" }, defaultEnvironmentId: `env-${id}` };
+}
+/** The matching person fields: the same environment. */
+export const isolatedPersonFields = (agentId: string) => ({ agentEnvironmentId: `env-${agentId}`, modelAccess: "subscription" });
+
 export function write(dir: string, file: string, content: string): void {
   mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
   writeFileSync(path.join(dir, file), content);

@@ -6,8 +6,12 @@
 // Safe to run again: it finds what already exists instead of making it twice.
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { ensureAgentEnvironment, isolatedAdapterConfig, parseAgentLogin } from "../../email-service/src/agentenv.ts";
+import { migrateLegacySettings } from "../../plugin/src/config.ts";
 
 const input = JSON.parse(readFileSync(0, "utf8"));
+// The owner's agent's own system user and fresh keys, made by vt-setup as root (deploy/lib/agents.sh).
+const agentLogin = parseAgentLogin(process.env.AGENT_LOGIN);
 const base = input.paperclipUrl;
 const origin = new URL(input.publicUrl).origin;
 const PLUGIN_KEY = "vision-and-tom.night-agents";
@@ -89,7 +93,10 @@ for (let i = 0; i < 60; i++) {
 await call("PATCH", "/api/instance/settings/experimental", { enableIsolatedWorkspaces: true }, board);
 
 // 7. Plugin settings: links, GitHub, the project, invites, and the owner as the first person.
-const current = (await call("GET", `/api/plugins/${pluginId}/config?companyId=${cid}`, undefined, board)).data?.configJson ?? {};
+// Settings saved under the old night-only names move to the new handover names.
+const migrated = migrateLegacySettings((await call("GET", `/api/plugins/${pluginId}/config?companyId=${cid}`, undefined, board)).data?.configJson ?? {});
+if (migrated.legacyNames.length > 0) log(`settings moved to the new handover names (${migrated.legacyNames.length} renamed)`);
+const current = migrated.config;
 let signingSecret = current.links?.signingSecret;
 if (!signingSecret) {
   const s = (await call("POST", `/api/companies/${cid}/secrets`, { name: "vt-link-signing", key: `vt-link-signing-${randomBytes(3).toString("hex")}`, value: randomBytes(32).toString("hex") }, board)).data;
@@ -97,7 +104,7 @@ if (!signingSecret) {
   log("link signing key created (kept inside Paperclip)");
 }
 const invites = { ...(current.invites ?? {}), ...(input.invites ?? {}) };
-let projectId = current.night?.projectId;
+let projectId = current.handover?.projectId;
 if (!projectId && input.projectRepoPath) {
   const p = (await call("POST", `/api/companies/${cid}/projects`, {
     name: input.githubRepo ? input.githubRepo.split("/")[1] : "project",
@@ -108,32 +115,52 @@ if (!projectId && input.projectRepoPath) {
   log("project created for the repository");
 }
 const people = Array.isArray(current.people) ? current.people : [];
-if (!people.some((p) => String(p.email).toLowerCase() === input.owner.email.toLowerCase())) {
+// Paperclip's SSH environment for the agent's own user, and the key for running checks as that user.
+const binding = agentLogin ? await ensureAgentEnvironment(async (m, p, b) => (await call(m, p, b, board)).data, cid, agentLogin) : null;
+if (binding) log(`your agent runs as its own system user ${binding.agentUser}`);
+const ownerRow = people.find((p) => String(p.email).toLowerCase() === input.owner.email.toLowerCase());
+if (ownerRow && binding) {
+  // Already set up (vt-setup run again, or an older install): move the agent into its own environment.
+  const agent = (await call("GET", `/api/agents/${ownerRow.agentId}`, undefined, board)).data;
+  await call("PATCH", `/api/agents/${ownerRow.agentId}`, { defaultEnvironmentId: binding.agentEnvironmentId, adapterConfig: isolatedAdapterConfig(agent.adapterType, agent.adapterConfig ?? {}) }, board);
+  Object.assign(ownerRow, binding);
+}
+if (!ownerRow) {
+  const adapterType = invites.agentAdapterType ?? "claude_local";
   const agent = (await call("POST", `/api/companies/${cid}/agents`, {
-    name: `${input.owner.name}'s night agent`,
+    name: `${input.owner.name}'s agent`,
     role: "engineer",
-    adapterType: invites.agentAdapterType ?? "claude_local",
-    adapterConfig: invites.agentAdapterConfig ?? {},
+    adapterType,
+    adapterConfig: binding ? isolatedAdapterConfig(adapterType, invites.agentAdapterConfig ?? {}) : invites.agentAdapterConfig ?? {},
     budgetMonthlyCents: invites.agentMonthlyBudgetCents ?? 3000,
     permissions: { canCreateAgents: false, canCreateSkills: false },
+    ...(binding ? { defaultEnvironmentId: binding.agentEnvironmentId } : {}),
   }, board)).data;
   await call("PATCH", `/api/agents/${agent.id}/permissions`, { canCreateAgents: false, canCreateSkills: false, canAssignTasks: true }, board);
   people.push({
     email: input.owner.email.toLowerCase(),
     agentId: agent.id,
+    ...(binding ?? {}),
     timezone: input.ownerTimezone || invites.defaultTimezone || "UTC",
-    nightStartHour: invites.nightStartHour ?? 22,
-    maxTasksPerNight: invites.maxTasksPerNight ?? 3,
-    nightBudgetCapCents: invites.nightBudgetCapCents ?? 300,
+    handoverStartHour: invites.handoverStartHour ?? 22,
+    maxTasksPerHandover: invites.maxTasksPerHandover ?? 3,
+    handoverBudgetCapCents: invites.handoverBudgetCapCents ?? 300,
     secrets: [],
   });
-  log("your night agent created (cannot create agents or skills)");
+  log("your agent created (cannot create agents or skills)");
 }
+// Only the Aurora service (this API key's user) may call the plugin's routes.
+const caller = await call("GET", `/api/plugins/${encodeURIComponent(PLUGIN_KEY)}/api/caller?companyId=${encodeURIComponent(cid)}`, undefined, board);
+const serviceUserId = caller.data?.userId;
+if (typeof serviceUserId !== "string" || !serviceUserId) throw new Error("the plugin could not tell which Paperclip user the email service's key belongs to");
 const config = {
   ...current,
+  serviceUserId,
   links: { ...(current.links ?? {}), baseUrl: `${input.publicUrl}/vt`, signingSecret },
   ...(input.githubRepo ? { github: { repo: input.githubRepo } } : {}),
-  night: { ...(current.night ?? {}), ...(projectId ? { projectId } : {}) },
+  handover: { ...(current.handover ?? {}), ...(projectId ? { projectId } : {}) },
+  // Checks run as each owner's own agent user, over the same SSH server.
+  ...(agentLogin ? { checks: { ...(current.checks ?? {}), sandbox: { host: agentLogin.host, port: agentLogin.port, knownHosts: agentLogin.knownHosts } } } : {}),
   invites,
   people,
 };

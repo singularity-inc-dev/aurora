@@ -64,6 +64,16 @@ if (cmd === "stop") {
   process.exit(0);
 }
 
+// Like systemd: starting a service that is running already does nothing.
+if (existsSync(pidFile)) {
+  try {
+    process.kill(Number(readFileSync(pidFile, "utf8")), 0);
+    process.exit(0);
+  } catch {
+    rmSync(pidFile, { force: true });
+  }
+}
+
 const service = parseUnit(readFileSync(unitFile, "utf8"));
 const credDir = path.join(stateDir, "credentials", name);
 rmSync(credDir, { recursive: true, force: true });

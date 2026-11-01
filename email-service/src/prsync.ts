@@ -3,7 +3,7 @@ import type { PluginApi } from "./paperclip.ts";
 
 /**
  * Pull requests that wait for review: ask GitHub whether each one was merged
- * or closed, and tell the plugin. Open ones stay in the next morning's email.
+ * or closed, and tell the plugin. Open ones stay in the next handback email.
  */
 export async function syncPullRequests(api: PluginApi, github: GithubClient, log: (msg: string) => void = () => {}): Promise<number> {
   const { repo, pullRequests } = await api.waitingPullRequests();

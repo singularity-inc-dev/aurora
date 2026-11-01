@@ -1,9 +1,10 @@
-export type NightPhase = "day" | "proposal" | "night";
+/** Where a person is in their daily schedule: planning hours, then the handover window. */
+export type HandoverPhase = "day" | "proposal" | "window";
 
-export interface NightClock {
-  phase: NightPhase;
-  /** Local calendar date (YYYY-MM-DD) on which this person's night starts. */
-  nightDate: string;
+export interface HandoverClock {
+  phase: HandoverPhase;
+  /** Local calendar date (YYYY-MM-DD) on which this person's scheduled handover starts: its key. */
+  handoverKey: string;
   startsAt: Date;
   endsAt: Date;
 }
@@ -25,19 +26,19 @@ function localParts(date: Date, timeZone: string): { date: string; minutes: numb
 }
 
 /**
- * Where a person is in their daily cycle. The night runs from `nightStartHour`
+ * Where a person is in their daily schedule. The handover window runs from `handoverStartHour`
  * (local time) for `lengthHours`; the evening plan opens `leadHours` before it.
  */
-export function nightClock(now: Date, timeZone: string, nightStartHour: number, leadHours: number, lengthHours: number): NightClock {
+export function handoverClock(now: Date, timeZone: string, handoverStartHour: number, leadHours: number, lengthHours: number): HandoverClock {
   const local = localParts(now, timeZone);
-  const sinceStart = (local.minutes - nightStartHour * 60 + 1440) % 1440;
+  const sinceStart = (local.minutes - handoverStartHour * 60 + 1440) % 1440;
   const minuteFloor = now.getTime() - (now.getTime() % MINUTE);
 
   if (sinceStart < lengthHours * 60) {
     const startsAt = new Date(minuteFloor - sinceStart * MINUTE);
     return {
-      phase: "night",
-      nightDate: localParts(startsAt, timeZone).date,
+      phase: "window",
+      handoverKey: localParts(startsAt, timeZone).date,
       startsAt,
       endsAt: new Date(startsAt.getTime() + lengthHours * 60 * MINUTE),
     };
@@ -46,7 +47,7 @@ export function nightClock(now: Date, timeZone: string, nightStartHour: number, 
   const startsAt = new Date(minuteFloor + untilStart * MINUTE);
   return {
     phase: untilStart <= leadHours * 60 ? "proposal" : "day",
-    nightDate: localParts(startsAt, timeZone).date,
+    handoverKey: localParts(startsAt, timeZone).date,
     startsAt,
     endsAt: new Date(startsAt.getTime() + lengthHours * 60 * MINUTE),
   };

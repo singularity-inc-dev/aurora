@@ -1,4 +1,6 @@
 # Milestone 2 live checks. Sourced by scripts/integration-test.sh (uses its helpers).
+# Agents here run as Paperclip's own user, so isolation is off ("isolation":{"required":false});
+# the isolation itself is proven in scripts/it/v1a.sh.
 # Board-only hand-offs, one worktree + branch per task, checks gate on the ticket.
 
 m2_wait_for_workspace() { # issueId -> prints execution workspace id (or nothing)
@@ -45,7 +47,8 @@ M2_A=$(echo "$API_BODY" | json 'd.id')
 api POST "/api/companies/$M2_CID/agents" "${M2_AGENT},\"name\":\"Bo night agent\"}"
 M2_B=$(echo "$API_BODY" | json 'd.id')
 
-api POST "/api/plugins/$PLUGIN_ID/config" "{\"companyId\":\"$M2_CID\",\"configJson\":{\"checks\":{\"testCommand\":\"test -f README.md\",\"lintCommand\":\"true\",\"maxDiffLines\":50},\"people\":[{\"email\":\"ana@example.com\",\"agentId\":\"$M2_A\",\"timezone\":\"Europe/London\",\"nightStartHour\":22,\"nightBudgetCapCents\":500},{\"email\":\"bo@example.com\",\"agentId\":\"$M2_B\",\"timezone\":\"Europe/London\",\"nightStartHour\":22,\"nightBudgetCapCents\":500}]}}"
+M2_CONFIG="{\"serviceUserId\":\"$IT_SERVICE_USER\",\"isolation\":{\"required\":false},\"checks\":{\"testCommand\":\"test -f README.md\",\"lintCommand\":\"true\",\"maxDiffLines\":50},\"people\":[{\"email\":\"ana@example.com\",\"agentId\":\"$M2_A\",\"timezone\":\"Europe/London\",\"nightStartHour\":22,\"nightBudgetCapCents\":500},{\"email\":\"bo@example.com\",\"agentId\":\"$M2_B\",\"timezone\":\"Europe/London\",\"nightStartHour\":22,\"nightBudgetCapCents\":500}]}"
+api POST "/api/plugins/$PLUGIN_ID/config" "{\"companyId\":\"$M2_CID\",\"configJson\":$M2_CONFIG}"
 check "M2: save plugin settings" "$API_STATUS" "200"
 
 echo "-- routes between agents"
@@ -84,8 +87,10 @@ check "worktree has its own vt/ branch" "$(echo "$API_BODY" | json 'd.branchName
 check "worktree is not the shared checkout" "$([ "$M2_WT" != "$M2_REPO" ] && [ -d "$M2_WT" ] && echo yes || echo no)" "yes"
 M2_RUN_A=$(m2_latest_run "$M2_A")
 
-echo "-- checks gate"
+echo "-- checks gate (committed files only)"
+m2_commit() { git -C "$M2_WT" add -A && git -C "$M2_WT" -c user.email=agent@example.com -c user.name=Agent commit -q -m "$1"; }
 echo "export const two = 2;" >"$M2_WT/two.ts"
+m2_commit "two"
 m2_tool run_checks "{\"issueId\":\"$M2_ISS\"}" "$M2_A" "$M2_RUN_A"
 check "checks pass on a small clean change" "$(echo "$API_BODY" | json 'd.result.data.passed')" "true"
 api GET "/api/issues/$M2_ISS/documents/$(echo "$API_BODY" | json 'd.result.data.documentKey')"
@@ -95,18 +100,34 @@ check "event log records checks passed" "$(echo "$API_BODY" | json 'd.data.check
 
 M2_FAKE=$(node -e "process.stdout.write(['gh','p_'].join('')+'A1b2C3d4'.repeat(5))")
 echo "export const t = \"$M2_FAKE\";" >"$M2_WT/leak.ts"
+seq 1 80 >"$M2_WT/uncommitted-big.txt"
 m2_tool run_checks "{\"issueId\":\"$M2_ISS\"}" "$M2_A" "$M2_RUN_A"
-check "checks fail on a leaked key" "$(echo "$API_BODY" | json 'd.result.data.results.find(r=>r.name==="secret-scan").status')" "failed"
+check "uncommitted files are not checked (the owner approves a commit)" "$(echo "$API_BODY" | json 'd.result.data.results.filter(r=>r.status==="passed").map(r=>r.name).sort().join(",")')" "diff-size,lint,secret-scan,tests"
+rm -f "$M2_WT/uncommitted-big.txt"
+m2_commit "leak"
+m2_tool run_checks "{\"issueId\":\"$M2_ISS\"}" "$M2_A" "$M2_RUN_A"
+check "checks fail on a committed leaked key" "$(echo "$API_BODY" | json 'd.result.data.results.find(r=>r.name==="secret-scan").status')" "failed"
 api GET "/api/issues/$M2_ISS/documents/$(echo "$API_BODY" | json 'd.result.data.documentKey')"
 check "report names the file but not the key" "$(echo "$API_BODY" | grep -c "$M2_FAKE" || true)/$(echo "$API_BODY" | grep -c 'leak.ts:1' || true)" "0/1"
-rm -f "$M2_WT/leak.ts"
+git -C "$M2_WT" reset -q --hard HEAD~1
 unset M2_FAKE
 seq 1 80 >"$M2_WT/big.txt"
+m2_commit "big"
 m2_tool run_checks "{\"issueId\":\"$M2_ISS\"}" "$M2_A" "$M2_RUN_A"
 check "checks fail when the change is over the size limit" "$(echo "$API_BODY" | json 'd.result.data.results.find(r=>r.name==="diff-size").status')" "failed"
-rm -f "$M2_WT/big.txt"
+git -C "$M2_WT" reset -q --hard HEAD~1
 m2_event "$M2_ISS"
 check "event log records checks failed" "$(echo "$API_BODY" | json 'd.data.checks_result')" "failed"
+
+echo "-- no test command means NOT TESTED, never passed"
+api POST "/api/plugins/$PLUGIN_ID/config" "{\"companyId\":\"$M2_CID\",\"configJson\":$(echo "$M2_CONFIG" | node -e "let s='';process.stdin.on('data',c=>s+=c).on('end',()=>{const c=JSON.parse(s);delete c.checks.testCommand;process.stdout.write(JSON.stringify(c))})")}"
+m2_tool run_checks "{\"issueId\":\"$M2_ISS\"}" "$M2_A" "$M2_RUN_A"
+check "the gate says not tested" "$(echo "$API_BODY" | json 'd.result.data.result')/$(echo "$API_BODY" | json 'd.result.data.passed')" "not-tested/false"
+api GET "/api/issues/$M2_ISS/documents/$(echo "$API_BODY" | json 'd.result.data.documentKey')"
+check "the report never says PASSED" "$(echo "$API_BODY" | json 'd.body.split("\n")[0]')" "# Checks gate: NOT TESTED (no test command is set up)"
+m2_event "$M2_ISS"
+check "event log records not-tested" "$(echo "$API_BODY" | json 'd.data.checks_result')" "not-tested"
+api POST "/api/plugins/$PLUGIN_ID/config" "{\"companyId\":\"$M2_CID\",\"configJson\":$M2_CONFIG}"
 
 echo "-- hand-offs go through the board"
 m2_tool handoff_to_teammate '{"toEmail":"bo@example.com","title":"Review two.ts","description":"Please review."}' "$M2_A" "$M2_RUN_A"
@@ -133,4 +154,5 @@ check "an agent cannot call a tool pretending to be another agent (Paperclip)" "
 m2_tool handoff_to_teammate "{\"toEmail\":\"bo@example.com\",\"issueId\":\"$M2_ISS\",\"description\":\"Over to you.\"}" "$M2_A" "$M2_RUN_A"
 api GET "/api/issues/$M2_ISS"
 check "agent can hand off its own ticket by reassigning it" "$(echo "$API_BODY" | json "d.assigneeAgentId==='$M2_B'")" "true"
+check "a reassigned hand-off waits in backlog for the teammate's owner (it was not in backlog before)" "$(echo "$API_BODY" | json 'd.status')" "backlog"
 unset M2_KEY_A
