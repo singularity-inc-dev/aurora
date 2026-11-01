@@ -14,7 +14,7 @@ Does history from real product teams support Hardy's trigger: **at least one con
 
 - **Window:** 365 days, 2025-11-01 00:00 UTC to 2026-11-01 00:00 UTC (fixed; `COLLISION_AUDIT_UNTIL`).
 - **Team size** = number of "core people": non-bot authors with **at least 10 non-merge commits** on the default branch in the window (the research's definition), with one person's several e-mail addresses merged by display name and names of translation services, coding agents and robots removed.
-- **Bins** (as requested): 2-3, 5-6, 7-10, 11-30 core people, 5 repositories each. **Team size 4 is not in your bins**, so no 4-person repository was picked (4 candidates were skipped for it).
+- **Bins** (as requested): 2-3, 5-6, 7-10, 11-30 core people, 5 repositories each. **Team size 4 is not in your bins**, so no 4-person repository was picked (none of the 31 screened candidates turned out to have exactly 4, so nothing was skipped for it).
 
 | Size bin | Repository | Branch | Core people (≥10 commits) | Non-bot commits in window | Stars |
 |---|---|---|---|---|---|
