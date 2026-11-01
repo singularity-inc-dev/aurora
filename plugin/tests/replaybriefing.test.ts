@@ -186,3 +186,28 @@ describe("conflicts in the email", () => {
     expect(e.text).not.toContain("CONFLICTS");
   });
 });
+
+describe("run flags in the handback", () => {
+  it("stores each item's flags (event log and stored ones), and none on a clean task", async () => {
+    const t = await setup();
+    await t.ready("a1", ana, "x.txt", "x\n");
+    await t.ready("a2", ana, "y.txt", "y\n");
+    t.db.tables.task_events.find((r) => r.task_id === "a1")!.checks_result = "not-tested";
+    t.db.tables.run_flags.push({ task_id: "a1", company_id: CO, kind: "tool-error", detail: "run_checks: boom" });
+    const briefing = await t.brief(ana, "2026-10-24", ["a1", "a2"]);
+    const a1 = briefing!.items.find((i) => i.taskId === "a1")!;
+    const a2 = briefing!.items.find((i) => i.taskId === "a2")!;
+    expect(a1.category).toBe("ready");
+    expect(a1.flags).toEqual([
+      { kind: "tool-error", detail: "run_checks: boom" },
+      { kind: "not-tested", detail: "no test command ran" },
+    ]);
+    expect(a2).not.toHaveProperty("flags");
+    // What is stored is what the email later shows.
+    const stored = JSON.parse(String(t.db.tables.briefings[0]!.items)) as Array<{ taskId: string; flags?: unknown[] }>;
+    expect(stored.find((i) => i.taskId === "a1")!.flags).toHaveLength(2);
+    const email = renderBriefing(briefing!, settings.links!, "s".repeat(32), new Date(NOW.getTime() + 3_600_000));
+    expect(email.text.indexOf("NEEDS YOUR ATTENTION FIRST (1)")).toBeGreaterThan(-1);
+    expect(email.text).toContain("Flags: tool error (run_checks: boom), not tested (no test command ran)");
+  });
+});

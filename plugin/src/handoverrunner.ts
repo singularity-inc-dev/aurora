@@ -1,6 +1,6 @@
 import type { PluginContext } from "@paperclipai/plugin-sdk";
 import { MAX_TASKS_PER_HANDOVER, parseSettings, type Person, type PluginSettings } from "./config.js";
-import { decideHandover, OPEN_STATUSES, windowOf, type HandoverDecision, type HandoverRun, type StepClose } from "./handover.js";
+import { BUDGET_STOP_REASON, decideHandover, OPEN_STATUSES, windowOf, type HandoverDecision, type HandoverRun, type StepClose } from "./handover.js";
 import { handoverClock } from "./schedule.js";
 import { claimRun, getLatestDoneRun, getOpenRun, getRun, setTaskOutcome, spentSince, stampTasks, updateRun } from "./handoverstore.js";
 import { createBriefing } from "./briefing.js";
@@ -8,6 +8,8 @@ import { earlierBriefingTaskIds, getBriefing } from "./briefstore.js";
 import type { HandoverClock } from "./schedule.js";
 import { randomUUID } from "node:crypto";
 import { ensureTaskRow, recordHandoff } from "./eventlog.js";
+import { recordFlagSafely } from "./flagstore.js";
+import type { StoredFlagKind } from "./flags.js";
 import { HANDOFF_ORIGIN, HANDOVER_TASK_ORIGIN, PLAN_ORIGIN } from "./ids.js";
 import { openClaims, recordClaims, recordOverlap, releaseClaims } from "./claimstore.js";
 import { movedTicketNote, ownerQuestions, preHandoverCheck, type Areas, type Overlap, type Verdict } from "./prehandover.js";
@@ -272,6 +274,7 @@ async function apply(
       if (!run) return;
       const taskId = run.taskIds[run.currentIndex];
       if (!taskId || !(await updateRun(ctx.db, run, { currentAttempt: d.attempt, stepStartedAt: now }))) return;
+      await flag(ctx, companyId, taskId, "timeout", `no result after ${settings.handover.stepTimeoutMinutes} minutes; retrying (attempt ${d.attempt})`);
       await comment(ctx, companyId, taskId, `Time limit of ${settings.handover.stepTimeoutMinutes} minutes passed. Retrying (attempt ${d.attempt}).`);
       // Paperclip wakes the assignee when a ticket moves from backlog to todo.
       await ctx.issues.update(taskId, { status: "backlog" }, companyId);
@@ -285,6 +288,11 @@ async function apply(
       return;
     }
   }
+}
+
+/** Write a run flag; a failure to write it is logged and never stops the handover. */
+async function flag(ctx: PluginContext, companyId: string, taskId: string, kind: StoredFlagKind, detail: string | null): Promise<void> {
+  await recordFlagSafely(ctx.db, companyId, taskId, kind, detail, (m) => ctx.logger.warn(m, { taskId }));
 }
 
 async function advance(
@@ -308,6 +316,9 @@ async function advance(
     await stampTasks(ctx.db, [currentId], "finished_at", now);
     if (close.outcome !== "finished") {
       await setTaskOutcome(ctx.db, currentId, close.outcome, null);
+      // Run flags: a task that ran out of retries timed out; one stopped by the cap is a budget stop.
+      if (close.outcome === "failed") await flag(ctx, companyId, currentId, "timeout", close.reason);
+      if (close.reason === BUDGET_STOP_REASON) await flag(ctx, companyId, currentId, "budget-stop", `stopped: ${BUDGET_STOP_REASON}`);
       const status = (await ctx.issues.get(currentId, companyId))?.status;
       if (status && !["done", "in_review", "cancelled"].includes(status)) await ctx.issues.update(currentId, { status: "blocked" }, companyId);
       await comment(ctx, companyId, currentId, `The handover stopped this task: ${close.reason ?? close.outcome}.`);
@@ -324,6 +335,8 @@ async function advance(
     await stampTasks(ctx.db, [nextId], "started_at", now);
     await ctx.issues.update(nextId, { status: "todo" }, companyId);
   } else if ("budgetStop" in then) {
+    // Tasks that never got to start because of the cap carry the flag too, so the owner sees why.
+    for (const laterId of run.taskIds.slice(run.currentIndex + 1)) await flag(ctx, companyId, laterId, "budget-stop", `not started: ${BUDGET_STOP_REASON}`);
     // Automatic tier: pause the agent so it cannot keep spending; resuming stays manual.
     try {
       await ctx.agents.pause(person.agentId, companyId);

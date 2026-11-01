@@ -4,7 +4,11 @@ import { loadConfig } from "../src/config.ts";
 import { sendPending } from "../src/mailer.ts";
 import { esc } from "../src/pages.ts";
 import type { Email, LinkCheck, LinkOutcome, PluginApi } from "../src/paperclip.ts";
+import { parseRawCounts } from "../src/counts.ts";
+
 import { createLinkServer } from "../src/server.ts";
+
+const ZERO = { handedOver: 0, ready: 0, approved: 0, rejected: 0, failed: 0, notTested: 0, teammateOverlaps: 0, wouldBeConflicts: 0, toolErrors: 0, checksFailed: 0, timedOut: 0, budgetStops: 0 };
 
 const TOKEN = "eyJ2IjoxLCJhIjoiYWN0In0." + "s".repeat(43);
 
@@ -42,6 +46,12 @@ function fakeApi(over: Partial<PluginApi> = {}): PluginApi & { calls: string[] }
     },
     async numbersCsv() {
       return "Date\r\n";
+    },
+    async counts() {
+      return parseRawCounts({ team: ZERO, people: [] });
+    },
+    async eventsCsv() {
+      return "task id\r\n";
     },
     async pullRequestUpdate(taskId, state) {
       calls.push(`pr-update:${taskId}:${state}`);

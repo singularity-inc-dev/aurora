@@ -1,3 +1,4 @@
+import { countRows, DEFINITIONS, FLAG_COLUMNS, MAIN_COLUMNS, type CountRow, type RawCounts } from "./counts.ts";
 import type { HandoverStatus, InviteCheck, LinkCheck, LinkOutcome } from "./paperclip.ts";
 import type { JoinOutcome } from "./join.ts";
 import { MAX_PASSWORD, MIN_PASSWORD } from "./join.ts";
@@ -5,10 +6,10 @@ import { MAX_PASSWORD, MIN_PASSWORD } from "./join.ts";
 export const esc = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
-function page(title: string, body: string): string {
+function page(title: string, body: string, wide = false): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(title)}</title><style>body{font-family:system-ui,sans-serif;max-width:32rem;margin:3rem auto;padding:0 1rem;line-height:1.5}
-button{font-size:1rem;padding:.6rem 1.2rem}input{font-size:1rem;width:100%;padding:.4rem;box-sizing:border-box}label{display:block;margin-top:.8rem}.muted{color:#666}</style></head>
+<title>${esc(title)}</title><style>body{font-family:system-ui,sans-serif;max-width:${wide ? "72rem" : "32rem"};margin:3rem auto;padding:0 1rem;line-height:1.5}
+button{font-size:1rem;padding:.6rem 1.2rem}input{font-size:1rem;width:100%;padding:.4rem;box-sizing:border-box}label{display:block;margin-top:.8rem}.muted{color:#666}table{border-collapse:collapse;margin:.5rem 0 1.5rem}th,td{padding:.3rem .7rem;border-bottom:1px solid #ddd;text-align:right}th:first-child,td:first-child{text-align:left}.kind td:first-child{padding-left:2rem;color:#444}.team td,.person td{font-weight:600}</style></head>
 <body><h1>${esc(title)}</h1>${body}</body></html>`;
 }
 
@@ -111,8 +112,27 @@ ${recent ? `<h2>Recent handovers</h2><ul>${recent}</ul>` : ""}`,
   );
 }
 
-export function signInFirstPage(signInUrl: string): string {
-  return page("Hand over now", `<p>Please <a href="${esc(signInUrl)}">sign in to Paperclip</a> first, then open this page again.</p>`);
+/** The numbers page: raw counts per person and per task kind. Counts only, never percentages. */
+export function numbersPage(n: RawCounts): string {
+  const table = (columns: typeof MAIN_COLUMNS) =>
+    `<table><thead><tr><th>who</th>${columns.map((c) => `<th>${esc(c.label)}</th>`).join("")}</tr></thead><tbody>` +
+    countRows(n)
+      .map((r: CountRow) => `<tr class="${r.level}"><td>${esc(r.label)}</td>${columns.map((c) => `<td>${r.counts[c.key]}</td>`).join("")}</tr>`)
+      .join("") +
+    `</tbody></table>`;
+  return page(
+    "Numbers",
+    `<p class="muted">Raw counts from the event log. Counts only: no percentages.</p>
+${table(MAIN_COLUMNS)}
+<h2>Run flags</h2><p class="muted">How many tasks carry each flag.</p>
+${table(FLAG_COLUMNS)}
+<h2>What the numbers mean</h2><ul class="muted">${DEFINITIONS.map((d) => `<li>${esc(d)}</li>`).join("")}</ul>`,
+    true,
+  );
+}
+
+export function signInFirstPage(signInUrl: string, title = "Hand over now"): string {
+  return page(title, `<p>Please <a href="${esc(signInUrl)}">sign in to Paperclip</a> first, then open this page again.</p>`);
 }
 
 export function errorPage(message: string): string {

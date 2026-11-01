@@ -1,6 +1,8 @@
 import type { PluginContext } from "@paperclipai/plugin-sdk";
 import type { LinkSettings, Person } from "./config.js";
 import { getTaskRow } from "./eventlog.js";
+import { describeFlags, flagsOf, type RunFlag } from "./flags.js";
+import { listFlagsForTask } from "./flagstore.js";
 import {
   CONFLICT_NOTICE_PREFIX,
   earlierBriefingTaskIds,
@@ -36,6 +38,8 @@ export interface TaskFacts {
   branchHead: string | null;
   clean: boolean;
   summary: string;
+  /** Run flags (tool error, checks failed, not tested, timed out, budget stop, rejected). */
+  flags?: readonly RunFlag[];
 }
 
 export interface Classified {
@@ -85,6 +89,7 @@ async function gatherFacts(ctx: PluginContext, companyId: string, taskId: string
     branchHead: null,
     clean: false,
     summary: issue?.title ?? "(missing ticket)",
+    flags: flagsOf(ev, await listFlagsForTask(ctx.db, taskId)),
   };
   const ws = issue?.executionWorkspaceId ? await ctx.executionWorkspaces.get(issue.executionWorkspaceId, companyId) : null;
   const cwd = ws?.cwd ?? ws?.path ?? null;
@@ -201,6 +206,7 @@ export async function createBriefing(
       approveActionId: c.approvable ? action("approve") : null,
       rejectActionId: action("reject"),
       carried,
+      ...(f.flags?.length ? { flags: [...f.flags] } : {}),
     });
   }
   if (!run && items.length === 0) return null;
@@ -264,6 +270,7 @@ const SECTIONS: Array<[Category, string]> = [
   ["failed", "Failed"],
   ["waiting", "Waiting for review"],
 ];
+const CATEGORY_LABEL: Record<Category, string> = { ready: "Ready", blocked: "Blocked", failed: "Failed", waiting: "Waiting for review" };
 
 /** Render a briefing as an email, with freshly signed links (tokens are never stored). */
 export function renderBriefing(b: Briefing, links: LinkSettings, secret: string, expiresAt: Date): RenderedEmail {
@@ -272,18 +279,51 @@ export function renderBriefing(b: Briefing, links: LinkSettings, secret: string,
     `${links.baseUrl}/l/${signLink({ v: 1, a: actionId, c: b.companyId, o: b.owner, t: item.taskId, k: kind, e: exp }, secret)}`;
   const count = (c: Category) => b.items.filter((i) => i.category === c).length;
   const waiting = count("waiting");
+  // Flagged work goes first (a task already approved and waiting for review is not asking for attention).
+  const flaggedItems = b.items.filter((i) => i.category !== "waiting" && i.flags?.length);
   const conflicts = b.conflicts ?? [];
   const notice = b.handoverKey.startsWith(CONFLICT_NOTICE_PREFIX);
   const conflictCount = conflicts.length ? `, ${conflicts.length} conflict${conflicts.length === 1 ? "" : "s"}` : "";
   const subject = notice
     ? `A teammate's new work conflicts with yours${conflictCount ? ` (${conflicts.length})` : ""}: ${count("ready")} ready for your decision`
-    : `Your handover of ${describeKey(b.handoverKey)}: ${count("ready")} ready, ${count("blocked")} blocked, ${count("failed")} failed${waiting ? `, ${waiting} waiting for review` : ""}${conflictCount}`;
+    : `Your handover of ${describeKey(b.handoverKey)}: ${count("ready")} ready, ${count("blocked")} blocked, ${count("failed")} failed${flaggedItems.length ? `, ${flaggedItems.length} flagged` : ""}${waiting ? `, ${waiting} waiting for review` : ""}${conflictCount}`;
   const intro = notice
     ? "Vision and Tom test-merged a teammate's new work with yours and found a conflict. Your tasks below are still waiting for your decision."
     : `Here is what your agent did in your handover of ${describeKey(b.handoverKey)}.`;
 
   const text: string[] = [intro, ""];
   const html: string[] = [`<p>${esc(intro)}</p>`];
+  const renderItem = (i: BriefingItem, showFlags: boolean) => {
+    const name = `${i.identifier ? `${i.identifier} ` : ""}${i.summary}`;
+    const approve = i.approveActionId ? url(i.approveActionId, i, "approve") : null;
+    const reject = i.rejectActionId ? url(i.rejectActionId, i, "reject") : null;
+    const flagLine = showFlags && i.flags?.length ? `${CATEGORY_LABEL[i.category]}. Flags: ${describeFlags(i.flags)}` : null;
+    text.push(`- ${name}`);
+    if (flagLine) text.push(`  ${flagLine}`);
+    text.push(`  ${i.checks}${i.reason ? ` (${i.reason})` : ""}`);
+    if (i.carried) text.push("  From an earlier email; still waiting for your decision.");
+    if (i.prUrl) text.push(`  Pull request: ${i.prUrl}`);
+    if (approve) text.push(`  Approve: ${approve}`);
+    if (reject) text.push(`  Reject: ${reject}`);
+    text.push("");
+    html.push(
+      `<li><p><strong>${esc(name)}</strong><br>` +
+        (flagLine ? `<strong>${esc(flagLine)}</strong><br>` : "") +
+        `${esc(i.checks)}${i.reason ? ` (${esc(i.reason)})` : ""}` +
+        (i.carried ? "<br><em>From an earlier email; still waiting for your decision.</em>" : "") +
+        `</p><p>` +
+        (i.prUrl ? `<a href="${esc(i.prUrl)}">Pull request</a> &nbsp; ` : "") +
+        (approve ? `<a href="${esc(approve)}">Approve</a> &nbsp; ` : "") +
+        (reject ? `<a href="${esc(reject)}">Reject</a>` : "") +
+        `</p></li>`,
+    );
+  };
+  if (flaggedItems.length) {
+    text.push(`NEEDS YOUR ATTENTION FIRST (${flaggedItems.length})`, "These tasks carry a run flag. Look at them before the rest.", "");
+    html.push(`<h2>Needs your attention first (${flaggedItems.length})</h2><p>These tasks carry a run flag. Look at them before the rest.</p><ul>`);
+    for (const i of flaggedItems) renderItem(i, true);
+    html.push("</ul>");
+  }
   for (const note of b.notes) {
     text.push(`Note: ${note}`, "");
     html.push(`<p><strong>Note:</strong> ${esc(note)}</p>`);
@@ -319,36 +359,21 @@ export function renderBriefing(b: Briefing, links: LinkSettings, secret: string,
     html.push("</ul>");
   }
   for (const [cat, label] of SECTIONS) {
-    const items = b.items.filter((i) => i.category === cat);
+    const all = b.items.filter((i) => i.category === cat);
+    const items = all.filter((i) => !flaggedItems.includes(i));
+    const above = all.length - items.length;
     if (cat === "waiting" && items.length === 0) continue;
-    text.push(`${label.toUpperCase()} (${items.length})`);
-    html.push(`<h2>${label} (${items.length})</h2>`);
+    const count = `(${all.length}${above ? `, ${above} flagged above` : ""})`;
+    const heading = `${label} ${count}`;
+    text.push(`${label.toUpperCase()} ${count}`);
+    html.push(`<h2>${esc(heading)}</h2>`);
     if (items.length === 0) {
-      text.push("  none", "");
-      html.push("<p>None.</p>");
+      text.push(above ? "  none more" : "  none", "");
+      html.push(above ? "<p>None more.</p>" : "<p>None.</p>");
       continue;
     }
     html.push("<ul>");
-    for (const i of items) {
-      const name = `${i.identifier ? `${i.identifier} ` : ""}${i.summary}`;
-      const approve = i.approveActionId ? url(i.approveActionId, i, "approve") : null;
-      const reject = i.rejectActionId ? url(i.rejectActionId, i, "reject") : null;
-      text.push(`- ${name}`, `  ${i.checks}${i.reason ? ` (${i.reason})` : ""}`);
-      if (i.carried) text.push("  From an earlier email; still waiting for your decision.");
-      if (i.prUrl) text.push(`  Pull request: ${i.prUrl}`);
-      if (approve) text.push(`  Approve: ${approve}`);
-      if (reject) text.push(`  Reject: ${reject}`);
-      text.push("");
-      html.push(
-        `<li><p><strong>${esc(name)}</strong><br>${esc(i.checks)}${i.reason ? ` (${esc(i.reason)})` : ""}` +
-          (i.carried ? "<br><em>From an earlier email; still waiting for your decision.</em>" : "") +
-          `</p><p>` +
-          (i.prUrl ? `<a href="${esc(i.prUrl)}">Pull request</a> &nbsp; ` : "") +
-          (approve ? `<a href="${esc(approve)}">Approve</a> &nbsp; ` : "") +
-          (reject ? `<a href="${esc(reject)}">Reject</a>` : "") +
-          `</p></li>`,
-      );
-    }
+    for (const i of items) renderItem(i, false);
     html.push("</ul>");
   }
   const footer = [

@@ -7,10 +7,14 @@ import { loadConfig } from "../src/config.ts";
 import type { GithubClient } from "../src/github.ts";
 import { checkJoinForm, join } from "../src/join.ts";
 import type { BoardApi, LinkCheck, LinkOutcome, PersonApi, PluginApi, PublishResult } from "../src/paperclip.ts";
+import { parseRawCounts } from "../src/counts.ts";
+
 import { paperclipApi, PaperclipError } from "../src/paperclip.ts";
 import { syncPullRequests } from "../src/prsync.ts";
 import { recoverStuckApprovals } from "../src/recover.ts";
 import { createLinkServer } from "../src/server.ts";
+
+const ZERO = { handedOver: 0, ready: 0, approved: 0, rejected: 0, failed: 0, notTested: 0, teammateOverlaps: 0, wouldBeConflicts: 0, toolErrors: 0, checksFailed: 0, timedOut: 0, budgetStops: 0 };
 
 const TOKEN = "eyJ2IjoxLCJhIjoiYWN0In0." + "s".repeat(43);
 const PUBLISH = { actionId: "act-1", repo: "acme/app", worktree: "/w", branch: "vt/T-1", baseBranch: "main", expectedHead: "a".repeat(40), title: "T-1", body: "b" };
@@ -50,6 +54,8 @@ function plugin(over: Partial<PluginApi> = {}): PluginApi & { calls: string[] } 
     startHandover: async (email) => (calls.push(`start:${email}`), { ok: true, handoverKey: "2026-10-24T14:05:00" }),
     numbers: async () => ({ team: {} }),
     numbersCsv: async () => "Date\r\n",
+    counts: async () => parseRawCounts({ team: ZERO, people: [] }),
+    eventsCsv: async () => "task id\r\n",
     finishInvite: async (_id, r) => {
       calls.push(`finish:${r.ok ? "ok" : r.message}`);
       return r.ok ? { ok: true, message: "joined" } : { ok: true, message: "recorded", retry: true };

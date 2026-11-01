@@ -3,11 +3,13 @@ import { formatReport, gateWord, localRunner, refusingRunner, runChecksGate, typ
 import { sandboxRunner } from "./checksandbox.js";
 import { findPersonByAgent, findPersonByEmail, parseSettings, sandboxLogin, type Person, type PluginSettings } from "./config.js";
 import { ensureTaskRow, getTaskRow, recordChecks, recordHandoff } from "./eventlog.js";
+import { recordFlagSafely } from "./flagstore.js";
 import { handoffDescription, HandoffRefused, parseHandoffRequest, planHandoff } from "./handoff.js";
 import { agentProblems, auditSettingsIsolation } from "./isolation.js";
 import { HANDOFF_ORIGIN, HANDOVER_TICK_JOB } from "./ids.js";
 import { numbersCsv } from "./numbers.js";
 import { loadNumbers } from "./numberstore.js";
+import { loadCounts, loadEventLogCsv } from "./countstore.js";
 import { listRuns } from "./handoverstore.js";
 import { projectAreas, proposeHandover, ProposalRefused, startHandoverNow, tickAll } from "./handoverrunner.js";
 import { startTicker, type Ticker } from "./ticker.js";
@@ -53,6 +55,24 @@ async function checksRunner(ctx: PluginContext, settings: PluginSettings, owner:
   const login = sandboxLogin(settings, owner);
   if (login) return sandboxRunner(cwd, login, await ctx.secrets.resolve(login.privateKey, { companyId }));
   return settings.isolation.required ? refusingRunner : localRunner(cwd);
+}
+
+/**
+ * Run flag "tool error": a plugin tool failed on a ticket. Only when the ticket is
+ * assigned to the calling agent, so one agent can never put a flag on a teammate's task.
+ * Never throws: the original error is what the agent must see.
+ */
+async function flagToolError(ctx: PluginContext, companyId: string, agentId: string, tool: string, issueId: unknown, err: unknown): Promise<void> {
+  if (typeof issueId !== "string" || !issueId) return;
+  try {
+    const issue = await ctx.issues.get(issueId, companyId);
+    if (!issue || issue.assigneeAgentId !== agentId) return;
+    // Only our own refusal texts are kept; anything unexpected is recorded by type only.
+    const known = err instanceof Refused || err instanceof HandoffRefused || err instanceof ProposalRefused;
+    await recordFlagSafely(ctx.db, companyId, issueId, "tool-error", `${tool}: ${known ? err.message : `unexpected error (${err instanceof Error ? err.name : "unknown"})`}`, (m) => ctx.logger.warn(m));
+  } catch {
+    // The flag is a courtesy to the owner; losing it must not hide the real error.
+  }
 }
 
 function refusal(err: unknown): ToolResult {
@@ -224,6 +244,7 @@ const plugin = definePlugin({
             data: { issueId, identifier, assignedTo: plan.to.email, action: plan.kind },
           };
         } catch (err) {
+          await flagToolError(ctx, run.companyId, run.agentId, TOOL_HANDOFF, (params as { issueId?: unknown } | null)?.issueId, err);
           return refusal(err);
         }
       },
@@ -281,6 +302,7 @@ const plugin = definePlugin({
             data: { passed: report.passed, result: report.result, headSha: report.headSha, documentKey, results: report.results.map(({ output: _o, ...r }) => r) },
           };
         } catch (err) {
+          await flagToolError(ctx, run.companyId, run.agentId, TOOL_RUN_CHECKS, (params as { issueId?: unknown } | null)?.issueId, err);
           return refusal(err);
         }
       },
@@ -371,6 +393,12 @@ const plugin = definePlugin({
         // Paperclip 2026.1012.0 sends plugin route bodies as JSON (headers are not passed on),
         // so the CSV text travels inside JSON; vt-numbers writes it to a file.
         return { status: 200, body: { csv: numbersCsv(await loadNumbers(ctx, input.companyId)) } };
+      case "counts":
+        // Raw counts per person and per task kind (no percentages). The email service decides who may see the page.
+        return { status: 200, body: await loadCounts(ctx, input.companyId) };
+      case "events-csv":
+        // The event log, one row per task. Like numbers-csv, the CSV text travels inside JSON.
+        return { status: 200, body: { csv: await loadEventLogCsv(ctx, input.companyId) } };
       case "invite-create": {
         const created = await createInvite(ctx, settings, input.companyId, body, now);
         return { status: created.ok ? 201 : 409, body: created };

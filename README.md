@@ -224,12 +224,14 @@ Open the `summary.md` it names at the end. It reads the history only and sends n
 ```bash
 IT_ONLY=v1e scripts/integration-test.sh   # Hand over now, claims, the merge replay; about 10 minutes
 IT_ONLY=v1f scripts/integration-test.sh   # the numbers and the CSV; about 10 minutes
+IT_ONLY=z_m6 scripts/integration-test.sh   # run flags, raw counts, event-log CSV; about 10 minutes
 ```
 
 Each first runs the M4 checks it builds on (one handover for Ana and Bo, the handback emails, Approve and Reject), then:
 
 - **v1e:** Ana hands over now. Her agent claims only `notes.txt` but also changes `CHANGELOG.md`, which Bo's finished, undecided work changed too. Both get an email naming the conflict, and nothing is merged.
-- **v1f:** the numbers for that team: 5 work orders, 1 approved, 1 conflict, yield 20%, and the CSV file.
+- **v1f:** the numbers for that team: 5 work orders, 1 approved, 1 conflict, and the CSV file. Raw counts only, no percentages.
+- **z_m6:** the run flags (tool error, checks failed, not tested, timed out, budget stop, rejected), the raw counts per person and per task kind, and the event-log CSV, read from the data the earlier scripts left behind.
 
 Every check prints PASS or FAIL, with a total at the end.
 

@@ -356,3 +356,75 @@ describe("claims and the pre-handover check", () => {
     expect(await t.h.ctx.issues.list({ companyId: CO, assigneeAgentId: "agent-ana", status: "backlog" })).toEqual([]);
   });
 });
+
+describe("run flags from the handover", () => {
+  const flags = (db: Awaited<ReturnType<typeof setup>>["db"], taskId: string) => db.tables.run_flags.filter((f) => f.task_id === taskId).map((f) => `${f.kind}: ${f.detail}`);
+
+  it("flags a stuck task as timed out when it is retried, and again when it runs out of retries", async () => {
+    const t = await proposedNight();
+    await approve(t);
+    await t.tick(EVENING);
+    await t.tick(NIGHT);
+    await t.h.ctx.issues.update(t.tasks[0]!, { status: "in_progress" }, CO);
+    await t.tick(new Date(NIGHT.getTime() + 61 * 60_000));
+    expect(flags(t.db, t.tasks[0]!)).toEqual(["timeout: no result after 60 minutes; retrying (attempt 2)"]);
+
+    await t.h.ctx.issues.update(t.tasks[0]!, { status: "in_progress" }, CO);
+    await t.tick(new Date(NIGHT.getTime() + 123 * 60_000));
+    expect(t.event(t.tasks[0]!).outcome).toBe("failed");
+    // One row, with the final wording.
+    expect(flags(t.db, t.tasks[0]!)).toEqual(["timeout: timed out 2 time(s) after 60 minutes"]);
+    expect(flags(t.db, t.tasks[1]!)).toEqual([]);
+  });
+
+  it("flags the task the budget cap stopped, and the tasks that never started because of it", async () => {
+    const t = await proposedNight();
+    await approve(t);
+    await t.tick(EVENING);
+    await t.tick(NIGHT);
+    t.db.costs.push({ company_id: CO, agent_id: "agent-ana", cost_cents: 500, occurred_at: new Date(NIGHT.getTime() + 60_000) });
+    await t.tick(new Date(NIGHT.getTime() + 5 * 60_000));
+    expect(t.runRow().status).toBe("budget_stopped");
+    expect(flags(t.db, t.tasks[0]!)).toEqual(["budget-stop: stopped: handover budget cap reached"]);
+    expect(flags(t.db, t.tasks[1]!)).toEqual(["budget-stop: not started: handover budget cap reached"]);
+  });
+
+  it("a task that finished before the cap is not flagged; the ones after it are", async () => {
+    const t = await proposedNight();
+    await approve(t);
+    await t.tick(EVENING);
+    await t.tick(NIGHT);
+    await t.h.ctx.issues.update(t.tasks[0]!, { status: "done" }, CO);
+    t.db.costs.push({ company_id: CO, agent_id: "agent-ana", cost_cents: 500, occurred_at: new Date(NIGHT.getTime() + 60_000) });
+    await t.tick(new Date(NIGHT.getTime() + 5 * 60_000));
+    expect(t.runRow().status).toBe("budget_stopped");
+    expect(flags(t.db, t.tasks[0]!)).toEqual([]);
+    expect(flags(t.db, t.tasks[1]!)).toEqual(["budget-stop: not started: handover budget cap reached"]);
+  });
+
+  it("a rejected plan is a 'rejected' flag with its reason, read from the event log", async () => {
+    const t = await proposedNight();
+    await approve(t, "reject");
+    await t.tick(EVENING);
+    await t.tick(NIGHT);
+    const { flagsOf } = await import("../src/flags.js");
+    expect(t.event(t.tasks[0]!).outcome).toBe("rejected");
+    expect(flagsOf(t.event(t.tasks[0]!), []).map((f) => f.kind)).toEqual(["rejected"]);
+  });
+
+  it("a failure to write a flag never stops the handover", async () => {
+    const t = await proposedNight();
+    await approve(t);
+    await t.tick(EVENING);
+    await t.tick(NIGHT);
+    const real = t.db.execute.bind(t.db);
+    t.db.execute = async (sql, params) => {
+      if (sql.includes("run_flags")) throw new Error("flags table is gone");
+      return real(sql, params);
+    };
+    t.db.costs.push({ company_id: CO, agent_id: "agent-ana", cost_cents: 500, occurred_at: new Date(NIGHT.getTime() + 60_000) });
+    await t.tick(new Date(NIGHT.getTime() + 5 * 60_000));
+    expect(t.runRow().status).toBe("budget_stopped");
+    expect(t.event(t.tasks[0]!).outcome).toBe("blocked");
+  });
+});

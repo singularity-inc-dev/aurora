@@ -47,6 +47,9 @@ export interface HandoverObservations {
   spentCents: number;
 }
 
+/** Why a task was stopped when the person's handover budget ran out. */
+export const BUDGET_STOP_REASON = "handover budget cap reached";
+
 export type StepClose = { outcome: "finished" | "blocked" | "failed"; reason: string | null };
 export type NextStep = { start: number } | { finish: string } | { budgetStop: true };
 
@@ -137,7 +140,7 @@ export function decideHandover(
       }
       if (windowOver) return { kind: "advance", close: { outcome: "blocked", reason: "the handover ended" }, then: { finish: "the handover ended" } };
       if (overBudget) {
-        return { kind: "advance", close: { outcome: "blocked", reason: "handover budget cap reached" }, then: { budgetStop: true } };
+        return { kind: "advance", close: { outcome: "blocked", reason: BUDGET_STOP_REASON }, then: { budgetStop: true } };
       }
       if (status && STOPPED_STATUSES.has(status)) return next({ outcome: "blocked", reason: `agent marked the task ${status}` });
       const started = run.stepStartedAt?.getTime() ?? now.getTime();

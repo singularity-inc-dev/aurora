@@ -1,5 +1,6 @@
 import type { AgentBinding } from "./agentenv.ts";
 import type { ServiceConfig } from "./config.ts";
+import { parseRawCounts, type RawCounts } from "./counts.ts";
 
 export interface Email {
   briefingId: string;
@@ -116,6 +117,9 @@ export interface PluginApi {
   /** The pilot's numbers from the event log (piece F): a summary, and the measurement sheet as CSV. */
   numbers(): Promise<Record<string, unknown>>;
   numbersCsv(): Promise<string>;
+  /** Raw counts per person and per task kind (milestone 6), and the event log as CSV. */
+  counts(): Promise<RawCounts>;
+  eventsCsv(): Promise<string>;
   finishInvite(
     inviteId: string,
     result: { ok: true; agentId: string; userId: string; attempt?: number } | { ok: false; message: string; attempt?: number; userId?: string | null; agentId?: string | null },
@@ -182,6 +186,12 @@ export function paperclipApi(cfg: ServiceConfig, fetchImpl: typeof fetch = fetch
     numbers: () => call("GET", `/numbers?${company}`),
     async numbersCsv() {
       return (await call<{ csv: string }>("GET", `/numbers/csv?${company}`)).csv;
+    },
+    async counts() {
+      return parseRawCounts(await call("GET", `/counts?${company}`));
+    },
+    async eventsCsv() {
+      return (await call<{ csv: string }>("GET", `/events/csv?${company}`)).csv;
     },
   };
 }

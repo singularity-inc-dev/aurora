@@ -210,6 +210,14 @@ check "a form sent from another site is refused" "$("${HTTPS[@]}" -o /dev/null -
 check "the button starts the owner's handover now" "$("${HTTPS[@]}" -X POST -H "cookie: $OWNER_COOKIE" -H "origin: $URL" "$URL/vt/handover" | grep -c 'Started.')" "1"
 check "the plugin shows it: a Hand over now, planning" "$(board -X POST "$PC/api/plugins/$PLUGIN_ID/data/handover-status" -d "{\"companyId\":\"$CID\",\"params\":{}}" | json "(d.data.find(r=>r.owner==='owner@example.com')||{}).kind+' '+(d.data.find(r=>r.owner==='owner@example.com')||{}).status")" "now proposing"
 
+echo "-- Numbers page: the raw counts, for signed-in people on the team"
+check "without signing in, the numbers page asks to sign in first" "$("${HTTPS[@]}" -o /dev/null -w '%{http_code}' "$URL/vt/numbers")" "401"
+NUMBERS_PAGE=$("${HTTPS[@]}" -H "cookie: $OWNER_COOKIE" "$URL/vt/numbers")
+check "signed in, the owner sees the counts table and the run-flags table, each with the team row" "$(echo "$NUMBERS_PAGE" | grep -c '<th>handed over</th>')/$(echo "$NUMBERS_PAGE" | grep -c '<th>would-be conflicts</th>')/$(echo "$NUMBERS_PAGE" | grep -c '<th>budget stops</th>')/$(echo "$NUMBERS_PAGE" | grep -o '<td>Team (everyone)</td>' | wc -l | tr -d ' ')" "1/1/1/2"
+# (the page's own stylesheet has "width:100%"; only the visible text counts)
+check "the numbers page shows no percentage" "$(echo "$NUMBERS_PAGE" | sed -z 's#<style>.*</style>##' | grep -oE '[0-9]%' | wc -l | tr -d ' ')" "0"
+check "the numbers page cannot be changed from outside (POST refused)" "$("${HTTPS[@]}" -o /dev/null -w '%{http_code}' -X POST -H "cookie: $OWNER_COOKIE" -H "origin: $URL" "$URL/vt/numbers")" "405"
+
 echo "== 7. Invite link: a new person joins through one link"
 INVITE_OUT=$(bash "$KIT_BIN/vt-invite" dee@example.com Europe/Paris 2>&1)
 LINK=$(echo "$INVITE_OUT" | grep -o "$URL/vt/join/[^ ]*" | head -1)
@@ -254,7 +262,10 @@ board -X POST "$PC/api/plugins/$PLUGIN_ID/config" -d "{\"companyId\":\"$CID\",\"
 
 echo "-- the pilot's numbers (vt-numbers, as the admin)"
 NUM_OUT=$(bash "$KIT_BIN/vt-numbers" "$R/numbers.csv" 2>&1)
-check "vt-numbers writes the measurement sheet and prints the team's measures" "$(head -1 "$R/numbers.csv" | tr -d '\r' | cut -d, -f1-3)/$(echo "$NUM_OUT" | grep -c '^Team: ')" "Date,Handover,Owner/1"
+check "vt-numbers writes the measurement sheet and prints the raw counts" "$(head -1 "$R/numbers.csv" | tr -d '\r' | cut -d, -f1-3)/$(echo "$NUM_OUT" | grep -c '^Team (everyone) ')" "Date,Handover,Owner/2"  # one team line in each of the two tables
+NUM_EV=$(cd "$R" && bash "$KIT_BIN/vt-numbers" --events events.csv 2>&1)
+check "vt-numbers --events writes the event log (a relative file name lands where the admin ran it), owner-only" "$(head -1 "$R/events.csv" | tr -d '\r' | cut -d, -f1-4)/$(stat -c %a "$R/events.csv")/$(echo "$NUM_EV" | grep -c 'Event log written to')" "task id,owner,agent,task kind/600/1"
+check "vt-numbers prints no percentage" "$(echo "$NUM_OUT$NUM_EV" | grep -c '%' || true)" "0"
 
 echo "== 8. vt-check (what the owner runs to see that everything works)"
 bash "$KIT_BIN/vt-backup" >"$LOGS/backup1.log" 2>&1

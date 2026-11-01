@@ -143,6 +143,8 @@ check "event log records who it was handed to" "$(echo "$API_BODY" | json 'd.dat
 
 m2_tool handoff_to_teammate '{"toEmail":"eve@example.com","title":"x"}' "$M2_A" "$M2_RUN_A"
 check "hand-off to a non-teammate is refused" "$(echo "$API_BODY" | json 'd.result.error')" "toEmail is not a configured teammate"
+m2_tool handoff_to_teammate "{\"toEmail\":\"eve@example.com\",\"issueId\":\"$M2_ISS\"}" "$M2_A" "$M2_RUN_A"
+check "M6: a failed hand-off of the agent's own ticket is refused (z_m6.sh checks the run flag it left, and that the next call by another agent on this ticket did not overwrite it)" "$(echo "$API_BODY" | json 'd.result.error')" "toEmail is not a configured teammate"
 api POST "/api/agents/$M2_B/wakeup" '{"source":"on_demand","reason":"it","forceFreshSession":false}'
 sleep 6
 M2_RUN_B=$(m2_latest_run "$M2_B")

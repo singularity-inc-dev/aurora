@@ -46,10 +46,11 @@ describe("numbers from the event log", () => {
     expect(n.team).toMatchObject({ handovers: 2, workOrders: 4, accepted: 1, rejected: 1, blocked: 1, failed: 0, undecided: 1 });
   });
 
-  it("handover yield: accepted out of everything handed over", () => {
-    expect(n.team.handoverYield).toBe(0.25);
-    expect(n.owners.find((o) => o.owner === "ana@example.com")!.handoverYield).toBe(0.33);
-    expect(n.owners.find((o) => o.owner === "bo@example.com")!.handoverYield).toBe(0);
+  it("has no percentage or yield: only counts, and minutes", () => {
+    expect(JSON.stringify(n)).not.toMatch(/yield/i);
+    expect(n.team.accepted).toBe(1);
+    expect(n.owners.find((o) => o.owner === "ana@example.com")!.accepted).toBe(1);
+    expect(n.owners.find((o) => o.owner === "bo@example.com")!.accepted).toBe(0);
   });
 
   it("minutes to approve: from the email being sent to its last decision", () => {
@@ -80,7 +81,7 @@ describe("numbers from the event log", () => {
 
   it("an empty log gives no numbers rather than zeros that look like results", () => {
     const empty = computeNumbers({ runs: [], events: [], briefings: [], actions: [], overlaps: [], conflicts: [], titles: new Map() });
-    expect(empty.team).toMatchObject({ workOrders: 0, handoverYield: null, minutesToApprove: null, decisionsPerHandback: null });
+    expect(empty.team).toMatchObject({ workOrders: 0, minutesToApprove: null, decisionsPerHandback: null });
   });
 });
 

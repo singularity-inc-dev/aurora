@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { PluginDatabaseClient } from "@paperclipai/plugin-sdk";
+import type { RunFlag } from "./flags.js";
 import type { LinkKind } from "./tokens.js";
 
 type Db = Pick<PluginDatabaseClient, "namespace" | "execute" | "query">;
@@ -22,6 +23,8 @@ export interface BriefingItem {
   prUrl?: string | null;
   /** Listed in an earlier email and still undecided. */
   carried?: boolean;
+  /** Run flags on this task when the email was built (absent when there are none). */
+  flags?: RunFlag[];
 }
 
 /** A conflict the merge replay found, as one owner sees it (piece E). */

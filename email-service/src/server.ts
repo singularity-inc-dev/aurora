@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { GithubClient } from "./github.ts";
 import { checkJoinForm, join } from "./join.ts";
-import { confirmPage, errorPage, handoverPage, joinPage, joinResultPage, resultPage, signInFirstPage } from "./pages.ts";
+import { confirmPage, errorPage, handoverPage, joinPage, joinResultPage, numbersPage, resultPage, signInFirstPage } from "./pages.ts";
 import type { BoardApi, LinkOutcome, PersonApi, PluginApi, SessionApi } from "./paperclip.ts";
 
 const TOKEN_RE = /^[A-Za-z0-9_-]{10,1500}\.[A-Za-z0-9_-]{20,100}$/;
@@ -98,6 +98,24 @@ export function createLinkServer(api: PluginApi, log: (msg: string) => void = ()
           return send(res, started.ok ? 200 : 409, handoverPage(await api.handoverStatus(me.email), started.ok ? "Started. Your agent is planning; approve the plan in Paperclip." : (started.message ?? "Not started.")));
         }
         return send(res, 200, handoverPage(await api.handoverStatus(me.email)));
+      }
+      if (url.pathname === "/numbers") {
+        // The numbers page: raw counts, read-only, for people on the team who are signed in to Paperclip.
+        if (!deps.session) return send(res, 503, errorPage("The numbers page is not set up on this server."));
+        if (req.method !== "GET") {
+          res.writeHead(405, { allow: "GET" });
+          res.end();
+          return;
+        }
+        const me = await deps.session.whoIs(req.headers.cookie ?? "");
+        if (!me) return send(res, 401, signInFirstPage(deps.signInUrl ?? "/", "Numbers"));
+        if (!(await api.handoverStatus(me.email)).ok) return send(res, 403, errorPage("The numbers are for people on the team."));
+        try {
+          return send(res, 200, numbersPage(await api.counts()));
+        } catch {
+          log("numbers page: the plugin did not give usable counts");
+          return send(res, 502, errorPage("The numbers could not be read. The plugin on this server may be out of date: run vt-update."));
+        }
       }
       const m = /^\/(l|join)\/([^/]+)$/.exec(url.pathname);
       if (!m) return send(res, 404, errorPage("Page not found."));

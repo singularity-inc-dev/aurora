@@ -4,6 +4,8 @@
  * tables only. Pure: the worker reads the rows and passes them in.
  */
 
+import { cell } from "./csv.js";
+
 type Row = Record<string, unknown>;
 
 export interface NumbersInput {
@@ -40,8 +42,6 @@ export interface Measures {
   blocked: number;
   failed: number;
   undecided: number;
-  /** Accepted out of all handed-over work orders (null when there are none). */
-  handoverYield: number | null;
   handbacks: number;
   /** Median, per handback, of minutes from the email being sent to its last decision. */
   minutesToApprove: number | null;
@@ -135,7 +135,6 @@ export function computeNumbers(input: NumbersInput): Numbers {
       blocked: count("blocked"),
       failed: count("failed"),
       undecided: count("undecided"),
-      handoverYield: mine.length ? round(count("accepted") / mine.length, 2) : null,
       handbacks: briefings.length,
       minutesToApprove: round(median(minutes)),
       decisionsPerHandback: decisions.length ? round(decisions.reduce((s, n) => s + n, 0) / decisions.length) : null,
@@ -161,13 +160,6 @@ const HEADER = [
   "Overlaps caught before",
   "Conflicts found after",
 ];
-
-/** One CSV cell. Cells that a spreadsheet would run as a formula get a leading apostrophe. */
-function cell(v: unknown): string {
-  let s = v === null || v === undefined ? "" : String(v);
-  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
-  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
 
 /** The measurement sheet as CSV (playbook columns that the event log can fill). */
 export function numbersCsv(n: Numbers): string {
