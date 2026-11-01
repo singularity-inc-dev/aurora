@@ -226,6 +226,21 @@ check "Dee's Paperclip account works and is in the company" "$("${HTTPS[@]}" -H 
 DEE_AGENT=$(people | json 'd.data.people.find(p=>p.email==="dee@example.com").agentId')
 check "Dee's row is in the plugin settings, bound to one new agent" "$([ -n "$DEE_AGENT" ] && echo yes)/$(people | json 'd.data.people.find(p=>p.email==="dee@example.com").timezone')" "yes/Europe/Paris"
 check "Dee's agent has safe defaults (no agent or skill creation, budget set)" "$(board "$PC/api/agents/$DEE_AGENT" | json '[d.name,d.permissions.canCreateAgents,d.permissions.canCreateSkills,d.role,d.budgetMonthlyCents].join("/")')" "Dee Doe's agent/false/false/engineer/3000"
+echo "-- S1: Dee, signed in with her own account, calls the plugin's board-only routes directly over HTTPS"
+# docs/design/CURRENT-STATE.md S1. Each check expects the SAFE answer: Paperclip or the plugin refuses her (401/403).
+dee_api() { # METHOD PATH [BODY] -> "<status> <body>"
+  local out; out=$(mktemp)
+  local code; code=$("${HTTPS[@]}" -o "$out" -w '%{http_code}' -X "$1" -H "cookie: $DEE_COOKIE" -H "origin: $URL" -H 'content-type: application/json' ${3:+-d "$3"} "$URL/api/plugins/$PLUGIN_ID/api$2")
+  echo "$code $(cat "$out")"; rm -f "$out"
+}
+refused() { case "$1" in 401\ *|403\ *) echo refused ;; *) echo "${1:0:160}" ;; esac; }
+check "S1: Dee cannot list the pending handback emails (where the signed Approve links come from)" "$(refused "$(dee_api GET "/briefings/pending?companyId=$CID")")" "refused"
+check "S1: Dee cannot read the owner's handover status" "$(refused "$(dee_api GET "/handovers/status?companyId=$CID&email=owner@example.com")")" "refused"
+check "S1: Dee cannot start a handover for the owner" "$(refused "$(dee_api POST /handovers/start "{\"companyId\":\"$CID\",\"email\":\"owner@example.com\"}")")" "refused"
+check "S1: Dee cannot create an invite (only admins may invite)" "$(refused "$(dee_api POST /invites "{\"companyId\":\"$CID\",\"email\":\"mallory@example.com\",\"timezone\":\"UTC\"}")")" "refused"
+check "S1: Dee cannot export the team's event log" "$(refused "$(dee_api GET "/numbers/csv?companyId=$CID")")" "refused"
+check "S1: Dee cannot read the email service's queue of waiting pull requests" "$(refused "$(dee_api GET "/prs/waiting?companyId=$CID")")" "refused"
+check "S1: Dee cannot report a pull request as merged" "$(refused "$(dee_api POST /prs/update "{\"companyId\":\"$CID\",\"taskId\":\"none\",\"state\":\"merged\"}")")" "refused"
 echo "-- Dee chooses her own API key: she stores it in Paperclip herself, the admin only points her agent at it"
 DEE_KEY="sk-ant-standin-$(rand 12)"
 "${HTTPS[@]}" -o /dev/null -X POST -H "cookie: $DEE_COOKIE" -H "origin: $URL" -H 'content-type: application/json' -d "{\"name\":\"Dee's Anthropic key\",\"key\":\"anthropic-api-key-dee\",\"value\":\"$DEE_KEY\"}" "$URL/api/companies/$CID/secrets"
