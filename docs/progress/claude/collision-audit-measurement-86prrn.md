@@ -230,3 +230,16 @@ Per repository, `run.sh` runs: `COLLISION_AUDIT_UNTIL=2026-11-01 COLLISION_AUDIT
 **Limits to an exact repeat:** the repositories are live. The window is fixed, so later commits are ignored, but a force-push or history rewrite upstream would change the result; the recorded head commits show what was used (`git fetch origin <sha>`). The pool (`pool.py`) and the stars shown in the table depend on the day it is run; to repeat the *audit* use `repos.tsv`, not the pool. The 10,000-resample bootstrap uses seed 1.
 
 **Published data:** per repository, trimmed JSON, the replayed pairs (`*.pairs.jsonl.gz`, authors replaced by an 8-character hash, commit ids kept), and logs. No e-mail addresses are in the repository.
+
+## 11. Tests run before the pull request
+
+Branch rebased on `origin/main` (no new commits on main since `041fe60`, so the rebase changed nothing). Run on 1 November 2026 with **Node 24.22.1**, downloaded into the gitignored `.vendor/` folder and checked against the checksum in `deploy/versions.env` (the machine's own Node is 22, which Paperclip refuses to start on; the first live attempt on Node 22 failed for that reason and was discarded).
+
+| Suite | Result |
+|---|---|
+| Plugin unit tests (`plugin`, `pnpm test`) | 184 passed, 0 failed |
+| Email service unit tests (`email-service`, `pnpm test`) | 33 passed, 0 failed |
+| Collision audit unit tests (`tools/collision-audit/tests/test_audit.py`) | 24 passed, 0 failed |
+| Live suite (`scripts/integration-test.sh`: real Paperclip 2026.1012.0, m2 to m5, deployment rehearsal) | **216 passed, 0 failed** |
+
+This pull request changes no plugin, email-service or deploy code; it adds `tools/collision-audit/`, `docs/progress/` and a `.gitignore` entry. The suites show that adding it broke nothing.
