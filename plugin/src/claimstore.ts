@@ -26,6 +26,29 @@ export async function releaseClaims(db: Db, taskIds: string[]): Promise<void> {
   }
 }
 
+/**
+ * Release claims nothing will ever release (B1): a proposal that failed or
+ * crashed after storing claims but before its handover listed the tasks.
+ * A claim stays while its task is listed in any handover, or while its owner
+ * has a handover still proposing (that proposal may be in flight). So a crashed
+ * proposal holds its files at most until its plan expires. Returns the task ids
+ * released.
+ */
+export async function releaseOrphanedClaims(db: Db, companyId: string, owner: string): Promise<string[]> {
+  const rows = await db.query(`SELECT * FROM ${events(db)} WHERE company_id = $1 AND owner = $2 AND outcome IS NULL AND claims_released_at IS NULL`, [
+    companyId,
+    owner,
+  ]);
+  const holding = rows.filter((r) => parseClaims(r.claims).length > 0);
+  if (holding.length === 0) return [];
+  const runs = await db.query(`SELECT * FROM "${db.namespace}".handover_runs WHERE company_id = $1 AND owner = $2`, [companyId, owner]);
+  if (runs.some((r) => r.status === "proposing")) return [];
+  const listed = new Set(runs.flatMap((r) => parseClaims(r.task_ids)));
+  const orphans = holding.map((r) => String(r.task_id)).filter((id) => !listed.has(id));
+  await releaseClaims(db, orphans);
+  return orphans;
+}
+
 /** Every task in the company that still holds claims. Titles come from the board. */
 export async function openClaims(db: Db, companyId: string, titleOf: (taskId: string) => Promise<string>): Promise<OpenClaim[]> {
   const rows = await db.query(`SELECT * FROM ${events(db)} WHERE company_id = $1 AND outcome IS NULL AND claims_released_at IS NULL`, [companyId]);

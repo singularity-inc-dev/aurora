@@ -347,6 +347,80 @@ describe("claims and the pre-handover check", () => {
     expect(later.data.moved).toEqual([]);
   });
 
+  describe("a proposal that fails halfway releases its claims (B1)", () => {
+    const boHolds = (t: Awaited<ReturnType<typeof setup>>) =>
+      t.db.tables.task_events.filter((r) => r.owner === "bo@example.com" && r.claims && !r.claims_released_at && !r.outcome);
+    const anaTriesDocs = async (t: Awaited<ReturnType<typeof setup>>) => {
+      await t.tick(EVENING);
+      return t.h.executeTool<Proposed>(TOOL_PROPOSE, { tasks: [{ title: "Fix a typo", claims: ["docs/guide.md"] }] }, t.run);
+    };
+
+    it("on failure: asking for the plan approval throws", async () => {
+      const t = await setup();
+      await tickPerson(t.h.ctx, CO, settings, bo, EVENING);
+      const confirm = t.h.ctx.issues.requestConfirmation;
+      t.h.ctx.issues.requestConfirmation = async () => {
+        throw new Error("Paperclip is down");
+      };
+      const failed = await t.h
+        .executeTool<{ error?: string }>(TOOL_PROPOSE, { tasks: [{ title: "Rewrite docs", claims: ["docs/"] }] }, boRun)
+        .catch((err: Error) => ({ error: err.message }));
+      expect(failed.error).toBe("Paperclip is down");
+      expect(boHolds(t)).toEqual([]);
+      t.h.ctx.issues.requestConfirmation = confirm;
+      const later = await anaTriesDocs(t);
+      expect(later.data.moved).toEqual([]);
+    });
+
+    it("on failure: the run changed while proposing", async () => {
+      const t = await setup();
+      await tickPerson(t.h.ctx, CO, settings, bo, EVENING);
+      const confirm = t.h.ctx.issues.requestConfirmation.bind(t.h.ctx.issues);
+      t.h.ctx.issues.requestConfirmation = async (...args: Parameters<typeof confirm>) => {
+        t.db.tables.handover_runs.find((r) => r.owner === "bo@example.com")!.status = "expired";
+        return confirm(...args);
+      };
+      const failed = await t.h.executeTool<{ error?: string }>(TOOL_PROPOSE, { tasks: [{ title: "Rewrite docs", claims: ["docs/"] }] }, boRun);
+      expect(failed.error).toBe("the handover plan changed while proposing; try again");
+      expect(boHolds(t)).toEqual([]);
+    });
+
+    it("a failure after the run is saved keeps the claims: they belong to that plan now", async () => {
+      const t = await setup();
+      await tickPerson(t.h.ctx, CO, settings, bo, EVENING);
+      const update = t.h.ctx.issues.update.bind(t.h.ctx.issues);
+      t.h.ctx.issues.update = async (...args: Parameters<typeof update>) => {
+        if ((args[1] as { status?: string }).status === "in_review") throw new Error("Paperclip is down");
+        return update(...args);
+      };
+      await t.h.executeTool(TOOL_PROPOSE, { tasks: [{ title: "Rewrite docs", claims: ["docs/"] }] }, boRun).catch(() => null);
+      expect(t.db.tables.handover_runs.find((r) => r.owner === "bo@example.com")!.status).toBe("awaiting_approval");
+      expect(boHolds(t)).toHaveLength(1);
+    });
+
+    it("on restart or time-out: claims a crash left behind end when that plan expires, never while it is still proposing", async () => {
+      const t = await setup();
+      await tickPerson(t.h.ctx, CO, settings, bo, EVENING);
+      // What a crash between storing claims and saving the run leaves: claims, and a run that lists no tasks.
+      t.db.tables.task_events.push({ task_id: "crashed", company_id: CO, owner: "bo@example.com", agent: "agent-bo", task_kind: "task", claims: JSON.stringify(["docs/"]) });
+      await tickPerson(t.h.ctx, CO, settings, bo, new Date(EVENING.getTime() + 5 * 60_000));
+      expect(boHolds(t)).toHaveLength(1); // Bo's plan is still open: a proposal may be in flight
+      await tickPerson(t.h.ctx, CO, settings, bo, NIGHT); // the plan expires: no tasks were proposed in time
+      expect(t.db.tables.handover_runs.find((r) => r.owner === "bo@example.com")!.status).toBe("expired");
+      expect(boHolds(t)).toEqual([]);
+      const later = await anaTriesDocs(t);
+      expect(later.data.moved).toEqual([]);
+    });
+
+    it("claims of tasks a handover lists are never swept", async () => {
+      const t = await setup();
+      await tickPerson(t.h.ctx, CO, settings, bo, EVENING);
+      await t.h.executeTool<Proposed>(TOOL_PROPOSE, { tasks: [{ title: "Rewrite docs", claims: ["docs/"] }] }, boRun);
+      await tickPerson(t.h.ctx, CO, settings, bo, new Date(EVENING.getTime() + 5 * 60_000));
+      expect(boHolds(t)).toHaveLength(1);
+    });
+  });
+
   it("never passes on a guess: an unreadable repository refuses the proposal", async () => {
     const t = await setup();
     t.h.seed({ projects: [{ id: "proj-1", companyId: CO, name: "App" } as unknown as Project], projectWorkspaces: [workspace(path.join(tmpdir(), "vt-no-such-repo"))] });

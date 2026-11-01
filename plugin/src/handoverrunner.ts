@@ -9,7 +9,7 @@ import type { HandoverClock } from "./schedule.js";
 import { randomUUID } from "node:crypto";
 import { ensureTaskRow, recordHandoff } from "./eventlog.js";
 import { HANDOFF_ORIGIN, HANDOVER_TASK_ORIGIN, PLAN_ORIGIN } from "./ids.js";
-import { openClaims, recordClaims, recordOverlap, releaseClaims } from "./claimstore.js";
+import { openClaims, recordClaims, recordOverlap, releaseClaims, releaseOrphanedClaims } from "./claimstore.js";
 import { movedTicketNote, ownerQuestions, preHandoverCheck, type Areas, type Overlap, type Verdict } from "./prehandover.js";
 import { readAreas } from "./repoareas.js";
 import { parseProposal, ProposalRefused } from "./proposal.js";
@@ -101,6 +101,9 @@ export async function startHandoverNow(ctx: PluginContext, companyId: string, se
 export async function tickPerson(ctx: PluginContext, companyId: string, settings: PluginSettings, person: Person, now: Date): Promise<HandoverDecision> {
   const clock = scheduleOf(settings, person, now);
   const decision = await decideAndApply(ctx, companyId, settings, person, clock, now);
+  // After the decision: a plan that expired just now frees what its crashed proposal claimed (B1).
+  const freed = await releaseOrphanedClaims(ctx.db, companyId, person.email);
+  if (freed.length) ctx.logger.warn("released claims a failed proposal left behind", { companyId, owner: person.email, tasks: freed.length });
   // Once a handover is done (possibly just now), build its handback email once.
   await maybeBrief(ctx, companyId, settings, person, clock, now);
   return decision;
@@ -389,8 +392,9 @@ export async function proposeHandover(
 ): Promise<ProposeResult> {
   const companyId = run.companyId;
   const tasks = parseProposal(params, person);
-  const handover = await getOpenRun(ctx.db, companyId, person.email);
-  if (!handover || handover.status !== "proposing" || !handover.planIssueId) throw new ProposalRefused("no handover plan is open for you right now");
+  const found = await getOpenRun(ctx.db, companyId, person.email);
+  if (!found || found.status !== "proposing" || !found.planIssueId) throw new ProposalRefused("no handover plan is open for you right now");
+  const handover: HandoverRun & { planIssueId: string } = { ...found, planIssueId: found.planIssueId };
   const plan = await ctx.issues.get(handover.planIssueId, companyId);
   if (!plan) throw new ProposalRefused("handover plan ticket not found");
 
@@ -412,85 +416,102 @@ export async function proposeHandover(
   const titled = tasks.map((t) => ({ title: "issueId" in t ? existing.get(t.issueId)!.title : t.title, claims: t.claims }));
   const verdicts = preHandoverCheck(person, settings.people, titled, open, areas);
 
-  const actor = { actorAgentId: run.agentId, actorRunId: run.runId };
-  const taskIds: string[] = [];
-  const lines: string[] = [];
-  const moved: Array<{ verdict: Verdict & { overlap: Overlap }; ticket: string; ticketId: string }> = [];
-  for (const [i, t] of tasks.entries()) {
-    const verdict = verdicts[i]!;
-    const keeper = verdict.overlap?.keeper ?? null;
-    const claimsLine = `claims ${t.claims.map((c) => `\`${c}\``).join(", ")}`;
-    let issue: NonNullable<Awaited<ReturnType<typeof ctx.issues.get>>>;
-    if ("issueId" in t) {
-      issue = existing.get(t.issueId)!;
-      if (keeper) {
-        await ctx.issues.update(issue.id, { assigneeAgentId: keeper.agentId }, companyId, actor);
-        await ctx.issues.createComment(issue.id, movedTicketNote(person, verdict as Verdict & { overlap: Overlap }), companyId, { authorAgentId: run.agentId });
+  // Claims are stored before the run lists their tasks (Paperclip gives plugins no
+  // transactions). If anything below fails, release them before reporting it (B1);
+  // a crash is caught by releaseOrphanedClaims on a later tick.
+  const claimed: string[] = [];
+  try {
+    return await proposeAndAsk();
+  } catch (err) {
+    await releaseClaims(ctx.db, claimed).catch((releaseErr) =>
+      ctx.logger.error("could not release the claims of a failed proposal", { companyId, error: releaseErr instanceof Error ? releaseErr.message : "unknown" }),
+    );
+    throw err;
+  }
+
+  async function proposeAndAsk(): Promise<ProposeResult> {
+    const actor = { actorAgentId: run.agentId, actorRunId: run.runId };
+    const taskIds: string[] = [];
+    const lines: string[] = [];
+    const moved: Array<{ verdict: Verdict & { overlap: Overlap }; ticket: string; ticketId: string }> = [];
+    for (const [i, t] of tasks.entries()) {
+      const verdict = verdicts[i]!;
+      const keeper = verdict.overlap?.keeper ?? null;
+      const claimsLine = `claims ${t.claims.map((c) => `\`${c}\``).join(", ")}`;
+      let issue: NonNullable<Awaited<ReturnType<typeof ctx.issues.get>>>;
+      if ("issueId" in t) {
+        issue = existing.get(t.issueId)!;
+        if (keeper) {
+          await ctx.issues.update(issue.id, { assigneeAgentId: keeper.agentId }, companyId, actor);
+          await ctx.issues.createComment(issue.id, movedTicketNote(person, verdict as Verdict & { overlap: Overlap }), companyId, { authorAgentId: run.agentId });
+        }
+      } else {
+        const proposedFor = `Proposed for the handover ${handover.handoverKey}.`;
+        issue = await ctx.issues.create({
+          companyId,
+          ...(projectId ? { projectId } : {}),
+          title: t.title,
+          description: keeper
+            ? `${movedTicketNote(person, verdict as Verdict & { overlap: Overlap })}${t.description ? `\n\n${t.description}` : ""}`
+            : t.description ? `${t.description}\n\n${proposedFor}` : proposedFor,
+          status: "backlog",
+          assigneeAgentId: keeper ? keeper.agentId : person.agentId,
+          originKind: keeper ? HANDOFF_ORIGIN : HANDOVER_TASK_ORIGIN,
+          executionWorkspaceSettings: taskWorkspaceSettings(),
+          actor,
+        });
       }
-    } else {
-      const proposedFor = `Proposed for the handover ${handover.handoverKey}.`;
-      issue = await ctx.issues.create({
-        companyId,
-        ...(projectId ? { projectId } : {}),
-        title: t.title,
-        description: keeper
-          ? `${movedTicketNote(person, verdict as Verdict & { overlap: Overlap })}${t.description ? `\n\n${t.description}` : ""}`
-          : t.description ? `${t.description}\n\n${proposedFor}` : proposedFor,
-        status: "backlog",
-        assigneeAgentId: keeper ? keeper.agentId : person.agentId,
-        originKind: keeper ? HANDOFF_ORIGIN : HANDOVER_TASK_ORIGIN,
-        executionWorkspaceSettings: taskWorkspaceSettings(),
-        actor,
-      });
+      const ticket = issue.identifier ?? issue.id;
+      if (keeper) {
+        // The keeper's agent proposes it in their own plan, with its own claims.
+        await recordHandoff(ctx.db, { taskId: issue.id, companyId, owner: person.email, agent: person.agentId, taskKind: "handoff" }, keeper.email);
+        await recordOverlap(ctx.db, { id: randomUUID(), companyId, handoverKey: handover.handoverKey, owner: person.email, title: verdict.title, ticketId: issue.id, overlap: verdict.overlap! });
+        moved.push({ verdict: verdict as Verdict & { overlap: Overlap }, ticket, ticketId: issue.id });
+        continue;
+      }
+      await ensureTaskRow(ctx.db, { taskId: issue.id, companyId, owner: person.email, agent: person.agentId, taskKind: "task" });
+      claimed.push(issue.id);
+      await recordClaims(ctx.db, issue.id, t.claims);
+      taskIds.push(issue.id);
+      lines.push(`- ${ticket}: ${issue.title} (${claimsLine})`);
     }
-    const ticket = issue.identifier ?? issue.id;
-    if (keeper) {
-      // The keeper's agent proposes it in their own plan, with its own claims.
-      await recordHandoff(ctx.db, { taskId: issue.id, companyId, owner: person.email, agent: person.agentId, taskKind: "handoff" }, keeper.email);
-      await recordOverlap(ctx.db, { id: randomUUID(), companyId, handoverKey: handover.handoverKey, owner: person.email, title: verdict.title, ticketId: issue.id, overlap: verdict.overlap! });
-      moved.push({ verdict: verdict as Verdict & { overlap: Overlap }, ticket, ticketId: issue.id });
-      continue;
-    }
-    await ensureTaskRow(ctx.db, { taskId: issue.id, companyId, owner: person.email, agent: person.agentId, taskKind: "task" });
-    await recordClaims(ctx.db, issue.id, t.claims);
-    taskIds.push(issue.id);
-    lines.push(`- ${ticket}: ${issue.title} (${claimsLine})`);
-  }
-  const questions = ownerQuestions(moved);
-  const now = new Date();
-  await stampTasks(ctx.db, taskIds, "proposed_at", now);
+    const questions = ownerQuestions(moved);
+    const now = new Date();
+    await stampTasks(ctx.db, taskIds, "proposed_at", now);
 
-  const interaction = await ctx.issues.requestConfirmation(
-    handover.planIssueId,
-    {
-      idempotencyKey: `vt-plan:${companyId}:${person.email}:${handover.handoverKey}`,
-      title: "Handover plan",
-      resolverPolicy: "human_only",
-      continuationPolicy: "none",
-      payload: {
-        version: 1,
-        prompt: `Approve ${person.email}'s handover plan? Their agent proposed these tasks; approving lets them run. Nothing shared changes until ${person.email} approves each result in the handback email.`,
-        acceptLabel: "Approve the plan",
-        rejectLabel: "Not this time",
-        allowDeclineReason: true,
-        supersedeOnUserComment: false,
-        detailsMarkdown: planDetails(lines, questions, notes),
+    const interaction = await ctx.issues.requestConfirmation(
+      handover.planIssueId,
+      {
+        idempotencyKey: `vt-plan:${companyId}:${person.email}:${handover.handoverKey}`,
+        title: "Handover plan",
+        resolverPolicy: "human_only",
+        continuationPolicy: "none",
+        payload: {
+          version: 1,
+          prompt: `Approve ${person.email}'s handover plan? Their agent proposed these tasks; approving lets them run. Nothing shared changes until ${person.email} approves each result in the handback email.`,
+          acceptLabel: "Approve the plan",
+          rejectLabel: "Not this time",
+          allowDeclineReason: true,
+          supersedeOnUserComment: false,
+          detailsMarkdown: planDetails(lines, questions, notes),
+        },
       },
-    },
-    companyId,
-    { authorAgentId: run.agentId },
-  );
+      companyId,
+      { authorAgentId: run.agentId },
+    );
 
-  if (!(await updateRun(ctx.db, handover, { status: "awaiting_approval", taskIds, interactionId: interaction.id }))) {
-    throw new ProposalRefused("the handover plan changed while proposing; try again");
+    if (!(await updateRun(ctx.db, handover, { status: "awaiting_approval", taskIds, interactionId: interaction.id }))) {
+      throw new ProposalRefused("the handover plan changed while proposing; try again");
+    }
+    claimed.length = 0; // the saved run lists these tasks now; their claims end with it
+    await ctx.issues.update(handover.planIssueId, { status: "in_review" }, companyId, actor);
+    return {
+      planIssueId: handover.planIssueId,
+      taskIds,
+      moved: moved.map((m) => ({ title: m.verdict.title, ticketId: m.ticketId, keeper: m.verdict.overlap.keeper.email })),
+      questions,
+    };
   }
-  await ctx.issues.update(handover.planIssueId, { status: "in_review" }, companyId, actor);
-  return {
-    planIssueId: handover.planIssueId,
-    taskIds,
-    moved: moved.map((m) => ({ title: m.verdict.title, ticketId: m.ticketId, keeper: m.verdict.overlap.keeper.email })),
-    questions,
-  };
 }
 
 /** What the owner sees on the plan: the tasks, then at most three questions, then notes. */
