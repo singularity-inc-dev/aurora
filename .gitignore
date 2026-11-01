@@ -155,3 +155,7 @@ vite.config.ts.timestamp-*
 
 # Email service state (git mirror) when run locally
 email-service/.state/
+
+# Python bytecode
+__pycache__/
+*.pyc
