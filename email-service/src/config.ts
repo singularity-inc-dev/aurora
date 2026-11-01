@@ -33,6 +33,8 @@ export interface ServiceConfig {
     apiUrl: string;
     gitUrl: string;
     syncMinutes: number;
+    /** An approval still not reported back after this long was interrupted, and is finished by the recovery. */
+    stuckMinutes: number;
   };
 }
 
@@ -100,6 +102,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
       apiUrl: url("GITHUB_API_URL", "https://api.github.com"),
       gitUrl: url("GITHUB_GIT_URL", "https://github.com"),
       syncMinutes: int("GITHUB_SYNC_MINUTES", 10),
+      stuckMinutes: int("GITHUB_STUCK_MINUTES", 15),
     },
   };
 }

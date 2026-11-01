@@ -7,7 +7,9 @@
 #    Paperclip from its lockfile, plugin and email service built, settings written
 #  - Paperclip in authenticated mode, reachable only through Caddy (HTTPS with a
 #    local certificate authority instead of Let's Encrypt; ports 8080/8443)
-#  - deploy/bin/vt-setup: owner account + admin claim, company, plugin, settings
+#  - deploy/bin/vt-setup: owner account + admin claim, company, plugin, settings,
+#    the owner's agent as its own system user over SSH (the test users of
+#    scripts/it/lib/setup-test-users.sh stand in for the users the kit makes)
 #  - invite links over HTTPS: a new person joins; used/expired/forged links refused
 #  - vt-backup, a simulated disaster, vt-restore, and a simulated reboot
 # Services are started the way their systemd unit files say (scripts/rehearsal/unit.mjs);
@@ -97,10 +99,14 @@ check "stand-ins are up" "$(curl -s "$MP_API/messages" | json 'd.total')/$([ -f 
 
 echo "== 3. The owner's steps before installing: the app, install.conf, secrets"
 mkdir -p "$VT_ROOT/opt/vision-and-tom" "$VT_ROOT/etc/vision-and-tom"
-# The app as the owner downloads it (a copy of this checkout, without local build output).
-mkdir -p "$VT_ROOT/opt/vision-and-tom/app"
+# The app as the owner downloads it (DEPLOY.md step 6, git clone): this checkout without
+# local build output, committed to a stand-in for the app's repository on GitHub.
+mkdir -p "$R/app-src"
 tar -C "$ROOT" --exclude=./.git --exclude=./.paperclip-data --exclude=./.vendor --exclude=./.test-logs --exclude=node_modules --exclude=dist -cf - . |
-  tar -C "$VT_ROOT/opt/vision-and-tom/app" -xf -
+  tar -C "$R/app-src" -xf -
+git -C "$R/app-src" init -q -b main && git -C "$R/app-src" add -A && git -C "$R/app-src" -c user.email=t@example.com -c user.name=T commit -q -m "the version under test"
+git clone -q --bare "$R/app-src" "$R/app-origin.git"
+git clone -q "$R/app-origin.git" "$VT_ROOT/opt/vision-and-tom/app"
 sed -e "s/^DOMAIN=.*/DOMAIN=$DOMAIN/" -e "s/^ACME_EMAIL=.*/ACME_EMAIL=owner@example.com/" \
   -e "s/^SMTP_HOST=.*/SMTP_HOST=127.0.0.1/" -e "s/^SMTP_PORT=.*/SMTP_PORT=1028/" -e "s/^SMTP_USER=.*/SMTP_USER=owner@example.com/" \
   -e 's/^MAIL_FROM=.*/MAIL_FROM="Vision and Tom <owner@example.com>"/' -e "s#^GITHUB_REPO=.*#GITHUB_REPO=acme/app#" \
@@ -146,10 +152,19 @@ check "public sign-up is refused (accounts only through invites)" "$("${HTTPS[@]
 MY_IP=$(hostname -I | awk '{print $1}')
 check "Paperclip and the email service are not reachable from outside (127.0.0.1 only)" "$(curl -s -m 3 -o /dev/null -w '%{http_code}' "http://$MY_IP:3398/api/health")/$(curl -s -m 3 -o /dev/null -w '%{http_code}' "http://$MY_IP:3397/health")" "000/000"
 
+echo "== 5b. The agents' SSH server (stand-in for Ubuntu's sshd with the kit's rules and hidden processes)"
+LOG_DIR="$LOGS" EXTRA_PIDS="" SSHBED="$R/sshd" SSHBED_PORT=2399 SSHBED_AUTH_DIR="$VT_ROOT/etc/ssh/vision-and-tom"
+. "$ROOT/scripts/it/lib/sshbed.sh"
+if sshbed_require && sshbed_start; then EXTRA="$EXTRA $SSHBED_PID"; pass "sshd for the agents' users is up on 127.0.0.1:$SSHBED_PORT"; else fail "sshd for the agents' users"; fi
+# The kit makes one user per person; here the test users stand in, given out in this order
+# (owner, Dee, Eve who never joins, Fay; the last one is shared by any invite after that).
+export VT_SSH_PORT=$SSHBED_PORT VT_SSH_HOST_KEY_PUB="$SSHBED/host_key.pub" VT_REHEARSAL_AGENT_USERS="vt-agent-ana vt-agent-bo vt-checks vt-agent-cy"
+STANDIN_CLAUDE="$VT_ROOT/opt/vision-and-tom/app/scripts/it/lib/fake-claude"
+
 echo "== 6. vt-setup (the owner's account, company, plugin, settings)"
 OWNER_PW=$(rand 12)
 if ! OWNER_NAME="Olive Owner" OWNER_EMAIL=owner@example.com OWNER_TIMEZONE=Europe/London OWNER_PASSWORD="$OWNER_PW" \
-  VT_INVITE_DEFAULTS='{"agentAdapterType":"process","agentAdapterConfig":{"command":"pwd"},"expiresMinutes":60}' \
+  VT_INVITE_DEFAULTS="{\"agentAdapterType\":\"claude_local\",\"agentAdapterConfig\":{\"command\":\"$STANDIN_CLAUDE\"},\"expiresMinutes\":60}" \
   VT_PROJECT_CLONE_URL="$GH/acme/app.git" bash "$KIT_BIN/vt-setup" >"$LOGS/setup.log" 2>&1; then
   echo "  vt-setup failed; last lines:"; tail -15 "$LOGS/setup.log" | sed 's/^/    /'
 fi
@@ -166,11 +181,34 @@ CID=$(sed -n 's/^VT_COMPANY_ID=//p' "$VT_ROOT/etc/vision-and-tom/email-service.e
 board() { curl -s -H "authorization: Bearer $API_KEY" -H 'content-type: application/json' "$@"; }
 PLUGIN_ID=$(board "$PC/api/plugins" | json 'd.find(p=>(p.pluginKey||p.key)==="vision-and-tom.night-agents").id')
 people() { board -X POST "$PC/api/plugins/$PLUGIN_ID/data/people" -d "{\"companyId\":\"$CID\",\"params\":{}}"; }
-check "the plugin is installed and its settings are valid" "$(people | json 'd.data.ok')" "true"
+check "the plugin is installed and its settings are valid" "$(people | json 'd.data.ok || JSON.stringify([...d.data.settingsProblems, ...d.data.agents.filter(a=>a.problems.length).map(a=>a.email+": "+a.problems.join("; "))])')" "true"
 check "the owner is the first person, with their own agent" "$(people | json 'd.data.people.map(p=>p.email).join(",")')" "owner@example.com"
 check "the project repository was cloned for the agents" "$(git -C "$VT_ROOT/var/lib/paperclip/repos/project" log --format=%s -1)" "init"
 check "the email service is up behind HTTPS" "$("${HTTPS[@]}" "$URL/vt/health")" "ok"
 check "the email service's settings file holds no secret" "$(grep -cF -e "$GH_TOKEN_VALUE" -e "$API_KEY" "$VT_ROOT/etc/vision-and-tom/email-service.env" | tr -d ' ')" "0"
+echo "-- the owner's agent runs as its own system user"
+person() { board "$PC/api/plugins/$PLUGIN_ID/config?companyId=$CID" | json "d.configJson.people.find(p=>p.email==='$1')"; }
+OWNER_ENV=$(person owner@example.com | json 'd.agentEnvironmentId')
+check "the owner's agent is bound to its own environment and user" "$(person owner@example.com | json 'd.agentUser')/$(board "$PC/api/agents/$(person owner@example.com | json 'd.agentId')" | json "d.defaultEnvironmentId==='$OWNER_ENV' && d.adapterConfig.engine")" "vt-agent-ana/cli"
+check "Paperclip logs in as that user over SSH (environment probe)" "$(board -X POST "$PC/api/environments/$OWNER_ENV/probe" -d '{}' | json 'd.ok && d.details.username')" "vt-agent-ana"
+check "its keys are in the kit's root-owned folder: Paperclip's (commands only) and the checks key (runner only)" "$(grep -c '^from="127.0.0.1,::1",restrict ssh-ed25519' "$VT_ROOT/etc/ssh/vision-and-tom/vt-agent-ana")/$(grep -c '^restrict,command=".*/deploy/bin/vt-check-runner" ssh-ed25519' "$VT_ROOT/etc/ssh/vision-and-tom/vt-agent-ana")/$(stat -c '%U %a' "$VT_ROOT/etc/ssh/vision-and-tom/vt-agent-ana")" "1/1/root 644"
+check "no private key was left behind on disk" "$(ls -d "${TMPDIR:-/tmp}"/vt-agent-keys.* 2>/dev/null | wc -l | tr -d ' ')" "0"
+echo "-- the owner chooses their own Claude subscription (vt-model-access with their SSH public key)"
+ssh-keygen -q -t ed25519 -N "" -C "olive@laptop" -f "$R/olive-key" >/dev/null
+MA_OUT=$(bash "$KIT_BIN/vt-model-access" owner@example.com subscription "$(cat "$R/olive-key.pub")" 2>&1)
+check "vt-model-access prints the sign-in command for the owner's own computer" "$(echo "$MA_OUT" | grep -c "ssh -t vt-agent-ana@$DOMAIN")" "1"
+check "the owner's key may only start Claude Code's own sign-in, on their agent's user" "$(grep -c "^restrict,pty,command=\".*/deploy/bin/vt-claude-login\" $(cut -d' ' -f1-2 "$R/olive-key.pub") vt-owner-login\$" "$VT_ROOT/etc/ssh/vision-and-tom/vt-agent-ana")" "1"
+check "the plugin's isolation audit passes (isolation required)" "$(board -X POST "$PC/api/plugins/$PLUGIN_ID/data/route-audit" -d "{\"companyId\":\"$CID\",\"params\":{}}" | json 'd.data.ok && d.data.isolationRequired')" "true"
+as_agent() { runuser -u vt-agent-ana -- "$@" >/dev/null 2>&1 && echo allowed || echo refused; }
+check "the agent's user cannot read Paperclip's config, data folder, database password or the backups" "$(as_agent cat "$VT_ROOT/var/lib/paperclip/instances/default/config.json")/$(as_agent ls "$VT_ROOT/var/lib/paperclip")/$(as_agent cat "$SECRETS/db-url")/$(as_agent ls "$VT_ROOT/var/backups/vision-and-tom")" "refused/refused/refused/refused"
+check "the agent's user cannot log in to the database (no password, or Paperclip's embedded default)" "$(as_agent env PGCONNECT_TIMEOUT=5 /usr/lib/postgresql/16/bin/psql -w -h 127.0.0.1 -p "$PG_PORT" -U paperclip -d paperclip -tAc 'select 1')/$(as_agent env PGPASSWORD=paperclip PGCONNECT_TIMEOUT=5 /usr/lib/postgresql/16/bin/psql -w -h 127.0.0.1 -p "$PG_PORT" -U paperclip -d paperclip -tAc 'select 1')" "refused/refused"
+
+echo "-- Hand over now: the owner's own page, behind their Paperclip sign-in"
+check "without signing in, the page asks to sign in first" "$("${HTTPS[@]}" -o /dev/null -w '%{http_code}' "$URL/vt/handover")" "401"
+check "signed in, the owner sees their schedule and the button" "$("${HTTPS[@]}" -H "cookie: $OWNER_COOKIE" "$URL/vt/handover" | grep -c 'Hand over now</button>')" "1"
+check "a form sent from another site is refused" "$("${HTTPS[@]}" -o /dev/null -w '%{http_code}' -X POST -H "cookie: $OWNER_COOKIE" -H "origin: https://evil.example" "$URL/vt/handover")" "403"
+check "the button starts the owner's handover now" "$("${HTTPS[@]}" -X POST -H "cookie: $OWNER_COOKIE" -H "origin: $URL" "$URL/vt/handover" | grep -c 'Started.')" "1"
+check "the plugin shows it: a Hand over now, planning" "$(board -X POST "$PC/api/plugins/$PLUGIN_ID/data/handover-status" -d "{\"companyId\":\"$CID\",\"params\":{}}" | json "(d.data.find(r=>r.owner==='owner@example.com')||{}).kind+' '+(d.data.find(r=>r.owner==='owner@example.com')||{}).status")" "now proposing"
 
 echo "== 7. Invite link: a new person joins through one link"
 INVITE_OUT=$(bash "$KIT_BIN/vt-invite" dee@example.com Europe/Paris 2>&1)
@@ -187,8 +225,17 @@ DEE_COOKIE=$(signin dee@example.com "$DEE_PW")
 check "Dee's Paperclip account works and is in the company" "$("${HTTPS[@]}" -H "cookie: $DEE_COOKIE" "$URL/api/companies" | json '(Array.isArray(d)?d:d.items).map(c=>c.name).join(",")')" "Rehearsal team"
 DEE_AGENT=$(people | json 'd.data.people.find(p=>p.email==="dee@example.com").agentId')
 check "Dee's row is in the plugin settings, bound to one new agent" "$([ -n "$DEE_AGENT" ] && echo yes)/$(people | json 'd.data.people.find(p=>p.email==="dee@example.com").timezone')" "yes/Europe/Paris"
-check "Dee's agent has safe defaults (no agent or skill creation, budget set)" "$(board "$PC/api/agents/$DEE_AGENT" | json '[d.name,d.permissions.canCreateAgents,d.permissions.canCreateSkills,d.role,d.budgetMonthlyCents].join("/")')" "Dee Doe's night agent/false/false/engineer/3000"
-check "the plugin's route audit accepts Dee's agent" "$(board -X POST "$PC/api/plugins/$PLUGIN_ID/data/route-audit" -d "{\"companyId\":\"$CID\",\"params\":{}}" | json 'd.data.ok')" "true"
+check "Dee's agent has safe defaults (no agent or skill creation, budget set)" "$(board "$PC/api/agents/$DEE_AGENT" | json '[d.name,d.permissions.canCreateAgents,d.permissions.canCreateSkills,d.role,d.budgetMonthlyCents].join("/")')" "Dee Doe's agent/false/false/engineer/3000"
+echo "-- Dee chooses her own API key: she stores it in Paperclip herself, the admin only points her agent at it"
+DEE_KEY="sk-ant-standin-$(rand 12)"
+"${HTTPS[@]}" -o /dev/null -X POST -H "cookie: $DEE_COOKIE" -H "origin: $URL" -H 'content-type: application/json' -d "{\"name\":\"Dee's Anthropic key\",\"key\":\"anthropic-api-key-dee\",\"value\":\"$DEE_KEY\"}" "$URL/api/companies/$CID/secrets"
+check "vt-model-access binds Dee's own key to Dee's agent only" "$(bash "$KIT_BIN/vt-model-access" dee@example.com api-key anthropic-api-key-dee 2>&1 | grep -c "now uses their own API key")/$(board "$PC/api/agents/$DEE_AGENT" | json 'd.adapterConfig.env.ANTHROPIC_API_KEY.type')" "1/secret_ref"
+check "Dee's key cannot also be given to the owner's agent (never one shared account)" "$(bash "$KIT_BIN/vt-model-access" owner@example.com api-key anthropic-api-key-dee 2>&1 | grep -c "already dee@example.com's key")" "1"
+check "the key's value is not in the plugin settings or the agent's settings" "$(board "$PC/api/plugins/$PLUGIN_ID/config?companyId=$CID" | grep -cF "$DEE_KEY")/$(board "$PC/api/agents/$DEE_AGENT" | grep -cF "$DEE_KEY")" "0/0"
+unset DEE_KEY
+DEE_ENV=$(person dee@example.com | json 'd.agentEnvironmentId')
+check "Dee's agent runs as its own system user (environment probe)" "$(person dee@example.com | json 'd.agentUser')/$(board -X POST "$PC/api/environments/$DEE_ENV/probe" -d '{}' | json 'd.ok && d.details.username')/$(board "$PC/api/agents/$DEE_AGENT" | json "d.defaultEnvironmentId==='$DEE_ENV'")" "vt-agent-bo/vt-agent-bo/true"
+check "the plugin's route audit accepts Dee's agent" "$(board -X POST "$PC/api/plugins/$PLUGIN_ID/data/route-audit" -d "{\"companyId\":\"$CID\",\"params\":{}}" | json 'd.data.ok || JSON.stringify([...d.data.settingsProblems, ...d.data.agents.filter(a=>a.problems.length).map(a=>a.email+": "+a.problems.join("; "))])')" "true"
 check "a used invite link is refused (POST)" "$("${HTTPS[@]}" -o /dev/null -w '%{http_code}' -X POST --data-urlencode "name=Mallory" --data-urlencode "password=$(rand 12)" "$LINK")/$("${HTTPS[@]}" -X POST --data-urlencode "name=M" --data-urlencode "password=$(rand 12)" "$LINK" | grep -oE '<h1>[^<]*</h1>')" "409/<h1>Invite already used</h1>"
 check "a used invite link is refused (opening it)" "$("${HTTPS[@]}" "$LINK" | grep -oE '<h1>[^<]*</h1>')" "<h1>Invite already used</h1>"
 check "still exactly two people" "$(people | json 'd.data.people.length')" "2"
@@ -204,6 +251,10 @@ echo "  waiting 65s for it to expire..."; sleep 65
 check "the expired invite link is refused (opening it)" "$("${HTTPS[@]}" "$EXP_LINK" | grep -oE '<h1>[^<]*</h1>')" "<h1>Invite expired</h1>"
 check "the expired invite link is refused (POST), no account made" "$("${HTTPS[@]}" -o /dev/null -w '%{http_code}' -X POST --data-urlencode "name=Eve" --data-urlencode "password=$(rand 12)" "$EXP_LINK")/$(signin eve@example.com whatever-password | grep -c . | tr -d ' ')" "409/0"
 board -X POST "$PC/api/plugins/$PLUGIN_ID/config" -d "{\"companyId\":\"$CID\",\"configJson\":$CFG}" >/dev/null
+
+echo "-- the pilot's numbers (vt-numbers, as the admin)"
+NUM_OUT=$(bash "$KIT_BIN/vt-numbers" "$R/numbers.csv" 2>&1)
+check "vt-numbers writes the measurement sheet and prints the team's measures" "$(head -1 "$R/numbers.csv" | tr -d '\r' | cut -d, -f1-3)/$(echo "$NUM_OUT" | grep -c '^Team: ')" "Date,Handover,Owner/1"
 
 echo "== 8. vt-check (what the owner runs to see that everything works)"
 bash "$KIT_BIN/vt-backup" >"$LOGS/backup1.log" 2>&1
@@ -246,6 +297,8 @@ for u in $(awk '!s[$0]++' "$STATE/enabled"); do "$R/svc-hook.sh" start "$u"; don
 for _ in $(seq 1 90); do "${HTTPS[@]}" -o /dev/null "$URL/vt/health" 2>/dev/null && curl -fs -o /dev/null "$PC/api/health" && break; sleep 1; done
 check "the services that start at boot" "$(awk '!s[$0]++' "$STATE/enabled" | sort | tr '\n' ' ')" "caddy.service paperclip.service vt-email.service "
 check "after the reboot: Paperclip and the email service answer over HTTPS" "$("${HTTPS[@]}" -o /dev/null -w '%{http_code}' "$URL/api/health")/$("${HTTPS[@]}" "$URL/vt/health")" "200/ok"
+# The plugin's worker starts a little after Paperclip answers; give it up to a minute.
+for _ in $(seq 1 60); do [ "$(people | json 'd.data.people.length' 2>/dev/null)" = "2" ] && break; sleep 1; done
 check "after the reboot: data is still there" "$(people | json 'd.data.people.length')" "2"
 for unit in paperclip vt-email caddy; do
   check "$unit.service restarts by itself and starts at boot" "$(grep -c '^Restart=always$' "$UNITS/$unit.service")/$(grep -c '^WantedBy=multi-user.target$' "$UNITS/$unit.service")" "1/1"
@@ -260,6 +313,86 @@ echo "== 11. Secrets stay with the service that needs them"
 check "the GitHub token is in no Paperclip file" "$(grep -rlF "$GH_TOKEN_VALUE" "$VT_ROOT/var/lib/paperclip" --exclude-dir=repos 2>/dev/null | wc -l | tr -d ' ')" "0"
 check "the GitHub token is not in the database" "$(runuser -u postgres -- env PGHOST="$PG_HOST" PGPORT="$PG_PORT" pg_dump paperclip | grep -cF "$GH_TOKEN_VALUE" | tr -d ' ')" "0"
 check "the push token is only given to the email service unit" "$(grep -l 'github-token' "$UNITS"/*.service | xargs -n1 basename | tr '\n' ' ')" "vt-email.service "
+
+echo "== 12. A join that fails halfway does not use up the invite (spec gap 27)"
+# Fay's invite (made after the restore). Paperclip refuses to create an agent of an unknown type,
+# which makes her join fail after her account and membership were made: a real failure halfway.
+CFG=$(board "$PC/api/plugins/$PLUGIN_ID/config?companyId=$CID" | json 'd.configJson')
+board -X POST "$PC/api/plugins/$PLUGIN_ID/config" -d "{\"companyId\":\"$CID\",\"configJson\":$(echo "$CFG" | json '({...d,invites:{...d.invites,agentAdapterType:"no_such_adapter"}})')}" >/dev/null
+FAY_PW=$(rand 12)
+fay_join() { "${HTTPS[@]}" -X POST --data-urlencode "name=Fay Fox" --data-urlencode "password=$1" --data-urlencode "timezone=Europe/Rome" "$NEW_LINK"; }
+OUT=$(fay_join "$FAY_PW")
+check "the join fails while creating her agent; the page says the link still works" "$(echo "$OUT" | grep -oE '<h1>[^<]*</h1>')/$(echo "$OUT" | grep -c 'while creating your agent')/$(echo "$OUT" | grep -c 'Your invite link still works')" "<h1>Something went wrong</h1>/1/1"
+check "her account was made before the failure, but she is not in the settings yet" "$(signin fay@example.com "$FAY_PW" | grep -c . | tr -d ' ')/$(people | json 'd.data.people.some(p=>p.email==="fay@example.com")')" "1/false"
+check "the link still opens the join form" "$("${HTTPS[@]}" "$NEW_LINK" | grep -c 'You were invited as <strong>fay@example.com')" "1"
+board -X POST "$PC/api/plugins/$PLUGIN_ID/config" -d "{\"companyId\":\"$CID\",\"configJson\":$CFG}" >/dev/null
+OUT=$(fay_join "$(rand 12)")
+check "a try with another password shows the form again and asks for the first one" "$(echo "$OUT" | grep -c 'type the same password you chose then')/$(echo "$OUT" | grep -c '<form method=\"post\"')" "1/1"
+OUT=$(fay_join "$FAY_PW")
+check "a try with the same password joins (her account from the first try is reused)" "$(echo "$OUT" | grep -oE '<h1>[^<]*</h1>')" "<h1>You&#39;re in</h1>"
+FAY_ENV=$(person fay@example.com | json 'd.agentEnvironmentId')
+FAY_AGENT=$(person fay@example.com | json 'd.agentId')
+check "Fay is in the company, with exactly one agent in her own environment, locked down" "$("${HTTPS[@]}" -H "cookie: $(signin fay@example.com "$FAY_PW")" "$URL/api/companies" | json '(Array.isArray(d)?d:d.items).length')/$(board "$PC/api/companies/$CID/agents" | json "d.filter(a=>a.defaultEnvironmentId==='$FAY_ENV').length")/$(board "$PC/api/agents/$FAY_AGENT" | json '[d.permissions.canCreateAgents,d.permissions.canCreateSkills].join()')" "1/1/false,false"
+check "one Paperclip account for her email" "$(runuser -u postgres -- env PGHOST="$PG_HOST" PGPORT="$PG_PORT" psql -tAc "select count(*) from \"user\" where email='fay@example.com'" paperclip 2>/dev/null)" "1"
+check "the link is used now" "$("${HTTPS[@]}" "$NEW_LINK" | grep -oE '<h1>[^<]*</h1>')" "<h1>Invite already used</h1>"
+check "the plugin's audit has one thing left for her: choosing her own Claude access (DEPLOY.md step 12)" "$(board -X POST "$PC/api/plugins/$PLUGIN_ID/data/route-audit" -d "{\"companyId\":\"$CID\",\"params\":{}}" | json 'JSON.stringify([...d.data.settingsProblems, ...d.data.agents.filter(a=>a.problems.length).map(a=>a.email+": "+a.problems.join("; "))])')" '["fay@example.com: no Claude access chosen for this person yet: their own subscription or API key (vt-model-access)"]'
+ssh-keygen -q -t ed25519 -N "" -C "fay@laptop" -f "$R/fay-key" >/dev/null
+bash "$KIT_BIN/vt-model-access" fay@example.com subscription "$(cat "$R/fay-key.pub")" >/dev/null 2>&1
+check "after she chooses her own Claude subscription, the audit accepts every agent" "$(board -X POST "$PC/api/plugins/$PLUGIN_ID/data/route-audit" -d "{\"companyId\":\"$CID\",\"params\":{}}" | json 'd.data.ok || JSON.stringify([...d.data.settingsProblems, ...d.data.agents.filter(a=>a.problems.length).map(a=>a.email+": "+a.problems.join("; "))])')" "true"
+
+echo "== 13. A GitHub team in CODEOWNERS: vt-check names it, so the admin can list people instead"
+PROJ="$VT_ROOT/var/lib/paperclip/repos/project"
+PROJ_USER=$(stat -c %U "$PROJ")
+printf '/src/ @acme/web\n/docs/ owner@example.com\n' >"$R/CODEOWNERS"
+install -o "$PROJ_USER" -m 644 "$R/CODEOWNERS" "$PROJ/CODEOWNERS"
+runuser -u "$PROJ_USER" -- git -C "$PROJ" add CODEOWNERS
+runuser -u "$PROJ_USER" -- git -C "$PROJ" -c user.email=owner@example.com -c user.name=Olive commit -q -m "owner areas"
+VT_CHECK_URL="$URL" VT_CHECK_CACERT="$CA" VT_CHECK_MIN_CERT_DAYS=0 bash "$KIT_BIN/vt-check" >"$LOGS/check-teams.log" 2>&1 || true
+check "vt-check warns, naming the team and its line, and does not fail for it" "$(grep -c 'WARNING  CODEOWNERS names the GitHub team @acme/web (line 1)' "$LOGS/check-teams.log")/$(tail -1 "$LOGS/check-teams.log")" "1/All good, but 1 warning(s) above."
+
+echo "== 14. Stop everything at once (vt-stop), then start again (vt-start)"
+# Stand-in for an agent's program that is still running when the owner pulls the plug.
+runuser -u vt-agent-ana -- sleep 600 &
+sleep 1
+STOP_OUT=$(bash "$KIT_BIN/vt-stop" 2>&1); echo "$STOP_OUT" >"$LOGS/stop.log"
+check "vt-stop says everything stopped" "$(echo "$STOP_OUT" | grep -c '^==> Stopped')" "1"
+check "Paperclip and the email service are down; links do nothing" "$("${HTTPS[@]}" -o /dev/null -w '%{http_code}' "$URL/api/health")/$("${HTTPS[@]}" -o /dev/null -w '%{http_code}' "$LINK")" "502/502"
+check "the agent's leftover program was ended" "$(ps -u vt-agent-ana -o stat= | grep -cv '^Z')" "0"
+START_OUT=$(VT_CHECK_URL="$URL" VT_CHECK_CACERT="$CA" VT_CHECK_MIN_CERT_DAYS=0 bash "$KIT_BIN/vt-start" 2>&1)
+for _ in $(seq 1 60); do [ "$(people | json 'd.data.people.length' 2>/dev/null)" = "3" ] && break; sleep 1; done
+check "vt-start brings it back and vt-check passes" "$(echo "$START_OUT" | grep -c '^All good')/$("${HTTPS[@]}" "$URL/vt/health")/$(people | json 'd.data.people.length')" "1/ok/3"
+
+echo "== 15. vt-update: a new version without a full reinstall, then back again"
+APP_DIR="$VT_ROOT/opt/vision-and-tom/app"
+UPD=(env VT_CHECK_URL="$URL" VT_CHECK_CACERT="$CA" VT_CHECK_MIN_CERT_DAYS=0 bash "$KIT_BIN/vt-update")
+backups() { ls "$VT_ROOT/var/backups/vision-and-tom"/vt-backup-*.tar | wc -l | tr -d ' '; }
+installed() { board "$PC/api/plugins" | json 'd.filter(p=>(p.pluginKey||p.key)==="vision-and-tom.night-agents").map(p=>p.version+"/"+p.status).join()'; }
+OLD_COMMIT=$(git -C "$APP_DIR" rev-parse HEAD)
+OLD_V=$(node -p "require('$APP_DIR/plugin/package.json').version")
+NEW_V=$(node -p "const [a,b,c]='$OLD_V'.split('.').map(Number);[a,b,c+1].join('.')")
+N=$(backups)
+check "nothing new: vt-update says so, makes no backup and changes nothing" "$("${UPD[@]}" 2>&1 | grep -c 'Nothing to do')/$(backups)" "1/$N"
+echo "# changed by hand" >>"$APP_DIR/README.md"
+check "a hand-changed app folder is refused before anything changes" "$("${UPD[@]}" 2>&1 | grep -c 'changed by hand')/$(backups)" "1/$N"
+git -C "$APP_DIR" checkout -q -- README.md
+# The next version on "GitHub": the plugin's version goes up, so Paperclip must take it in again.
+sed -i "s/\"version\": \"$OLD_V\"/\"version\": \"$NEW_V\"/" "$R/app-src/plugin/package.json"
+sed -i "s/version: \"$OLD_V\"/version: \"$NEW_V\"/" "$R/app-src/plugin/src/manifest.ts"
+# ...and Paperclip's service file changes too, so Paperclip itself must restart (as when its version changes).
+sed -i '0,/^\[Service\]$/s//[Service]\n# rehearsal: the next version/' "$R/app-src/deploy/systemd/paperclip.service"
+git -C "$R/app-src" -c user.email=t@example.com -c user.name=T commit -qam "the next version" && git -C "$R/app-src" push -q "$R/app-origin.git" main
+NEW_COMMIT=$(git -C "$R/app-src" rev-parse HEAD)
+OUT=$("${UPD[@]}" 2>&1); echo "$OUT" >"$LOGS/update.log"
+check "vt-update finished, checked by vt-check" "$(echo "$OUT" | grep -c "^==> Updated to main ($(echo "$NEW_COMMIT" | cut -c1-7))")/$(echo "$OUT" | grep -c '^All good')" "1/1"
+check "it said what changes (plugin version; Node, Caddy and Paperclip unchanged)" "$(echo "$OUT" | grep -c "plugin $OLD_V -> $NEW_V")/$(echo "$OUT" | grep -c 'Node, Caddy and Paperclip versions: unchanged')" "1/1"
+check "it made a backup first" "$(backups)" "$((N + 1))"
+check "the app is at the new version" "$(git -C "$APP_DIR" rev-parse HEAD)" "$NEW_COMMIT"
+check "Paperclip runs the new plugin version, ready; Paperclip restarted (its service changed), Caddy kept running" "$(installed)/$(echo "$OUT" | grep -c 'Paperclip restarted')/$(echo "$OUT" | grep -c 'Caddy: unchanged, kept running')/$(grep -c 'rehearsal: the next version' "$UNITS/paperclip.service")" "$NEW_V/ready/1/1/1"
+check "settings and data were kept: three people, Dee's used invite still refused (signature checked, plugin tables read)" "$(people | json 'd.data.people.length')/$("${HTTPS[@]}" "$LINK" | grep -oE '<h1>[^<]*</h1>')" "3/<h1>Invite already used</h1>"
+check "Fay can still sign in and sees the company" "$("${HTTPS[@]}" -H "cookie: $(signin fay@example.com "$FAY_PW")" "$URL/api/companies" | json '(Array.isArray(d)?d:d.items).length')" "1"
+OUT=$("${UPD[@]}" "$(echo "$OLD_COMMIT" | cut -c1-12)" 2>&1); echo "$OUT" >"$LOGS/update-back.log"
+check "going back: vt-update to the earlier version" "$(echo "$OUT" | grep -c '^==> Updated to')/$(git -C "$APP_DIR" rev-parse HEAD)/$(installed)" "1/$OLD_COMMIT/$OLD_V/ready"
+check "after going back the data is still there" "$(people | json 'd.data.people.length')/$("${HTTPS[@]}" "$LINK" | grep -oE '<h1>[^<]*</h1>')" "3/<h1>Invite already used</h1>"
 
 echo
 echo "Result: $PASS passed, $FAIL failed"
