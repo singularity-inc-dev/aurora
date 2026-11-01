@@ -203,12 +203,32 @@ as_agent() { runuser -u vt-agent-ana -- "$@" >/dev/null 2>&1 && echo allowed || 
 check "the agent's user cannot read Paperclip's config, data folder, database password or the backups" "$(as_agent cat "$VT_ROOT/var/lib/paperclip/instances/default/config.json")/$(as_agent ls "$VT_ROOT/var/lib/paperclip")/$(as_agent cat "$SECRETS/db-url")/$(as_agent ls "$VT_ROOT/var/backups/vision-and-tom")" "refused/refused/refused/refused"
 check "the agent's user cannot log in to the database (no password, or Paperclip's embedded default)" "$(as_agent env PGCONNECT_TIMEOUT=5 /usr/lib/postgresql/16/bin/psql -w -h 127.0.0.1 -p "$PG_PORT" -U paperclip -d paperclip -tAc 'select 1')/$(as_agent env PGPASSWORD=paperclip PGCONNECT_TIMEOUT=5 /usr/lib/postgresql/16/bin/psql -w -h 127.0.0.1 -p "$PG_PORT" -U paperclip -d paperclip -tAc 'select 1')" "refused/refused"
 
-echo "-- Hand over now: the owner's own page, behind their Paperclip sign-in"
+echo "-- Hand over: the owner's own page, behind their Paperclip sign-in"
+check "vt-setup made the email service's account (the owner's, who made its key) the only caller of the plugin's routes" "$(board "$PC/api/plugins/$PLUGIN_ID/config?companyId=$CID" | json 'd.configJson.serviceUserId')" "$("${HTTPS[@]}" -H "cookie: $OWNER_COOKIE" "$URL/api/auth/get-session" | json 'd.user.id')"
+OWNER_AGENT=$(person owner@example.com | json 'd.agentId')
+PROJECT_ID=$(board "$PC/api/plugins/$PLUGIN_ID/config?companyId=$CID" | json 'd.configJson.handover.projectId')
+OWNER_TICKET=$(board -X POST "$PC/api/companies/$CID/issues" -d "{\"title\":\"Add a greeting\",\"description\":\"Say hello in greeting.txt\",\"projectId\":\"$PROJECT_ID\",\"assigneeAgentId\":\"$OWNER_AGENT\",\"status\":\"backlog\"}" | json 'd.id')
 check "without signing in, the page asks to sign in first" "$("${HTTPS[@]}" -o /dev/null -w '%{http_code}' "$URL/vt/handover")" "401"
-check "signed in, the owner sees their schedule and the button" "$("${HTTPS[@]}" -H "cookie: $OWNER_COOKIE" "$URL/vt/handover" | grep -c 'Hand over now</button>')" "1"
+HO_PAGE=$("${HTTPS[@]}" -H "cookie: $OWNER_COOKIE" "$URL/vt/handover")
+check "signed in, the owner sees their backlog ticket with a note to write, and both buttons" "$(echo "$HO_PAGE" | grep -c "value=\"$OWNER_TICKET\"")/$(echo "$HO_PAGE" | grep -c 'value="now">Hand over now</button>')/$(echo "$HO_PAGE" | grep -c 'value="scheduled">Hand over at my scheduled time')" "1/1/1"
 check "a form sent from another site is refused" "$("${HTTPS[@]}" -o /dev/null -w '%{http_code}' -X POST -H "cookie: $OWNER_COOKIE" -H "origin: https://evil.example" "$URL/vt/handover")" "403"
-check "the button starts the owner's handover now" "$("${HTTPS[@]}" -X POST -H "cookie: $OWNER_COOKIE" -H "origin: $URL" "$URL/vt/handover" | grep -c 'Started.')" "1"
-check "the plugin shows it: a Hand over now, planning" "$(board -X POST "$PC/api/plugins/$PLUGIN_ID/data/handover-status" -d "{\"companyId\":\"$CID\",\"params\":{}}" | json "(d.data.find(r=>r.owner==='owner@example.com')||{}).kind+' '+(d.data.find(r=>r.owner==='owner@example.com')||{}).status")" "now proposing"
+ho_form() { # cookie ticket -> the page after pressing Hand over now with a note on that ticket
+  "${HTTPS[@]}" -X POST -H "cookie: $1" -H "origin: $URL" --data-urlencode "action=now" --data-urlencode "pick=$2" --data-urlencode "what:$2=Say hello" \
+    --data-urlencode "done:$2=greeting.txt says hello" --data-urlencode "files:$2=greeting.txt" --data-urlencode "min:$2=60" --data-urlencode "cents:$2=100" "$URL/vt/handover"
+}
+check "the owner's tap hands over exactly that ticket with its note" "$(ho_form "$OWNER_COOKIE" "$OWNER_TICKET" | grep -c 'Handed over 1 task(s). Your agent starts now.')" "1"
+check "the plugin shows it: a Hand over now, running at once (the tap was the approval)" "$(board -X POST "$PC/api/plugins/$PLUGIN_ID/data/handover-status" -d "{\"companyId\":\"$CID\",\"params\":{}}" | json "(d.data.find(r=>r.owner==='owner@example.com')||{}).kind+' '+(d.data.find(r=>r.owner==='owner@example.com')||{}).status")" "now running"
+check "no plan ticket was made" "$(board "$PC/api/companies/$CID/issues" | json "(Array.isArray(d)?d:d.items).filter(i=>String(i.originKind||'').endsWith(':handover-plan')).length")" "0"
+# Finish it (the agent's own work is not what this rehearsal is about), so nothing runs when vt-update comes.
+board -o /dev/null -X PATCH "$PC/api/issues/$OWNER_TICKET" -d '{"status":"done"}'
+TICK_JOB=$(board "$PC/api/plugins/$PLUGIN_ID/jobs" | json 'd.find(j=>j.jobKey==="handover-tick").id')
+ho_status() { board -X POST "$PC/api/plugins/$PLUGIN_ID/data/handover-status" -d "{\"companyId\":\"$CID\",\"params\":{}}" | json "(d.data.find(r=>r.owner==='owner@example.com')||{}).status"; }
+for _ in $(seq 1 30); do board -o /dev/null -X POST "$PC/api/plugins/$PLUGIN_ID/jobs/$TICK_JOB/trigger" -d '{}'; sleep 2; [ "$(ho_status)" = "finished" ] && break; done
+check "when its ticket is done, the handover finishes" "$(ho_status)" "finished"
+for _ in $(seq 1 30); do [ "$(curl -s "$MP_API/messages" | json 'd.total')" = "1" ] && break; sleep 1; done
+HB_TEXT=$(curl -s "$MP_API/message/$(curl -s "$MP_API/messages" | json 'd.messages[0].ID')" | json 'd.Text' | tr -d '\r')
+check "the handback email (real SMTP) shows the owner's locked note and says only they can use the links" "$(echo "$HB_TEXT" | grep -c '^  Done when (your words; Aurora does not check this, you do): greeting.txt says hello$')/$(echo "$HB_TEXT" | grep -c 'Only you can use these links')" "1/1"
+curl -s -o /dev/null -X DELETE "$MP_API/messages"
 
 echo "== 7. Invite link: a new person joins through one link"
 INVITE_OUT=$(bash "$KIT_BIN/vt-invite" dee@example.com Europe/Paris 2>&1)
@@ -236,6 +256,13 @@ unset DEE_KEY
 DEE_ENV=$(person dee@example.com | json 'd.agentEnvironmentId')
 check "Dee's agent runs as its own system user (environment probe)" "$(person dee@example.com | json 'd.agentUser')/$(board -X POST "$PC/api/environments/$DEE_ENV/probe" -d '{}' | json 'd.ok && d.details.username')/$(board "$PC/api/agents/$DEE_AGENT" | json "d.defaultEnvironmentId==='$DEE_ENV'")" "vt-agent-bo/vt-agent-bo/true"
 check "the plugin's route audit accepts Dee's agent" "$(board -X POST "$PC/api/plugins/$PLUGIN_ID/data/route-audit" -d "{\"companyId\":\"$CID\",\"params\":{}}" | json 'd.data.ok || JSON.stringify([...d.data.settingsProblems, ...d.data.agents.filter(a=>a.problems.length).map(a=>a.email+": "+a.problems.join("; "))])')" "true"
+echo "-- only the owner: Dee, signed in, cannot act for the owner"
+DEE_DIRECT=$("${HTTPS[@]}" -w '\n%{http_code}' -H "cookie: $DEE_COOKIE" "$URL/api/plugins/vision-and-tom.night-agents/api/handovers/status?companyId=$CID&email=owner@example.com")
+echo "    (Dee calling the plugin directly was answered: ${DEE_DIRECT##*$'\n'} $(echo "${DEE_DIRECT%$'\n'*}" | json 'd.error' | cut -c1-80))"
+check "Dee cannot call the plugin's routes herself (only the email service may)" "${DEE_DIRECT##*$'\n'}/$(echo "${DEE_DIRECT%$'\n'*}" | grep -c 'Add a greeting')" "403/0"
+check "Dee cannot fetch anyone's signed Approve links from the plugin" "$("${HTTPS[@]}" -o /dev/null -w '%{http_code}' -H "cookie: $DEE_COOKIE" "$URL/api/plugins/vision-and-tom.night-agents/api/briefings/pending?companyId=$CID")" "403"
+check "Dee's Hand over page is her own" "$("${HTTPS[@]}" -H "cookie: $DEE_COOKIE" "$URL/vt/handover" | grep -c 'Signed in as <strong>dee@example.com</strong>')" "1"
+check "Dee cannot hand over the owner's ticket" "$(ho_form "$DEE_COOKIE" "$OWNER_TICKET" | grep -c 'you can only hand over tickets assigned to your own agent')" "1"
 check "a used invite link is refused (POST)" "$("${HTTPS[@]}" -o /dev/null -w '%{http_code}' -X POST --data-urlencode "name=Mallory" --data-urlencode "password=$(rand 12)" "$LINK")/$("${HTTPS[@]}" -X POST --data-urlencode "name=M" --data-urlencode "password=$(rand 12)" "$LINK" | grep -oE '<h1>[^<]*</h1>')" "409/<h1>Invite already used</h1>"
 check "a used invite link is refused (opening it)" "$("${HTTPS[@]}" "$LINK" | grep -oE '<h1>[^<]*</h1>')" "<h1>Invite already used</h1>"
 check "still exactly two people" "$(people | json 'd.data.people.length')" "2"

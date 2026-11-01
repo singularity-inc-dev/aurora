@@ -1,5 +1,5 @@
 # aurora
-A team handover for software teams of 2 to 10 people, built as a plugin on the open-source Paperclip platform. Each person has their own agent. The owner writes a ticket for their agent and hands over, now or on a daily schedule; the agent turns it into a plan (it may also propose tasks of its own), and nothing runs until a person approves that plan. The work comes back in a handback email, and nothing merges until the owner taps Approve. Not yet run end to end with a real Claude agent.
+A team handover for software teams of 2 to 10 people, built as a plugin on the open-source Paperclip platform. Each person has their own agent. The owner chooses the tickets and writes a handover note on each (what to do, done when, and limits: files, time, budget), then taps Hand over, now or for their daily scheduled time. That tap is the approval: the agent works on exactly those tickets and cannot add, swap or rewrite them. The work comes back in a handback email, and nothing merges until the owner, signed in, taps Approve. Agent suggestions ("Help me plan") are off by default and still need the owner's tap. Not yet run end to end with a real Claude agent.
 
 **Putting it on a real server for the first time:** follow [FIRST-REAL-RUN.md](FIRST-REAL-RUN.md) (it uses [DEPLOY.md](DEPLOY.md) for the server). Emergency stop on the server: `sudo vt-stop`.
 
@@ -97,17 +97,26 @@ npx -y paperclipai@2026.1012.0 plugin install "$(pwd)/plugin"
 
 ## How to test milestone 3
 
-Milestone 3 added the plan and the routine. Its names were "evening plan" and "night"; they are now "plan" and "handover". This is exactly how a plan is approved today:
+Milestone 3 was "the agent proposes a plan, a person approves it". That step is gone: **the owner chooses the work, and the owner's tap is the approval.** This is exactly how a handover works today:
 
-1. **A plan opens.** Either a set number of hours before the person's scheduled handover hour (default 2), or at once when they tap **Hand over now** (`/vt/handover` on the server). The plugin opens a ticket "Plan for <email>'s handover ..." assigned to their agent. It lists the backlog tickets already assigned to that agent.
-2. **The agent proposes.** The agent, not the owner, chooses the tasks: up to the person's "Max tasks per handover" (1 to 3), each an existing backlog ticket or a new task it writes, each with the files it may change (its claims), using the `propose_handover` tool. The owner cannot pick the tickets on the page yet.
-3. **The pre-handover check.** A task that reaches into another owner's CODEOWNERS area, or into files another owner's open task claimed first, goes to that owner's agent instead. The plan lists those as at most three questions.
-4. **One tap.** The plan ticket shows **Approve the plan** and **Not this time**. Any person signed in to Paperclip can answer it, not only the owner (Paperclip's human-only rule); agents are refused. The handback email's links are sent only to the owner, but anyone who can read that email can use them.
-5. **Work.** After approval, a Hand over now starts its first task at once; a scheduled handover starts at the person's handover hour. Tasks run one at a time, each in its own worktree.
-   - **Time-outs and retries:** a task that runs past the time limit is retried, by default once, then marked failed.
-   - **Budget cap:** spending is counted from the start of the handover; at the person's budget cap the handover stops, the running task is blocked and the agent is paused.
-6. **No answer, or "Not this time".** A plan not approved before the handover ends (default 8 hours) expires and nothing runs. "Not this time" records the reason and runs nothing.
-7. **Handback.** Each finished task comes back in the owner's handback email with Approve (Ready tasks only) and Reject links that only that owner's email receives.
+1. **The owner writes tickets.** In Paperclip, write a ticket, assign it to your own agent, leave it in **Backlog**.
+2. **The owner opens their Hand over page** (`/vt/handover` on the server; only for the person signed in to Paperclip in that browser). It lists the tickets in their agent's backlog.
+3. **A note on each ticket.** Tick up to your "Max tasks per handover" (1 to 3) and write, for each:
+   - **What to do** (pre-filled from the ticket text);
+   - **Done when**: how you will know it is finished. Aurora shows it back to you on the handback; **it does not check it for you, you do**;
+   - **Files and folders it may change.** A committed change to any other file fails the checks gate;
+   - **Time limit** in minutes (default: the step time-out times its retries, at most the handover length) and **budget** in US cents (default and maximum: your cap per handover).
+4. **One tap.** **Hand over now** starts at once; **Hand over at my scheduled time** waits for your daily handover hour. Either way the tap is the approval: there is no plan ticket and nothing for anyone else to approve. The note is stored in one place (the plugin's `handover_notes` table) and locked; the agent gets it as a comment on the ticket. Editing the ticket afterwards changes nothing, and the handback says the ticket was edited.
+5. **Checked before anything changes.** Every ticket must be on your own agent and in Backlog. The pre-handover check refuses the whole hand-over if a ticket's files reach into a teammate's CODEOWNERS area or files a teammate's open task holds; nothing is moved to anyone, and the page lists what overlapped.
+6. **Work.** Exactly your tickets, in your order, one at a time, each in its own worktree.
+   - **Each task's limits:** past its time limit it fails; past its budget it is blocked; the next task starts.
+   - **Time-outs and retries:** a stuck step is retried (by default once) within the task's time.
+   - **Budget cap per handover:** at your cap the handover stops, the running task is blocked and the agent is paused.
+7. **Taking it back.** Tickets waiting for the scheduled time can be taken back on the same page before they start.
+8. **The agent cannot change the work.** It cannot hand one of your handed-over tickets to someone else, and it cannot suggest tasks unless you turned on **Help me plan**.
+9. **Help me plan (off by default).** An admin turns it on per person (`helpMePlan` in the plugin settings). Then the page has **Ask my agent for suggestions**. The agent's suggestions appear on your page as drafts; nothing runs until you check them and hand them over like your own.
+10. **Only the owner.** Only the person signed in as that owner can hand over their tickets. The plugin's routes accept calls only from the Aurora service's own Paperclip user (`serviceUserId`, set by `vt-setup` and `vt-update`); a teammate calling them directly is refused.
+11. **Handback.** Each finished task comes back in the owner's handback email with your note, Approve (Ready tasks only) and Reject. The buttons work only for the owner, signed in to Paperclip in that browser.
 
 **A. Automatic tests**
 
@@ -121,10 +130,9 @@ SLOW=1 scripts/integration-test.sh     # also waits out a real 5-minute time-out
 
 1. Do the milestone 2 setup first (isolated workspaces, project policy, locked agents).
 2. In the plugin settings, open the "Handovers" box and set the project id.
-3. Set your own handover start hour to 1 to 2 hours from now. Within 5 minutes a "Plan for you@…'s handover of …" ticket appears, assigned to your agent.
-4. When your agent has proposed, the plan ticket shows "Approve the plan" and "Not this time". Tap one.
-5. At your handover hour, the first task moves to "todo" and your agent starts on it in its own worktree.
-6. The plugin's `handover-status` view shows each handover: proposing, awaiting approval, approved, running, finished, budget stopped, rejected or expired.
+3. Write two tickets in Paperclip, assign them to your agent, leave them in Backlog.
+4. Open your Hand over page, tick one, write its note, and press **Hand over at my scheduled time**. Set your handover start hour to the current hour: within 5 minutes that ticket (and only that one) moves to "todo" and your agent starts on it in its own worktree. The other ticket stays in Backlog.
+5. The plugin's `handover-status` view shows each handover: approved (waiting for its time), running, finished, budget stopped or expired.
 
 ## How to test milestone 4
 
@@ -134,7 +142,7 @@ Milestone 4 adds the morning email. After each person's night ends, they get one
 - its checks result
 - an Approve link (Ready tasks only) and a Reject link
 
-The links are signed, expire (default 24 hours) and work once. Approve merges only if the branch is unchanged since the email. Reject asks for a one-line reason, which is saved in the event log. Opening a link only shows a page; nothing happens until you press the button. That matters because email scanners open links automatically.
+The links are signed, expire (default 24 hours) and work once. Approve merges only if the branch is unchanged since the email. Reject asks for a one-line reason, which is saved in the event log. Opening a link only shows a page; nothing happens until you press the button. That matters because email scanners open links automatically. The button appears, and works, only for the task's owner signed in to Paperclip in that browser; anyone else who has the email is refused.
 
 Two parts work together:
 

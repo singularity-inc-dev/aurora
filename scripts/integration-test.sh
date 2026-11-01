@@ -207,6 +207,41 @@ echo "== 7. Restore valid settings"
 api POST "/api/plugins/$PLUGIN_ID/config" "$(body "$VALID")"
 check "restore valid settings" "$API_STATUS" "200"
 
+echo "== 8. Only the Aurora service may call the plugin's routes"
+# This test bed has no sign-in: Paperclip treats every call as one board user. That
+# user plays the Aurora service for the plugin's routes (vt-setup sets the real one on
+# a server, from the same /caller route), and its email is who the email service sees
+# as signed in, in any browser. So in m4/m5 the owner who presses Approve uses that email.
+IT_ROUTES="$BASE/api/plugins/$PLUGIN_KEY/api"
+it_route() { # METHOD path [body] -> API_STATUS / API_BODY
+  local out
+  if [ $# -ge 3 ]; then out=$(curl -s -w '\n%{http_code}' -H 'content-type: application/json' -X "$1" "$IT_ROUTES$2" -d "$3"); else out=$(curl -s -w '\n%{http_code}' -X "$1" "$IT_ROUTES$2"); fi
+  API_STATUS="${out##*$'\n'}"; API_BODY="${out%$'\n'*}"
+}
+it_ticket() { # companyId agentId projectId title -> id of a new Backlog ticket for that agent (as an owner writes it)
+  api POST "/api/companies/$1/issues" "{\"title\":\"$4\",\"projectId\":\"$3\",\"assigneeAgentId\":\"$2\",\"status\":\"backlog\"}"
+  echo "$API_BODY" | json 'd.id'
+}
+it_handover() { # companyId email now|scheduled tasksJson -> API_STATUS / API_BODY (the owner's tap)
+  it_route POST /handovers/start "{\"companyId\":\"$1\",\"email\":\"$2\",\"when\":\"$3\",\"tasks\":$4}"
+}
+it_note() { # ticketId files [extra json] -> one task of a handover, with the owner's note
+  echo "{\"issueId\":\"$1\",\"what\":\"Work on $2\",\"doneWhen\":\"$2 is there\",\"files\":\"$2\"${3:+,$3}}"
+}
+it_route GET "/caller?companyId=$CID"
+IT_SERVICE_USER=$(echo "$API_BODY" | json 'd.userId')
+check "the plugin reports who calls its routes (the test bed's board user)" "$IT_SERVICE_USER" "local-board"
+IT_SIGNED_IN=$(curl -s "$BASE/api/auth/get-session" | json 'd.user.email')
+check "the test bed's one signed-in person" "$IT_SIGNED_IN" "local@paperclip.local"
+it_route GET "/handovers/status?companyId=$CID&email=ana@example.com"
+check "without serviceUserId every route is refused (fail closed)" "$API_STATUS/$(echo "$API_BODY" | json 'd.error')" "403/the plugin does not know the Aurora service's Paperclip user yet (serviceUserId); run vt-setup"
+api POST "/api/plugins/$PLUGIN_ID/config" "$(body "{\"serviceUserId\":\"someone-else\",${VALID#\{}")"
+it_route GET "/handovers/status?companyId=$CID&email=ana@example.com"
+check "a caller who is not the service user is refused" "$API_STATUS/$(echo "$API_BODY" | json 'd.error')" "403/only the Aurora service may call this"
+api POST "/api/plugins/$PLUGIN_ID/config" "$(body "{\"serviceUserId\":\"$IT_SERVICE_USER\",${VALID#\{}")"
+it_route GET "/handovers/status?companyId=$CID&email=ana@example.com"
+check "the service user is let through" "$API_STATUS/$(echo "$API_BODY" | json 'd.email')" "200/ana@example.com"
+
 # Later milestones append their live checks here (see scripts/it/*.sh).
 for extra in "$ROOT"/scripts/it/*.sh; do
   [ -e "$extra" ] || continue

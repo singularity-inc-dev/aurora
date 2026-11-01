@@ -92,7 +92,7 @@ V1A_PEOPLE="[$(v1a_person ana@example.com "$V1A_A" "$V1A_ENV_A" vt-agent-ana "$V
 # The test command passes only when it runs as an owner's agent user; the lint command only when Paperclip's master key is out of reach.
 V1A_CHECKS="{\"testCommand\":\"case \\\"\$(id -un)\\\" in vt-agent-*) exit 0;; *) echo ran as \$(id -un); exit 1;; esac\",\"lintCommand\":\"! head -c1 $V1A_PC/secrets/master.key\",\"sandbox\":{\"host\":\"127.0.0.1\",\"port\":$SSHBED_PORT,\"knownHosts\":\"$SSHBED_KNOWN_HOSTS\"}}"
 v1a_config() { # people json
-  api POST "/api/plugins/$PLUGIN_ID/config" "{\"companyId\":\"$V1A_CID\",\"configJson\":{\"checks\":$V1A_CHECKS,\"links\":{\"baseUrl\":\"http://127.0.0.1:3298\",\"signingSecret\":{\"type\":\"secret_ref\",\"secretId\":\"$V1A_SIGN\"}},\"people\":$1}}"
+  api POST "/api/plugins/$PLUGIN_ID/config" "{\"companyId\":\"$V1A_CID\",\"configJson\":{\"serviceUserId\":\"$IT_SERVICE_USER\",\"checks\":$V1A_CHECKS,\"links\":{\"baseUrl\":\"http://127.0.0.1:3298\",\"signingSecret\":{\"type\":\"secret_ref\",\"secretId\":\"$V1A_SIGN\"}},\"people\":$1}}"
 }
 v1a_config "$V1A_PEOPLE"
 check "v1a: save settings (isolation required, the default)" "$API_STATUS" "200"
@@ -156,7 +156,7 @@ V1A_RC=0; sshbed_ssh vt-agent-ana bo-run true >/dev/null 2>&1 || V1A_RC=$?
 check "v1a: Bo's key does not open Ana's user" "$V1A_RC" "255"
 
 echo "-- with isolation required, test commands never run as Paperclip's own user"
-api POST "/api/plugins/$PLUGIN_ID/config" "{\"companyId\":\"$V1A_CID\",\"configJson\":{\"checks\":{\"testCommand\":\"true\"},\"people\":$V1A_PEOPLE}}"
+api POST "/api/plugins/$PLUGIN_ID/config" "{\"companyId\":\"$V1A_CID\",\"configJson\":{\"serviceUserId\":\"$IT_SERVICE_USER\",\"checks\":{\"testCommand\":\"true\"},\"people\":$V1A_PEOPLE}}"
 api POST /api/plugins/tools/execute "{\"tool\":\"$PLUGIN_KEY:run_checks\",\"parameters\":{\"issueId\":\"$V1A_ISS\"},\"runContext\":{\"agentId\":\"$V1A_A\",\"runId\":\"$V1A_RUN\",\"companyId\":\"$V1A_CID\",\"projectId\":\"$V1A_PID\"}}"
 check "v1a: without a checks sandbox the commands are refused, not run" "$(echo "$API_BODY" | json 'd.result.data.results.find(r=>r.name==="tests").summary')" "not run: the checks sandbox is not configured (commands never run as Paperclip's own user)"
 api PATCH "/api/issues/$V1A_ISS" '{"status":"done"}'

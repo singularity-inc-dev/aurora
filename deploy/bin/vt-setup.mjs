@@ -149,8 +149,13 @@ if (!ownerRow) {
   });
   log("your agent created (cannot create agents or skills)");
 }
+// Only the Aurora service (this API key's user) may call the plugin's routes.
+const caller = await call("GET", `/api/plugins/${encodeURIComponent(PLUGIN_KEY)}/api/caller?companyId=${encodeURIComponent(cid)}`, undefined, board);
+const serviceUserId = caller.data?.userId;
+if (typeof serviceUserId !== "string" || !serviceUserId) throw new Error("the plugin could not tell which Paperclip user the email service's key belongs to");
 const config = {
   ...current,
+  serviceUserId,
   links: { ...(current.links ?? {}), baseUrl: `${input.publicUrl}/vt`, signingSecret },
   ...(input.githubRepo ? { github: { repo: input.githubRepo } } : {}),
   handover: { ...(current.handover ?? {}), ...(projectId ? { projectId } : {}) },

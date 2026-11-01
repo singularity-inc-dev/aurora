@@ -47,7 +47,7 @@ M2_A=$(echo "$API_BODY" | json 'd.id')
 api POST "/api/companies/$M2_CID/agents" "${M2_AGENT},\"name\":\"Bo night agent\"}"
 M2_B=$(echo "$API_BODY" | json 'd.id')
 
-M2_CONFIG="{\"isolation\":{\"required\":false},\"checks\":{\"testCommand\":\"test -f README.md\",\"lintCommand\":\"true\",\"maxDiffLines\":50},\"people\":[{\"email\":\"ana@example.com\",\"agentId\":\"$M2_A\",\"timezone\":\"Europe/London\",\"nightStartHour\":22,\"nightBudgetCapCents\":500},{\"email\":\"bo@example.com\",\"agentId\":\"$M2_B\",\"timezone\":\"Europe/London\",\"nightStartHour\":22,\"nightBudgetCapCents\":500}]}"
+M2_CONFIG="{\"serviceUserId\":\"$IT_SERVICE_USER\",\"isolation\":{\"required\":false},\"checks\":{\"testCommand\":\"test -f README.md\",\"lintCommand\":\"true\",\"maxDiffLines\":50},\"people\":[{\"email\":\"ana@example.com\",\"agentId\":\"$M2_A\",\"timezone\":\"Europe/London\",\"nightStartHour\":22,\"nightBudgetCapCents\":500},{\"email\":\"bo@example.com\",\"agentId\":\"$M2_B\",\"timezone\":\"Europe/London\",\"nightStartHour\":22,\"nightBudgetCapCents\":500}]}"
 api POST "/api/plugins/$PLUGIN_ID/config" "{\"companyId\":\"$M2_CID\",\"configJson\":$M2_CONFIG}"
 check "M2: save plugin settings" "$API_STATUS" "200"
 

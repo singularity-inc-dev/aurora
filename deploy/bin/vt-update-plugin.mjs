@@ -10,6 +10,8 @@
 //     a new version is installed again (uninstalling without "purge" keeps its settings
 //     and data; Paperclip refuses an upgrade that adds permissions); the same version
 //     is restarted so it runs the code just built. Exits non-zero unless it ends "ready".
+//     Then it makes sure the plugin knows the Aurora service's Paperclip user (the owner
+//     of this API key): from plugin 0.11.0 every route refuses any other caller.
 import { readFileSync } from "node:fs";
 
 const [base, keyFile, cid, cmd, folder, want] = process.argv.slice(2);
@@ -82,6 +84,16 @@ if (cmd === "running") {
   }
   const ready = await waitReady();
   if (ready?.status !== "ready" || ready.version !== want) fail(`the plugin is ${ready?.status ?? "missing"} at version ${ready?.version ?? "none"}, not ready at ${want}`);
-  const people = (await call("GET", `/api/plugins/${ready.id}/config?companyId=${cid}`)).data?.configJson?.people ?? [];
+  const configJson = (await call("GET", `/api/plugins/${ready.id}/config?companyId=${cid}`)).data?.configJson ?? {};
+  const people = configJson.people ?? [];
+  // Only the service may call the routes (plugin 0.11.0): the user this key belongs to.
+  const caller = await call("GET", `/api/plugins/${encodeURIComponent(PLUGIN_KEY)}/api/caller?companyId=${encodeURIComponent(cid)}`);
+  const userId = caller.data?.userId;
+  if (caller.status !== 200 || typeof userId !== "string" || !userId) fail(`could not learn the email service's Paperclip user (${caller.status})`);
+  if (configJson.serviceUserId !== userId) {
+    const saved = await call("POST", `/api/plugins/${ready.id}/config`, { companyId: cid, configJson: { ...configJson, serviceUserId: userId } });
+    if (saved.status >= 300) fail(`could not save the email service's Paperclip user in the plugin settings (${saved.status})`);
+    process.stdout.write("the plugin now accepts calls only from the email service\n");
+  }
   process.stdout.write(`plugin ${want} is ready; its settings list ${people.length} people\n`);
 } else fail("usage: vt-update-plugin.mjs <url> <keyFile> <companyId> running|version|disable|reload <folder> <version>");

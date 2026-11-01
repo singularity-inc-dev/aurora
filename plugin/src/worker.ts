@@ -101,7 +101,10 @@ const plugin = definePlugin({
           problems: agentProblems(parsed.settings, p, await ctx.agents.get(p.agentId, companyId), companyId),
         })),
       );
-      const settingsProblems = auditSettingsIsolation(parsed.settings);
+      const settingsProblems = [
+        ...auditSettingsIsolation(parsed.settings),
+        ...(parsed.settings.serviceUserId ? [] : ["serviceUserId is not set, so the plugin refuses the email service (run vt-setup or vt-update)"]),
+      ];
       return {
         ok: settingsProblems.length === 0 && agents.every((a) => a.problems.length === 0),
         isolationRequired: parsed.settings.isolation.required,

@@ -18,7 +18,7 @@ const person = (email: string, agentId: string) => ({
   handoverBudgetCapCents: 500,
   secrets: [{ name: "github", secret: { type: "secret_ref", secretId: `sec-${agentId}` } }],
 });
-const config = { people: [person("ana@example.com", "agent-ana"), person("bo@example.com", "agent-bo")] };
+const config = { serviceUserId: "svc-user", people: [person("ana@example.com", "agent-ana"), person("bo@example.com", "agent-bo")] };
 
 function agent(id: string, locked = true): Agent {
   return {
@@ -64,6 +64,13 @@ describe("people and route audit", () => {
     expect(audit.ok).toBe(false);
     const ok = await (await setup()).getData<{ ok: boolean }>("route-audit", { companyId: CO });
     expect(ok.ok).toBe(true);
+  });
+
+  it("route audit flags settings without the Aurora service's user (every route would be refused)", async () => {
+    const { serviceUserId: _s, ...rest } = config;
+    const audit = await (await setup({ cfg: rest })).getData<{ ok: boolean; settingsProblems: string[] }>("route-audit", { companyId: CO });
+    expect(audit.ok).toBe(false);
+    expect(audit.settingsProblems).toContain("serviceUserId is not set, so the plugin refuses the email service (run vt-setup or vt-update)");
   });
 
   it("validates config through onValidateConfig", async () => {
