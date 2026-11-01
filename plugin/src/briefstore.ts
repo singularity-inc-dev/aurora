@@ -201,6 +201,18 @@ export async function claimDecision(db: Db, taskId: string, actionId: string, cu
   return rowCount === 1;
 }
 
+/**
+ * Clear a "blocked" outcome so the task can be approved after all (B4). Only
+ * while nobody is deciding it; returns false if it changed meanwhile.
+ */
+export async function reopenBlocked(db: Db, taskId: string): Promise<boolean> {
+  const { rowCount } = await db.execute(
+    `UPDATE ${t(db, "task_events")} SET outcome = NULL, updated_at = now() WHERE task_id = $1 AND outcome = 'blocked' AND decision_action_id IS NULL`,
+    [taskId],
+  );
+  return rowCount === 1;
+}
+
 export async function releaseDecision(db: Db, taskId: string, actionId: string): Promise<void> {
   await db.execute(`UPDATE ${t(db, "task_events")} SET decision_action_id = NULL, updated_at = now() WHERE task_id = $1 AND decision_action_id = $2`, [
     taskId,

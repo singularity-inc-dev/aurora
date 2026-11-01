@@ -33,9 +33,16 @@ describe("classify", () => {
     expect(classify(facts({ checksResult: "not-tested", branchHead: "def5678" })).approvable).toBe(false);
   });
 
+  it("blocked by the handover is not final: Ready by the same rules means it can be reopened and approved (B4)", () => {
+    expect(classify(facts({ outcome: "blocked" }))).toMatchObject({ category: "ready", approvable: true, reopen: true });
+    expect(classify(facts()).reopen).toBeUndefined();
+    expect(classify(facts({ outcome: "failed" })).approvable).toBe(false);
+  });
+
   it.each([
     [{ outcome: "failed" }, "failed", "timed out"],
-    [{ outcome: "blocked" }, "blocked", "stopped by the handover"],
+    [{ outcome: "blocked", checksResult: "failed" }, "blocked", "stopped by the handover"],
+    [{ outcome: "blocked", issueStatus: "in_progress" }, "blocked", "stopped by the handover"],
     [{ startedAt: null }, "blocked", "not started"],
     [{ issueStatus: "in_progress" }, "blocked", "in_progress"],
     [{ worktree: null }, "blocked", "no worktree"],

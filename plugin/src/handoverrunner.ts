@@ -1,13 +1,13 @@
 import type { PluginContext } from "@paperclipai/plugin-sdk";
 import { MAX_TASKS_PER_HANDOVER, parseSettings, type Person, type PluginSettings } from "./config.js";
-import { decideHandover, OPEN_STATUSES, windowOf, type HandoverDecision, type HandoverRun, type StepClose } from "./handover.js";
+import { decideHandover, OPEN_STATUSES, WINDOW_ENDED, windowOf, type HandoverDecision, type HandoverRun, type StepClose } from "./handover.js";
 import { handoverClock } from "./schedule.js";
 import { claimRun, getLatestDoneRun, getOpenRun, getRun, setTaskOutcome, spentSince, stampTasks, updateRun } from "./handoverstore.js";
 import { createBriefing } from "./briefing.js";
 import { earlierBriefingTaskIds, getBriefing } from "./briefstore.js";
 import type { HandoverClock } from "./schedule.js";
 import { randomUUID } from "node:crypto";
-import { ensureTaskRow, recordHandoff } from "./eventlog.js";
+import { ensureTaskRow, getTaskRow, recordHandoff } from "./eventlog.js";
 import { HANDOFF_ORIGIN, HANDOVER_TASK_ORIGIN, PLAN_ORIGIN } from "./ids.js";
 import { openClaims, recordClaims, recordOverlap, releaseClaims, releaseOrphanedClaims } from "./claimstore.js";
 import { movedTicketNote, ownerQuestions, preHandoverCheck, type Areas, type Overlap, type Verdict } from "./prehandover.js";
@@ -158,6 +158,7 @@ async function maybeBrief(ctx: PluginContext, companyId: string, settings: Plugi
   const stillInItsWindow = run?.kind === "scheduled" && now >= windowOf(run, clock).start && now < windowOf(run, clock).end;
   if (run && run.taskIds.length > 0 && !stillInItsWindow) {
     if (!(await getBriefing(ctx.db, companyId, person.email, run.handoverKey))) {
+      if (await waitingForCutOffTask(ctx, companyId, settings, run, clock, now)) return;
       const carried = await earlierBriefingTaskIds(ctx.db, companyId, person.email, run.handoverKey);
       await createBriefing(ctx, person, settings.links, companyId, run.handoverKey, run, carried, now, settings.people);
       return;
@@ -172,6 +173,20 @@ async function maybeBrief(ctx: PluginContext, companyId: string, settings: Plugi
   const carried = await earlierBriefingTaskIds(ctx.db, companyId, person.email, lastDay);
   if (carried.length === 0) return;
   await createBriefing(ctx, person, settings.links, companyId, lastDay, null, carried, now, settings.people);
+}
+
+/**
+ * The window ended while the agent was still on a task (B4). The handback waits
+ * for that task to reach done or in review, for at most one step time-out after
+ * the window, so work that lands just after the end can be approved normally.
+ */
+async function waitingForCutOffTask(ctx: PluginContext, companyId: string, settings: PluginSettings, run: HandoverRun, clock: HandoverClock, now: Date): Promise<boolean> {
+  if (run.status !== "finished" || run.stopReason !== WINDOW_ENDED) return false;
+  if (now.getTime() >= windowOf(run, clock).end.getTime() + settings.handover.stepTimeoutMinutes * 60_000) return false;
+  const taskId = run.taskIds[run.currentIndex];
+  if (!taskId || (await getTaskRow(ctx.db, taskId))?.outcome !== "blocked") return false;
+  const status = await taskStatus(ctx, companyId, taskId);
+  return !(status && ["done", "in_review", "cancelled"].includes(status));
 }
 
 async function taskStatus(ctx: PluginContext, companyId: string, taskId: string | undefined): Promise<string | null> {
@@ -311,7 +326,9 @@ async function advance(
     await stampTasks(ctx.db, [currentId], "finished_at", now);
     if (close.outcome !== "finished") {
       await setTaskOutcome(ctx.db, currentId, close.outcome, null);
-      const status = (await ctx.issues.get(currentId, companyId))?.status;
+      // A task the window cut off keeps its board status: the plugin cannot stop the run,
+      // and flipping it under the agent could make it drop work that is nearly done (B4).
+      const status = close.cutOff ? null : (await ctx.issues.get(currentId, companyId))?.status;
       if (status && !["done", "in_review", "cancelled"].includes(status)) await ctx.issues.update(currentId, { status: "blocked" }, companyId);
       await comment(ctx, companyId, currentId, `The handover stopped this task: ${close.reason ?? close.outcome}.`);
     }

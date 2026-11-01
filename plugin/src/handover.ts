@@ -47,7 +47,14 @@ export interface HandoverObservations {
   spentCents: number;
 }
 
-export type StepClose = { outcome: "finished" | "blocked" | "failed"; reason: string | null };
+/**
+ * How a step ended. `cutOff`: the window ended while the agent was still on it.
+ * The plugin cannot stop that run, and its work may still land and be approved (B4).
+ */
+export type StepClose = { outcome: "finished" | "blocked" | "failed"; reason: string | null; cutOff?: boolean };
+
+/** Why a handover finished when its window ended. */
+export const WINDOW_ENDED = "the handover ended";
 export type NextStep = { start: number } | { finish: string } | { budgetStop: true };
 
 export type HandoverDecision =
@@ -132,10 +139,10 @@ export function decideHandover(
       const next = (close: StepClose): HandoverDecision => ({ kind: "advance", close, then: nextStep(run, run.currentIndex + 1, overBudget) });
       if (status && DONE_STATUSES.has(status)) {
         return windowOver
-          ? { kind: "advance", close: { outcome: "finished", reason: null }, then: { finish: "the handover ended" } }
+          ? { kind: "advance", close: { outcome: "finished", reason: null }, then: { finish: WINDOW_ENDED } }
           : next({ outcome: "finished", reason: null });
       }
-      if (windowOver) return { kind: "advance", close: { outcome: "blocked", reason: "the handover ended" }, then: { finish: "the handover ended" } };
+      if (windowOver) return { kind: "advance", close: { outcome: "blocked", reason: WINDOW_ENDED, cutOff: true }, then: { finish: WINDOW_ENDED } };
       if (overBudget) {
         return { kind: "advance", close: { outcome: "blocked", reason: "handover budget cap reached" }, then: { budgetStop: true } };
       }

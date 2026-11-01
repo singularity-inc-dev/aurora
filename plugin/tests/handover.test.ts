@@ -158,7 +158,7 @@ describe("time-outs and retries", () => {
   it("blocks the current task when the night ends", () => {
     expect(decide(run(), clock("day", "2026-10-22"), obs({ currentTaskStatus: "in_progress" }))).toEqual({
       kind: "advance",
-      close: { outcome: "blocked", reason: "the handover ended" },
+      close: { outcome: "blocked", reason: "the handover ended", cutOff: true },
       then: { finish: "the handover ended" },
     });
   });
@@ -190,7 +190,7 @@ describe("Hand over now (a handover with its own window)", () => {
     const running = now({ status: "running", planIssueId: "p", taskIds: ["t1"], currentIndex: 0, stepStartedAt: at("2026-10-24T21:30:00Z") });
     expect(decide(running, daytime, obs(), at("2026-10-24T22:06:00Z"))).toEqual({
       kind: "advance",
-      close: { outcome: "blocked", reason: "the handover ended" },
+      close: { outcome: "blocked", reason: "the handover ended", cutOff: true },
       then: { finish: "the handover ended" },
     });
   });
