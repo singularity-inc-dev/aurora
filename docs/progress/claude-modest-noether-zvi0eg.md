@@ -36,7 +36,7 @@ built-in OpenTelemetry export, send it to Jaeger or Langfuse on the same server,
 ## Tests
 
 - Unit: plugin **481** (401 before; 80 new), email service **53** (51 before; 2 new). Typechecks clean.
-- Live: see the PR for the final full run.
+- Live, full cold run (`SLOW=1 scripts/integration-test.sh`, every milestone plus the deployment rehearsal): **407 passed, 0 failed** (PR #7 had 361).
 - New live checks: `scripts/it/v1g.sh` (replay on real Paperclip data; 17 checks), `scripts/it/otel.sh` (15 checks), rehearsal section 4b and 16 (13 checks; rehearsal 122 passed, 0 failed).
 
 ## Not verified
