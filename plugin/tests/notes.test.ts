@@ -134,4 +134,14 @@ describe("note storage", () => {
     for (const col of ["what", "done_when", "claims", "max_minutes", "budget_cents", "status", "ticket_digest"]) expect(sql).toContain(col);
     expect(sql).toMatch(/UNIQUE INDEX[^;]*\(task_id\) WHERE status = 'queued'/);
   });
+
+  it("new migrations have no apostrophe in a comment (Paperclip 2026.1012.0 reads it as a quote and refuses the plugin)", async () => {
+    const { readdirSync } = await import("node:fs");
+    const dir = new URL("../migrations/", import.meta.url);
+    // 001-010 are already installed on servers and must not change; 005 has one that happens to pass.
+    for (const f of readdirSync(dir).filter((x) => Number(x.slice(0, 3)) >= 11)) {
+      const bad = readFileSync(new URL(f, dir), "utf8").split("\n").filter((l) => l.trim().startsWith("--") && l.includes("'"));
+      expect(bad, f).toEqual([]);
+    }
+  });
 });

@@ -1,9 +1,9 @@
--- The owner's handover note: one row per task handed over (ARCHITECTURE.md, data
+-- The handover note of an owner: one row per task handed over (ARCHITECTURE.md, data
 -- model "HandoverNote"). The single place that says what the agent was asked to
--- do, how the owner will know it is done, and the task's limits. Locked when the
--- owner taps Hand over; nothing the agent does changes it.
+-- do, how the owner will know it is done, and the limits of the task. Locked when the
+-- owner taps Hand over, and nothing the agent does changes it.
 --   status: draft (an agent suggestion, or not yet handed over), queued (handed
---   over for the owner's next scheduled window), handed_over (in a handover run,
+--   over for the next scheduled window of the owner), handed_over (in a handover run,
 --   handover_key says which), withdrawn.
 CREATE TABLE IF NOT EXISTS "plugin_vision_and_tom_d7896c8063".handover_notes (
   id text PRIMARY KEY,
