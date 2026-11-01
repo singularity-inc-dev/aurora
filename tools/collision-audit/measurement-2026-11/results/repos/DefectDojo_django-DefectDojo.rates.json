@@ -1,0 +1,70 @@
+{
+  "all": {
+    "conflicts": 0,
+    "interval95": [
+      0.0,
+      0.09
+    ],
+    "pairs": 39,
+    "rate": 0.0
+  },
+  "cleanReplays": 39,
+  "conflictFiles": [],
+  "independent": {
+    "conflicts": 0,
+    "interval95": [
+      0.0,
+      0.09
+    ],
+    "pairs": 39,
+    "rate": 0.0
+  },
+  "notReplayable": 52,
+  "overlapsPerWeek": 1.75,
+  "rateUsed": "independent",
+  "replayed": 91,
+  "repo": "DefectDojo/django-DefectDojo",
+  "topOverlapFiles": [
+    [
+      "dojo/settings/settings.dist.py",
+      13
+    ],
+    [
+      "dojo/utils.py",
+      5
+    ],
+    [
+      "dojo/finding/helper.py",
+      4
+    ],
+    [
+      "unittests/test_importers_performance.py",
+      4
+    ],
+    [
+      "dojo/importers/default_reimporter.py",
+      3
+    ],
+    [
+      "dojo/api_v2/views.py",
+      3
+    ],
+    [
+      "dojo/api_v2/serializers.py",
+      3
+    ],
+    [
+      "dojo/finding/deduplication.py",
+      3
+    ],
+    [
+      "dojo/importers/base_importer.py",
+      3
+    ],
+    [
+      "dojo/finding/models.py",
+      3
+    ]
+  ],
+  "wouldBeConflictsPerWeek": 0.0
+}

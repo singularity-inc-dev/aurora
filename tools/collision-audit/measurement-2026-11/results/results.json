@@ -1,0 +1,606 @@
+{
+  "bins": [
+    {
+      "bootstrap95": {
+        "3-day": [
+          0.027388888888888886,
+          5.312000000000001
+        ],
+        "overlaps": [
+          0.15726027397260273,
+          19.27780821917808
+        ],
+        "rate": [
+          0.05,
+          0.3577777777777778
+        ],
+        "same-day": [
+          0.014063926940639269,
+          5.159671232876712
+        ]
+      },
+      "ceilingConflictsPerTeamWeek": {
+        "3-day": 6.610001418439717,
+        "same-day": 6.30815707762557
+      },
+      "cleanReplays": 23,
+      "conflictsAll": 5,
+      "conflictsAllWilson": [
+        0.09663835601719065,
+        0.4190388018273492
+      ],
+      "conflictsIndependent": 5,
+      "conflictsIndependentWilson": [
+        0.11186005278940309,
+        0.4687050099580636
+      ],
+      "conflictsPerTeamWeek": {
+        "3-day": 1.411166666666667,
+        "same-day": 1.3347945205479452
+      },
+      "failed": [],
+      "fallbackRate": 0.25,
+      "independentPairs": 20,
+      "label": "2-3",
+      "notReplayable": 202,
+      "notReplayableShare": 0.8977777777777778,
+      "overlapsPerTeamWeek": 6.647123287671232,
+      "overlapsPerTeamWeekRange": [
+        0.0958904109589041,
+        31.7972602739726
+      ],
+      "overlapsTotal": 1733,
+      "replayed": 225,
+      "teams": 5,
+      "teamsMeasured": 5,
+      "teamsWithNoReplayablePairs": [
+        "decaporg/decap-cms"
+      ],
+      "threeDayOverlapsPerTeamWeek": 6.99
+    },
+    {
+      "bootstrap95": {
+        "3-day": [
+          0.0,
+          0.08809302325581395
+        ],
+        "overlaps": [
+          0.13424657534246576,
+          2.7961643835616434
+        ],
+        "rate": [
+          0.0,
+          0.057984496124031004
+        ],
+        "same-day": [
+          0.0,
+          0.03068493150684931
+        ]
+      },
+      "ceilingConflictsPerTeamWeek": {
+        "3-day": 1.1338385081585083,
+        "same-day": 0.643207305936073
+      },
+      "cleanReplays": 86,
+      "conflictsAll": 1,
+      "conflictsAllWilson": [
+        0.002055515742405551,
+        0.0629655880669656
+      ],
+      "conflictsIndependent": 1,
+      "conflictsIndependentWilson": [
+        0.002055515742405551,
+        0.0629655880669656
+      ],
+      "conflictsPerTeamWeek": {
+        "3-day": 0.022046511627906974,
+        "same-day": 0.007671232876712328
+      },
+      "failed": [],
+      "fallbackRate": 0.011627906976744186,
+      "independentPairs": 86,
+      "label": "5-6",
+      "notReplayable": 118,
+      "notReplayableShare": 0.5784313725490197,
+      "overlapsPerTeamWeek": 1.100821917808219,
+      "overlapsPerTeamWeekRange": [
+        0.0,
+        4.468493150684931
+      ],
+      "overlapsTotal": 287,
+      "replayed": 204,
+      "teams": 5,
+      "teamsMeasured": 5,
+      "teamsWithNoReplayablePairs": [
+        "robusta-dev/robusta"
+      ],
+      "threeDayOverlapsPerTeamWeek": 1.9759999999999998
+    },
+    {
+      "bootstrap95": {
+        "3-day": [
+          0.0,
+          0.0
+        ],
+        "overlaps": [
+          0.39506849315068493,
+          2.8115068493150686
+        ],
+        "rate": [
+          0.0,
+          0.0
+        ],
+        "same-day": [
+          0.0,
+          0.0
+        ]
+      },
+      "ceilingConflictsPerTeamWeek": {
+        "3-day": 1.764023492063492,
+        "same-day": 1.0697534246575342
+      },
+      "cleanReplays": 122,
+      "conflictsAll": 0,
+      "conflictsAllWilson": [
+        0.0,
+        0.0305272660233182
+      ],
+      "conflictsIndependent": 0,
+      "conflictsIndependentWilson": [
+        0.0,
+        0.031020271055929513
+      ],
+      "conflictsPerTeamWeek": {
+        "3-day": 0.0,
+        "same-day": 0.0
+      },
+      "failed": [],
+      "fallbackRate": 0.0,
+      "independentPairs": 120,
+      "label": "7-10",
+      "notReplayable": 252,
+      "notReplayableShare": 0.6737967914438503,
+      "overlapsPerTeamWeek": 1.6032876712328765,
+      "overlapsPerTeamWeekRange": [
+        0.2684931506849315,
+        3.5863013698630133
+      ],
+      "overlapsTotal": 418,
+      "replayed": 374,
+      "teams": 5,
+      "teamsMeasured": 5,
+      "teamsWithNoReplayablePairs": [],
+      "threeDayOverlapsPerTeamWeek": 2.71
+    },
+    {
+      "bootstrap95": {
+        "3-day": [
+          0.0,
+          0.5696000000000001
+        ],
+        "overlaps": [
+          1.986849315068493,
+          8.047123287671232
+        ],
+        "rate": [
+          0.0,
+          0.27999999999999997
+        ],
+        "same-day": [
+          0.0,
+          0.17061116965226553
+        ]
+      },
+      "ceilingConflictsPerTeamWeek": {
+        "3-day": 7.458894285714287,
+        "same-day": 3.057318721461187
+      },
+      "cleanReplays": 238,
+      "conflictsAll": 3,
+      "conflictsAllWilson": [
+        0.004295864517803973,
+        0.036398540415011546
+      ],
+      "conflictsIndependent": 3,
+      "conflictsIndependentWilson": [
+        0.0043140292211805535,
+        0.036549343219460934
+      ],
+      "conflictsPerTeamWeek": {
+        "3-day": 0.19963076923076925,
+        "same-day": 0.06300737618545837
+      },
+      "failed": [],
+      "fallbackRate": 0.012658227848101266,
+      "independentPairs": 237,
+      "label": "11-30",
+      "notReplayable": 327,
+      "notReplayableShare": 0.5787610619469027,
+      "overlapsPerTeamWeek": 5.0208219178082185,
+      "overlapsPerTeamWeekRange": [
+        0.4602739726027397,
+        10.52876712328767
+      ],
+      "overlapsTotal": 1309,
+      "replayed": 565,
+      "teams": 5,
+      "teamsMeasured": 5,
+      "teamsWithNoReplayablePairs": [],
+      "threeDayOverlapsPerTeamWeek": 12.048
+    }
+  ],
+  "bootstrap": {
+    "resamples": 10000,
+    "seed": 1
+  },
+  "fiveToTen": {
+    "bootstrap95": {
+      "3-day": [
+        0.0,
+        0.04401941747572815
+      ],
+      "overlaps": [
+        0.4371164383561645,
+        2.404931506849315
+      ],
+      "rate": [
+        0.0,
+        0.027637540453074434
+      ],
+      "same-day": [
+        0.0,
+        0.015342465753424656
+      ]
+    },
+    "ceilingConflictsPerTeamWeek": {
+      "3-day": 1.448931000111,
+      "same-day": 0.8564803652968036
+    },
+    "cleanReplays": 208,
+    "conflictsAll": 1,
+    "conflictsAllWilson": [
+      0.0008491586222405118,
+      0.026726161805852935
+    ],
+    "conflictsIndependent": 1,
+    "conflictsIndependentWilson": [
+      0.0008574078343957636,
+      0.026980732934641448
+    ],
+    "conflictsPerTeamWeek": {
+      "3-day": 0.011009708737864077,
+      "same-day": 0.003835616438356164
+    },
+    "failed": [],
+    "fallbackRate": 0.0048543689320388345,
+    "independentPairs": 206,
+    "label": "5-10 (bins 5-6 and 7-10)",
+    "notReplayable": 370,
+    "notReplayableShare": 0.6401384083044983,
+    "overlapsPerTeamWeek": 1.3520547945205479,
+    "overlapsPerTeamWeekRange": [
+      0.0,
+      4.468493150684931
+    ],
+    "overlapsTotal": 705,
+    "replayed": 578,
+    "teams": 10,
+    "teamsMeasured": 10,
+    "teamsWithNoReplayablePairs": [
+      "robusta-dev/robusta"
+    ],
+    "threeDayOverlapsPerTeamWeek": 2.343
+  },
+  "hardy": {
+    "answer": "no",
+    "breakEvenMultiplierAtPoint": 90.8289241622575,
+    "breakEvenMultiplierAtUpperBound": 22.717247463608295,
+    "interval95": [
+      0.0,
+      0.04401941747572815
+    ],
+    "pointPerTeamWeek3day": 0.011009708737864077,
+    "supportsTrigger": false
+  },
+  "sensitivityActivePeriod": {
+    "bins": [
+      {
+        "bootstrap95": {
+          "3-day": [
+            0.027388888888888886,
+            6.760078584555037
+          ],
+          "overlaps": [
+            0.15726027397260273,
+            24.422456284372306
+          ],
+          "rate": [
+            0.05,
+            0.3577777777777778
+          ],
+          "same-day": [
+            0.014063926940639269,
+            6.520730959364693
+          ]
+        },
+        "ceilingConflictsPerTeamWeek": {
+          "3-day": 8.629619247107252,
+          "same-day": 8.118030932011912
+        },
+        "cleanReplays": 23,
+        "conflictsAll": 5,
+        "conflictsAllWilson": [
+          0.09663835601719065,
+          0.4190388018273492
+        ],
+        "conflictsIndependent": 5,
+        "conflictsIndependentWilson": [
+          0.11186005278940309,
+          0.4687050099580636
+        ],
+        "conflictsPerTeamWeek": {
+          "3-day": 1.8387962248757699,
+          "same-day": 1.7168520345423985
+        },
+        "failed": [],
+        "fallbackRate": 0.25,
+        "independentPairs": 20,
+        "label": "2-3",
+        "notReplayable": 202,
+        "notReplayableShare": 0.8977777777777778,
+        "overlapsPerTeamWeek": 8.5574108576435,
+        "overlapsPerTeamWeekRange": [
+          0.0958904109589041,
+          39.88316151202749
+        ],
+        "overlapsTotal": 1733,
+        "replayed": 225,
+        "teams": 5,
+        "teamsMeasured": 5,
+        "teamsWithNoReplayablePairs": [
+          "decaporg/decap-cms"
+        ],
+        "threeDayOverlapsPerTeamWeek": 9.128147791045516
+      },
+      {
+        "bootstrap95": {
+          "3-day": [
+            0.0,
+            0.10471843042193776
+          ],
+          "overlaps": [
+            0.13424657534246576,
+            14.964080544862304
+          ],
+          "rate": [
+            0.0,
+            0.057984496124031004
+          ],
+          "same-day": [
+            0.0,
+            0.03648208469055375
+          ]
+        },
+        "ceilingConflictsPerTeamWeek": {
+          "3-day": 5.0314982113796445,
+          "same-day": 3.0300539715120056
+        },
+        "cleanReplays": 86,
+        "conflictsAll": 1,
+        "conflictsAllWilson": [
+          0.002055515742405551,
+          0.0629655880669656
+        ],
+        "conflictsIndependent": 1,
+        "conflictsIndependentWilson": [
+          0.002055515742405551,
+          0.0629655880669656
+        ],
+        "conflictsPerTeamWeek": {
+          "3-day": 0.026202863419437922,
+          "same-day": 0.009120521172638438
+        },
+        "failed": [],
+        "fallbackRate": 0.011627906976744186,
+        "independentPairs": 86,
+        "label": "5-6",
+        "notReplayable": 118,
+        "notReplayableShare": 0.5784313725490197,
+        "overlapsPerTeamWeek": 5.171286854534367,
+        "overlapsPerTeamWeekRange": [
+          0.0,
+          24.71212121212121
+        ],
+        "overlapsTotal": 287,
+        "replayed": 204,
+        "teams": 5,
+        "teamsMeasured": 5,
+        "teamsWithNoReplayablePairs": [
+          "robusta-dev/robusta"
+        ],
+        "threeDayOverlapsPerTeamWeek": 8.62540588293357
+      },
+      {
+        "bootstrap95": {
+          "3-day": [
+            0.0,
+            0.0
+          ],
+          "overlaps": [
+            0.39506849315068493,
+            3.4647260273972598
+          ],
+          "rate": [
+            0.0,
+            0.0
+          ],
+          "same-day": [
+            0.0,
+            0.0
+          ]
+        },
+        "ceilingConflictsPerTeamWeek": {
+          "3-day": 2.0287984920634923,
+          "same-day": 1.1989456621004568
+        },
+        "cleanReplays": 122,
+        "conflictsAll": 0,
+        "conflictsAllWilson": [
+          0.0,
+          0.0305272660233182
+        ],
+        "conflictsIndependent": 0,
+        "conflictsIndependentWilson": [
+          0.0,
+          0.031020271055929513
+        ],
+        "conflictsPerTeamWeek": {
+          "3-day": 0.0,
+          "same-day": 0.0
+        },
+        "failed": [],
+        "fallbackRate": 0.0,
+        "independentPairs": 120,
+        "label": "7-10",
+        "notReplayable": 252,
+        "notReplayableShare": 0.6737967914438503,
+        "overlapsPerTeamWeek": 1.821027397260274,
+        "overlapsPerTeamWeekRange": [
+          0.2684931506849315,
+          4.675
+        ],
+        "overlapsTotal": 418,
+        "replayed": 374,
+        "teams": 5,
+        "teamsMeasured": 5,
+        "teamsWithNoReplayablePairs": [],
+        "threeDayOverlapsPerTeamWeek": 3.15625
+      },
+      {
+        "bootstrap95": {
+          "3-day": [
+            0.0,
+            0.58639592760181
+          ],
+          "overlaps": [
+            1.9945205479452053,
+            9.369135741410009
+          ],
+          "rate": [
+            0.0,
+            0.27999999999999997
+          ],
+          "same-day": [
+            0.0,
+            0.19915386165003407
+          ]
+        },
+        "ceilingConflictsPerTeamWeek": {
+          "3-day": 8.482525277847667,
+          "same-day": 3.500902773823827
+        },
+        "cleanReplays": 238,
+        "conflictsAll": 3,
+        "conflictsAllWilson": [
+          0.004295864517803973,
+          0.036398540415011546
+        ],
+        "conflictsIndependent": 3,
+        "conflictsIndependentWilson": [
+          0.0043140292211805535,
+          0.036549343219460934
+        ],
+        "conflictsPerTeamWeek": {
+          "3-day": 0.21919864253393667,
+          "same-day": 0.07196049246885267
+        },
+        "failed": [],
+        "fallbackRate": 0.012658227848101266,
+        "independentPairs": 237,
+        "label": "11-30",
+        "notReplayable": 327,
+        "notReplayableShare": 0.5787610619469027,
+        "overlapsPerTeamWeek": 5.681828144677607,
+        "overlapsPerTeamWeekRange": [
+          0.4602739726027397,
+          11.505988023952096
+        ],
+        "overlapsTotal": 1309,
+        "replayed": 565,
+        "teams": 5,
+        "teamsMeasured": 5,
+        "teamsWithNoReplayablePairs": [],
+        "threeDayOverlapsPerTeamWeek": 13.568583303980276
+      }
+    ],
+    "fiveToTen": {
+      "bootstrap95": {
+        "3-day": [
+          0.0,
+          0.05233212105879005
+        ],
+        "overlaps": [
+          0.45004774441122664,
+          8.530935165006225
+        ],
+        "rate": [
+          0.0,
+          0.027637540453074434
+        ],
+        "same-day": [
+          0.0,
+          0.018241042345276876
+        ]
+      },
+      "ceilingConflictsPerTeamWeek": {
+        "3-day": 3.530148351721568,
+        "same-day": 2.114499816806231
+      },
+      "cleanReplays": 208,
+      "conflictsAll": 1,
+      "conflictsAllWilson": [
+        0.0008491586222405118,
+        0.026726161805852935
+      ],
+      "conflictsIndependent": 1,
+      "conflictsIndependentWilson": [
+        0.0008574078343957636,
+        0.026980732934641448
+      ],
+      "conflictsPerTeamWeek": {
+        "3-day": 0.013087884633629551,
+        "same-day": 0.004560260586319219
+      },
+      "failed": [],
+      "fallbackRate": 0.0048543689320388345,
+      "independentPairs": 206,
+      "label": "5-10 (bins 5-6 and 7-10)",
+      "notReplayable": 370,
+      "notReplayableShare": 0.6401384083044983,
+      "overlapsPerTeamWeek": 3.4961571258973203,
+      "overlapsPerTeamWeekRange": [
+        0.0,
+        24.71212121212121
+      ],
+      "overlapsTotal": 705,
+      "replayed": 578,
+      "teams": 10,
+      "teamsMeasured": 10,
+      "teamsWithNoReplayablePairs": [
+        "robusta-dev/robusta"
+      ],
+      "threeDayOverlapsPerTeamWeek": 5.890827941466785
+    },
+    "hardy": {
+      "answer": "no",
+      "breakEvenMultiplierAtPoint": 76.40654146893091,
+      "breakEvenMultiplierAtUpperBound": 19.10872289843932,
+      "interval95": [
+        0.0,
+        0.05233212105879005
+      ],
+      "pointPerTeamWeek3day": 0.013087884633629551,
+      "supportsTrigger": false
+    }
+  }
+}

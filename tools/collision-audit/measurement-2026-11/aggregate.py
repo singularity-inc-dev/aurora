@@ -88,6 +88,12 @@ def load_repo(run, name, bin_, screen):
         "outcomes": ind if ind else allc, "rateBasis": "independent" if ind else ("all clean replays" if allc else "none"),
         "topFiles": overlap["topFiles"][:5],
     })
+    days = {}
+    for o in overlap["overlaps"]:
+        days[o["day"]] = days.get(o["day"], 0) + 1
+    top = max(days.items(), key=lambda kv: kv[1]) if days else ("", 0)
+    r["busiestDay"], r["busiestDayOverlaps"] = top
+    r["busiestDayShare"] = (top[1] / len(overlap["overlaps"])) if overlap["overlaps"] else 0.0
     r["overlapsPerWeekActive"] = len(overlap["overlaps"]) / age["activeWeeks"]
     r["threeDayPerWeekActive"] = weekly["perWeek"]["threeDay"] * WEEKS / age["activeWeeks"]
     r["conflictFiles"] = rates.get("conflictFiles", [])
@@ -152,6 +158,15 @@ def summarize(label, repos):
         "same-day": sum(per_repo_conflicts(r, "overlapsPerWeek", fallback) for r in ok) / len(ok),
         "3-day": sum(per_repo_conflicts(r, "threeDayPerWeek", fallback) for r in ok) / len(ok),
     }
+    # Not pre-registered. A ceiling, not an estimate: every overlap that could not be replayed (the later change
+    # was built on work in between) is counted as if it would have conflicted.
+    def ceil_rate(r):
+        return (r["conflictsAll"] + r["notReplayable"]) / r["replayed"] if r["replayed"] else 0.0
+    res["notReplayableShare"] = sum(r["notReplayable"] for r in ok) / max(1, sum(r["replayed"] for r in ok))
+    res["ceilingConflictsPerTeamWeek"] = {
+        "same-day": sum(r["overlapsPerWeek"] * ceil_rate(r) for r in ok) / len(ok),
+        "3-day": sum(r["threeDayPerWeek"] * ceil_rate(r) for r in ok) / len(ok),
+    }
     res["threeDayOverlapsPerTeamWeek"] = sum(r["threeDayPerWeek"] for r in ok) / len(ok)
     b = bootstrap(ok, fallback)
     res["bootstrap95"] = {k: interval(v) for k, v in b.items()}
@@ -165,15 +180,15 @@ def fmt_iv(iv, f="%.2f"):
 def markdown(bins, five_ten, repos):
     L = []
     L.append("### Per team\n")
-    L.append("| Bin | Repository | Core (screen) | People (audit, ≥10 commits) | Commits | Same-day overlaps | per week | 3-day overlaps per week | Replayed | Not replayable | Clean replays | Conflicts (all) | Independent pairs | Conflicts (independent) |")
-    L.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+    L.append("| Bin | Repository | Core (screen) | People (audit, ≥10 commits) | Commits | Same-day overlaps | per week | 3-day overlaps per week | Replayed | Not replayable | Clean replays | Conflicts (all) | Independent pairs | Conflicts (independent) | Busiest day (share of overlaps) |")
+    L.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     for r in repos:
         if "failed" in r:
-            L.append("| %s | %s | %d | FAILED: %s | | | | | | | | | | |" % (r["bin"], r["name"], r["coreScreened"], r["failed"]))
+            L.append("| %s | %s | %d | FAILED: %s | | | | | | | | | | | |" % (r["bin"], r["name"], r["coreScreened"], r["failed"]))
             continue
-        L.append("| %s | %s | %d | %d | %d | %d | %.2f | %.2f | %d | %d | %d | %d | %d | %d |" % (
+        L.append("| %s | %s | %d | %d | %d | %d | %.2f | %.2f | %d | %d | %d | %d | %d | %d | %s (%.0f%%) |" % (
             r["bin"], r["name"], r["coreScreened"], r["peopleTool"], r["commits"], r["overlaps"], r["overlapsPerWeek"], r["threeDayPerWeek"],
-            r["replayed"], r["notReplayable"], r["cleanReplays"], r["conflictsAll"], r["independentPairs"], r["conflictsIndependent"]))
+            r["replayed"], r["notReplayable"], r["cleanReplays"], r["conflictsAll"], r["independentPairs"], r["conflictsIndependent"], r["busiestDay"] or "-", 100 * r["busiestDayShare"]))
     L.append("\n### By team size\n")
     L.append("| Team size | Teams | Same-day overlaps per team-week (95% bootstrap; range over teams) | Clean replays | Textual conflicts (all) | Independent pairs | Conflicts (independent), pooled rate and 95% Wilson | Conflicts per team-week, today's pace (95%) | Conflicts per team-week, 3-day proxy (95%) |")
     L.append("|---|---|---|---|---|---|---|---|---|")
@@ -188,6 +203,12 @@ def markdown(bins, five_ten, repos):
             s["cleanReplays"], s["conflictsAll"], s["independentPairs"], s["conflictsIndependent"], s["independentPairs"], pct(rate),
             pct((s["conflictsIndependentWilson"] or [None, None])[0]), pct((s["conflictsIndependentWilson"] or [None, None])[1]),
             s["conflictsPerTeamWeek"]["same-day"], fmt_iv(b["same-day"], "%.3f"), s["conflictsPerTeamWeek"]["3-day"], fmt_iv(b["3-day"], "%.3f")))
+    L.append("\n### Ceiling (not pre-registered): every overlap that could not be replayed counted as a conflict\n")
+    L.append("| Team size | Share of replay attempts that were not replayable | Ceiling conflicts per team-week, today's pace | Ceiling conflicts per team-week, 3-day proxy |")
+    L.append("|---|---|---|---|")
+    for s_ in bins + [five_ten]:
+        if s_.get("teamsMeasured"):
+            L.append("| %s | %.0f%% | %.2f | %.2f |" % (s_["label"], 100 * s_["notReplayableShare"], s_["ceilingConflictsPerTeamWeek"]["same-day"], s_["ceilingConflictsPerTeamWeek"]["3-day"]))
     return "\n".join(L) + "\n"
 
 

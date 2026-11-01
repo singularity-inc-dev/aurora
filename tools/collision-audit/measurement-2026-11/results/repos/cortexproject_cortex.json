@@ -1,0 +1,65 @@
+{
+  "activeFrom": "2025-11-01",
+  "activeWeeks": 52.142857142857146,
+  "bin": "7-10",
+  "busiestDay": "2026-05-29",
+  "busiestDayOverlaps": 3,
+  "busiestDayShare": 0.2,
+  "cleanReplays": 7,
+  "commits": 456,
+  "conflictFiles": [],
+  "conflictsAll": 0,
+  "conflictsIndependent": 0,
+  "coreScreened": 7,
+  "independentPairs": 7,
+  "manifest": {
+    "bin": "7-10",
+    "branch": "master",
+    "cloneSince": "2025-10-02",
+    "commitsInClone": 509,
+    "finished": "2026-11-01T18:03:48Z",
+    "git": "2.43.0",
+    "head": "a55f3193543cc386f2b32de3a17f24f9d86973ef",
+    "name": "cortexproject/cortex",
+    "python": "3.13.18",
+    "started": "2026-11-01T18:03:37Z",
+    "status": "ok"
+  },
+  "name": "cortexproject/cortex",
+  "notReplayable": 8,
+  "overlaps": 15,
+  "overlapsPerWeek": 0.2876712328767123,
+  "overlapsPerWeekActive": 0.2876712328767123,
+  "peopleTool": 7,
+  "rateBasis": "independent",
+  "replayed": 15,
+  "threeDayPerWeek": 0.75,
+  "threeDayPerWeekActive": 0.75,
+  "topFiles": [
+    [
+      "pkg/ingester/ingester.go",
+      3
+    ],
+    [
+      "pkg/util/validation/validate.go",
+      1
+    ],
+    [
+      "pkg/util/validation/validate_test.go",
+      1
+    ],
+    [
+      "integration/backward_compatibility_test.go",
+      1
+    ],
+    [
+      "pkg/util/push/push.go",
+      1
+    ]
+  ],
+  "window": {
+    "days": 365,
+    "since": "2025-11-01T00:00:00+00:00",
+    "until": "2026-11-01T00:00:00+00:00"
+  }
+}

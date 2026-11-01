@@ -1,0 +1,106 @@
+{
+  "handoverDays": 3,
+  "perWeek": {
+    "sameDay": 0.25,
+    "threeDay": 0.63
+  },
+  "rate": 0.0,
+  "repo": "influxdata/telegraf",
+  "weeks": [
+    {
+      "sameDay": 0,
+      "threeDay": 2,
+      "week": "2025-11-03"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 2,
+      "week": "2026-01-12"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 2,
+      "week": "2026-02-23"
+    },
+    {
+      "sameDay": 2,
+      "threeDay": 0,
+      "week": "2026-03-02"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 1,
+      "week": "2026-03-09"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 1,
+      "week": "2026-03-16"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 1,
+      "week": "2026-03-23"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 1,
+      "week": "2026-04-20"
+    },
+    {
+      "sameDay": 2,
+      "threeDay": 2,
+      "week": "2026-05-18"
+    },
+    {
+      "sameDay": 3,
+      "threeDay": 5,
+      "week": "2026-06-01"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 1,
+      "week": "2026-07-13"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 1,
+      "week": "2026-07-20"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 1,
+      "week": "2026-07-27"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 2,
+      "week": "2026-08-31"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 7,
+      "week": "2026-09-14"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 2,
+      "week": "2026-09-21"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 2,
+      "week": "2026-10-19"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 0,
+      "week": "2026-10-26"
+    }
+  ],
+  "windowDays": 365,
+  "wouldBeConflictsPerWeek": {
+    "sameDay": 0.0,
+    "threeDay": 0.0
+  }
+}

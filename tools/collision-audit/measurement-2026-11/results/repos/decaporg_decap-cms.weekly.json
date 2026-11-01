@@ -1,0 +1,28 @@
+{
+  "handoverDays": 3,
+  "perWeek": {
+    "sameDay": 0.15,
+    "threeDay": 0.29
+  },
+  "rate": null,
+  "repo": "decaporg/decap-cms",
+  "weeks": [
+    {
+      "sameDay": 0,
+      "threeDay": 4,
+      "week": "2026-04-13"
+    },
+    {
+      "sameDay": 5,
+      "threeDay": 8,
+      "week": "2026-08-31"
+    },
+    {
+      "sameDay": 3,
+      "threeDay": 3,
+      "week": "2026-10-19"
+    }
+  ],
+  "windowDays": 365,
+  "wouldBeConflictsPerWeek": null
+}

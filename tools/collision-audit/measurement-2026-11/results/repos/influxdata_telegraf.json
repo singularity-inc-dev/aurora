@@ -1,0 +1,65 @@
+{
+  "activeFrom": "2025-11-01",
+  "activeWeeks": 52.142857142857146,
+  "bin": "5-6",
+  "busiestDay": "2026-03-02",
+  "busiestDayOverlaps": 2,
+  "busiestDayShare": 0.15384615384615385,
+  "cleanReplays": 8,
+  "commits": 1512,
+  "conflictFiles": [],
+  "conflictsAll": 0,
+  "conflictsIndependent": 0,
+  "coreScreened": 6,
+  "independentPairs": 8,
+  "manifest": {
+    "bin": "5-6",
+    "branch": "master",
+    "cloneSince": "2025-10-02",
+    "commitsInClone": 1639,
+    "finished": "2026-11-01T18:03:09Z",
+    "git": "2.43.0",
+    "head": "de2980854f8ce1c87057ebc5a66c549975593104",
+    "name": "influxdata/telegraf",
+    "python": "3.13.18",
+    "started": "2026-11-01T18:03:04Z",
+    "status": "ok"
+  },
+  "name": "influxdata/telegraf",
+  "notReplayable": 5,
+  "overlaps": 13,
+  "overlapsPerWeek": 0.24931506849315066,
+  "overlapsPerWeekActive": 0.24931506849315066,
+  "peopleTool": 7,
+  "rateBasis": "independent",
+  "replayed": 13,
+  "threeDayPerWeek": 0.63,
+  "threeDayPerWeekActive": 0.63,
+  "topFiles": [
+    [
+      "plugins/common/opcua/input/input_client.go",
+      1
+    ],
+    [
+      "plugins/common/opcua/input/input_client_test.go",
+      1
+    ],
+    [
+      "plugins/inputs/docker/docker_test.go",
+      1
+    ],
+    [
+      "cmd/telegraf/telegraf.go",
+      1
+    ],
+    [
+      "config/config.go",
+      1
+    ]
+  ],
+  "window": {
+    "days": 365,
+    "since": "2025-11-01T00:00:00+00:00",
+    "until": "2026-11-01T00:00:00+00:00"
+  }
+}

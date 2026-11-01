@@ -1,0 +1,106 @@
+{
+  "handoverDays": 3,
+  "perWeek": {
+    "sameDay": 0.29,
+    "threeDay": 0.75
+  },
+  "rate": 0.0,
+  "repo": "cortexproject/cortex",
+  "weeks": [
+    {
+      "sameDay": 2,
+      "threeDay": 2,
+      "week": "2025-11-03"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 1,
+      "week": "2025-11-10"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 3,
+      "week": "2025-12-01"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 2,
+      "week": "2026-01-05"
+    },
+    {
+      "sameDay": 2,
+      "threeDay": 2,
+      "week": "2026-02-02"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 1,
+      "week": "2026-02-09"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 0,
+      "week": "2026-02-16"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 6,
+      "week": "2026-02-23"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 0,
+      "week": "2026-03-02"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 5,
+      "week": "2026-04-13"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 4,
+      "week": "2026-04-20"
+    },
+    {
+      "sameDay": 2,
+      "threeDay": 3,
+      "week": "2026-05-04"
+    },
+    {
+      "sameDay": 3,
+      "threeDay": 3,
+      "week": "2026-05-25"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 3,
+      "week": "2026-06-22"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 2,
+      "week": "2026-06-29"
+    },
+    {
+      "sameDay": 2,
+      "threeDay": 0,
+      "week": "2026-07-06"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 1,
+      "week": "2026-08-31"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 1,
+      "week": "2026-09-14"
+    }
+  ],
+  "windowDays": 365,
+  "wouldBeConflictsPerWeek": {
+    "sameDay": 0.0,
+    "threeDay": 0.0
+  }
+}

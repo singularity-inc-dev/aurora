@@ -1,0 +1,70 @@
+{
+  "all": {
+    "conflicts": 0,
+    "interval95": [
+      0.0,
+      0.058
+    ],
+    "pairs": 62,
+    "rate": 0.0
+  },
+  "cleanReplays": 62,
+  "conflictFiles": [],
+  "independent": {
+    "conflicts": 0,
+    "interval95": [
+      0.0,
+      0.058
+    ],
+    "pairs": 62,
+    "rate": 0.0
+  },
+  "notReplayable": 88,
+  "overlapsPerWeek": 4.47,
+  "rateUsed": "independent",
+  "replayed": 150,
+  "repo": "deeplethe/utopia",
+  "topOverlapFiles": [
+    [
+      "web/src/i18n/en.ts",
+      21
+    ],
+    [
+      "web/src/i18n/zh.ts",
+      21
+    ],
+    [
+      "crates/utopia-cli/src/main.rs",
+      16
+    ],
+    [
+      "web/src/api.ts",
+      11
+    ],
+    [
+      "crates/utopia-store/tests/store/main.rs",
+      11
+    ],
+    [
+      "crates/utopia-core/src/models.rs",
+      7
+    ],
+    [
+      "crates/utopia-store/src/documents.rs",
+      6
+    ],
+    [
+      "crates/utopia-store/src/graph.rs",
+      6
+    ],
+    [
+      "crates/utopia-ingest/src/parsers.rs",
+      6
+    ],
+    [
+      "crates/utopia-store/src/resolution.rs",
+      5
+    ]
+  ],
+  "wouldBeConflictsPerWeek": 0.0
+}

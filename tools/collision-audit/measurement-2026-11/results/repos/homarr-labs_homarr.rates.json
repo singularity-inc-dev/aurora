@@ -1,0 +1,70 @@
+{
+  "all": {
+    "conflicts": 0,
+    "interval95": [
+      0.0,
+      0.08
+    ],
+    "pairs": 44,
+    "rate": 0.0
+  },
+  "cleanReplays": 44,
+  "conflictFiles": [],
+  "independent": {
+    "conflicts": 0,
+    "interval95": [
+      0.0,
+      0.084
+    ],
+    "pairs": 42,
+    "rate": 0.0
+  },
+  "notReplayable": 106,
+  "overlapsPerWeek": 3.01,
+  "rateUsed": "independent",
+  "replayed": 150,
+  "repo": "homarr-labs/homarr",
+  "topOverlapFiles": [
+    [
+      "packages/definitions/src/docs/homarr-docs-sitemap.ts",
+      15
+    ],
+    [
+      "packages/definitions/src/integration.ts",
+      13
+    ],
+    [
+      "packages/definitions/src/widget.ts",
+      9
+    ],
+    [
+      "packages/widgets/src/index.tsx",
+      8
+    ],
+    [
+      "packages/api/src/router/widgets/index.ts",
+      8
+    ],
+    [
+      "packages/definitions/src/widget-integration-map.ts",
+      8
+    ],
+    [
+      "packages/definitions/src/docs/widget-doc-slugs.ts",
+      7
+    ],
+    [
+      "packages/integrations/src/base/creator.ts",
+      6
+    ],
+    [
+      "packages/integrations/src/index.ts",
+      6
+    ],
+    [
+      "packages/integrations/src/types.ts",
+      4
+    ]
+  ],
+  "wouldBeConflictsPerWeek": 0.0
+}

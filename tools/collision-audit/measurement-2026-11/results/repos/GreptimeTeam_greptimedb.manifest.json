@@ -1,0 +1,13 @@
+{
+  "bin": "11-30",
+  "branch": "main",
+  "cloneSince": "2025-10-02",
+  "commitsInClone": 1805,
+  "finished": "2026-11-01T18:04:36Z",
+  "git": "2.43.0",
+  "head": "c40e86c6533eac94b28652f0255f7cd07ea86c15",
+  "name": "GreptimeTeam/greptimedb",
+  "python": "3.13.18",
+  "started": "2026-11-01T18:04:12Z",
+  "status": "ok"
+}

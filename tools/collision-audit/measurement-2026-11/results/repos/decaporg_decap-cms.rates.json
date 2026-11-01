@@ -1,0 +1,56 @@
+{
+  "all": {
+    "conflicts": 0,
+    "interval95": null,
+    "pairs": 0,
+    "rate": null
+  },
+  "cleanReplays": 0,
+  "conflictFiles": [],
+  "independent": {
+    "conflicts": 0,
+    "interval95": null,
+    "pairs": 0,
+    "rate": null
+  },
+  "notReplayable": 8,
+  "overlapsPerWeek": 0.15,
+  "rateUsed": "all clean replays",
+  "replayed": 8,
+  "repo": "decaporg/decap-cms",
+  "topOverlapFiles": [
+    [
+      "packages/decap-cms-core/src/components/App/App.js",
+      1
+    ],
+    [
+      "packages/decap-cms-core/src/components/App/Header.js",
+      1
+    ],
+    [
+      "packages/decap-cms-core/src/components/Editor/Editor.js",
+      1
+    ],
+    [
+      "packages/decap-cms-core/src/components/Editor/EditorToolbar.js",
+      1
+    ],
+    [
+      "packages/decap-cms-core/src/components/Editor/withWorkflow.js",
+      1
+    ],
+    [
+      "packages/decap-cms-backend-forgejo/src/API.ts",
+      1
+    ],
+    [
+      "packages/decap-cms-backend-forgejo/src/implementation.tsx",
+      1
+    ],
+    [
+      "packages/decap-cms-core/src/backend.ts",
+      1
+    ]
+  ],
+  "wouldBeConflictsPerWeek": null
+}
