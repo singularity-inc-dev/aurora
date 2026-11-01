@@ -7,16 +7,29 @@ export type SendMail = (email: Pick<Email, "to" | "subject" | "text" | "html">) 
 
 /** Any SMTP account: host, port, user, password (from a secret file), TLS or STARTTLS. */
 export function smtpSender(cfg: ServiceConfig): SendMail {
-  const transport = nodemailer.createTransport({
+  const transport = nodemailer.createTransport(smtpOptions(cfg));
+  return async (email) => {
+    await transport.sendMail({ from: cfg.mailFrom, to: email.to, subject: email.subject, text: email.text, html: email.html });
+  };
+}
+
+/**
+ * SMTP settings with explicit time limits (nodemailer's defaults wait up to 2
+ * minutes to connect and 10 minutes on a silent connection). A send that fails
+ * is tried again on the next poll: the briefing stays pending until it is sent.
+ */
+export function smtpOptions(cfg: Pick<ServiceConfig, "smtp">) {
+  return {
     host: cfg.smtp.host,
     port: cfg.smtp.port,
     secure: cfg.smtp.secure,
     requireTLS: cfg.smtp.requireTls,
+    connectionTimeout: 30_000,
+    greetingTimeout: 30_000,
+    socketTimeout: 60_000,
+    dnsTimeout: 30_000,
     ...(cfg.smtp.user && cfg.smtp.pass ? { auth: { user: cfg.smtp.user, pass: cfg.smtp.pass } } : {}),
     ...(cfg.smtp.caFile ? { tls: { ca: readFileSync(cfg.smtp.caFile) } } : {}),
-  });
-  return async (email) => {
-    await transport.sendMail({ from: cfg.mailFrom, to: email.to, subject: email.subject, text: email.text, html: email.html });
   };
 }
 

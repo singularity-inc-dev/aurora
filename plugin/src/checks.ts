@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { ChecksSettings } from "./config.js";
-import { addedLines, diffStats, headSha, mergeBase } from "./git.js";
+import { addedLines, diffStats, GIT_TIMEOUT_MS, headSha, mergeBase } from "./git.js";
 import { redact, scanAddedLines, scanFileNames, type SecretFinding } from "./secretscan.js";
 
 export type CheckStatus = "passed" | "failed" | "skipped";
@@ -64,7 +64,7 @@ export const localRunner = (cwd: string): CommandRunner => async (command, timeo
 };
 
 /** Unpack the files of `commit` (committed only, no .git) into `dir`. */
-export function exportCommit(cwd: string, commit: string, dir: string): Promise<boolean> {
+export function exportCommit(cwd: string, commit: string, dir: string, options: { timeoutMs?: number } = {}): Promise<boolean> {
   if (!/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(commit)) return Promise.resolve(false);
   return new Promise((resolve) => {
     const env = { PATH: process.env.PATH ?? "", LANG: "C.UTF-8" };
@@ -74,8 +74,19 @@ export function exportCommit(cwd: string, commit: string, dir: string): Promise<
     tar.stdin.on("error", () => undefined);
     let archiveOk: boolean | null = null;
     let tarOk: boolean | null = null;
+    // Past the limit both are killed and the copy counts as failed: never hang the checks.
+    const timer = setTimeout(() => {
+      archive.kill("SIGKILL");
+      tar.kill("SIGKILL");
+      archiveOk = false;
+      tarOk = false;
+      resolve(false);
+    }, options.timeoutMs ?? GIT_TIMEOUT_MS);
     const done = () => {
-      if (archiveOk !== null && tarOk !== null) resolve(archiveOk && tarOk);
+      if (archiveOk !== null && tarOk !== null) {
+        clearTimeout(timer);
+        resolve(archiveOk && tarOk);
+      }
     };
     archive.on("close", (code) => ((archiveOk = code === 0), done()));
     tar.on("close", (code) => ((tarOk = code === 0), done()));

@@ -18,6 +18,7 @@ import { agentProblems } from "./isolation.js";
 import { TOOL_PROPOSE } from "./tools.js";
 import { assertTier } from "./tiers.js";
 import { recoverInterruptedActions } from "./links.js";
+import { retrying, withTimeout } from "./retry.js";
 
 export { ProposalRefused };
 
@@ -58,18 +59,42 @@ export async function tickAll(ctx: PluginContext, now: Date): Promise<void> {
   }
 }
 
-export async function tickCompany(ctx: PluginContext, companyId: string, settings: PluginSettings, now: Date): Promise<void> {
+/** Longest one person's tick is waited for; past it the tick loop moves on to the others. */
+export const PERSON_TICK_MS = 120_000;
+/** People whose earlier tick has not settled yet (company:email). They are skipped, so ticks never pile up. */
+const stillTicking = new Set<string>();
+
+export async function tickCompany(ctx: PluginContext, companyId: string, settings: PluginSettings, now: Date, limits: { personTickMs?: number } = {}): Promise<void> {
+  const limit = limits.personTickMs ?? PERSON_TICK_MS;
   // Approve and Reject clicks that a crash interrupted (spec gap 27).
-  await recoverInterruptedActions(ctx, settings, companyId, now).catch((err) =>
+  await bounded(`${companyId}:recover-links`, limit, () => recoverInterruptedActions(ctx, settings, companyId, now)).catch((err) =>
     ctx.logger.error("could not recover interrupted links", { companyId, error: err instanceof Error ? err.message : "unknown" }),
   );
   for (const person of settings.people) {
     try {
-      await tickPerson(ctx, companyId, settings, person, now);
+      await bounded(`${companyId}:${person.email}`, limit, () => tickPerson(ctx, companyId, settings, person, now));
     } catch (err) {
       ctx.logger.error("handover tick failed for one person", { companyId, owner: person.email, error: err instanceof Error ? err.message : "unknown" });
     }
   }
+}
+
+/**
+ * Wait for `work` at most `ms`. Work that runs over keeps going in the background
+ * (it cannot be cancelled; every step is safe to finish late), and the same key is
+ * skipped until it settles.
+ */
+async function bounded<T>(key: string, ms: number, work: () => Promise<T>): Promise<T | undefined> {
+  if (stillTicking.has(key)) throw new Error("its previous tick is still running");
+  stillTicking.add(key);
+  const running = work().finally(() => stillTicking.delete(key));
+  running.catch(() => undefined); // a late failure is logged by nobody else; never leave it unhandled
+  return withTimeout(running, ms, "tick");
+}
+
+/** A Paperclip call that is safe to repeat (read, set a status, pause): retried with backoff. */
+function again<T>(fn: () => Promise<T>): Promise<T> {
+  return retrying(fn, { attempts: 3, baseDelayMs: 500 });
 }
 
 function scheduleOf(settings: PluginSettings, person: Person, now: Date): HandoverClock {
@@ -191,12 +216,12 @@ async function waitingForCutOffTask(ctx: PluginContext, companyId: string, setti
 
 async function taskStatus(ctx: PluginContext, companyId: string, taskId: string | undefined): Promise<string | null> {
   if (!taskId) return null;
-  return (await ctx.issues.get(taskId, companyId))?.status ?? null;
+  return (await again(() => ctx.issues.get(taskId, companyId)))?.status ?? null;
 }
 
 async function readApproval(ctx: PluginContext, run: HandoverRun): Promise<{ status: string; outcome: string | null; reason: string | null } | null> {
   if (run.status !== "awaiting_approval" || !run.planIssueId || !run.interactionId) return null;
-  const interactions = await ctx.issues.listInteractions(run.planIssueId, run.companyId);
+  const interactions = await again(() => ctx.issues.listInteractions(run.planIssueId!, run.companyId));
   const found = interactions.find((i) => i.id === run.interactionId);
   if (!found) return null;
   const result = (found as { result?: { outcome?: string; reason?: string | null } | null }).result ?? null;
@@ -204,11 +229,17 @@ async function readApproval(ctx: PluginContext, run: HandoverRun): Promise<{ sta
 }
 
 async function agentIsSafe(ctx: PluginContext, settings: PluginSettings, companyId: string, person: Person): Promise<boolean> {
-  return agentProblems(settings, person, await ctx.agents.get(person.agentId, companyId), companyId).length === 0;
+  return agentProblems(settings, person, await again(() => ctx.agents.get(person.agentId, companyId)), companyId).length === 0;
 }
 
+/** A note on a ticket. Best effort: never retried (it could appear twice) and never stops the step it reports. */
 async function comment(ctx: PluginContext, companyId: string, issueId: string | null, body: string): Promise<void> {
-  if (issueId) await ctx.issues.createComment(issueId, body, companyId);
+  if (!issueId) return;
+  try {
+    await ctx.issues.createComment(issueId, body, companyId);
+  } catch (err) {
+    ctx.logger.warn("could not add a comment", { companyId, issueId, error: err instanceof Error ? err.message : "unknown" });
+  }
 }
 
 async function apply(
@@ -259,41 +290,44 @@ async function apply(
         assigneeAgentId: person.agentId,
         originKind: PLAN_ORIGIN,
       });
-      await updateRun(ctx.db, current, { planIssueId: plan.id });
+      await updateRun(ctx.db, current, { planIssueId: plan.id, stepStartedAt: now, currentAttempt: 1 });
       return;
     }
 
     case "approve": {
       if (!run || !(await updateRun(ctx.db, run, { status: "approved" }))) return;
       await stampTasks(ctx.db, run.taskIds, "approved_at", now);
+      if (run.planIssueId) await again(() => ctx.issues.update(run.planIssueId!, { status: "done" }, companyId));
       await comment(ctx, companyId, run.planIssueId, run.kind === "now" ? "Plan approved. Work starts now." : `Plan approved. Work starts at the handover time (${person.timezone}).`);
-      if (run.planIssueId) await ctx.issues.update(run.planIssueId, { status: "done" }, companyId);
       return;
     }
 
     case "reject": {
       if (!run || !(await updateRun(ctx.db, run, { status: "rejected", stopReason: d.reason ?? "rejected" }))) return;
       for (const taskId of run.taskIds) await setTaskOutcome(ctx.db, taskId, "rejected", d.reason);
-      if (run.planIssueId) await ctx.issues.update(run.planIssueId, { status: "done" }, companyId);
+      if (run.planIssueId) await again(() => ctx.issues.update(run.planIssueId!, { status: "done" }, companyId));
       return;
     }
 
     case "expire": {
       if (!run || !(await updateRun(ctx.db, run, { status: "expired", stopReason: d.reason }))) return;
       await releaseClaims(ctx.db, run.taskIds);
+      if (run.planIssueId) await again(() => ctx.issues.update(run.planIssueId!, { status: "done" }, companyId));
       await comment(ctx, companyId, run.planIssueId, `No handover work: ${d.reason}.`);
-      if (run.planIssueId) await ctx.issues.update(run.planIssueId, { status: "done" }, companyId);
       return;
     }
 
     case "retry-step": {
       if (!run) return;
-      const taskId = run.taskIds[run.currentIndex];
-      if (!taskId || !(await updateRun(ctx.db, run, { currentAttempt: d.attempt, stepStartedAt: now }))) return;
-      await comment(ctx, companyId, taskId, `Time limit of ${settings.handover.stepTimeoutMinutes} minutes passed. Retrying (attempt ${d.attempt}).`);
-      // Paperclip wakes the assignee when a ticket moves from backlog to todo.
-      await ctx.issues.update(taskId, { status: "backlog" }, companyId);
-      await ctx.issues.update(taskId, { status: "todo" }, companyId);
+      // The step is the plan ticket while the agent plans, else the current task.
+      const planning = run.status === "proposing";
+      const ticketId = planning ? run.planIssueId : run.taskIds[run.currentIndex];
+      if (!ticketId || !(await updateRun(ctx.db, run, { currentAttempt: d.attempt, stepStartedAt: now }))) return;
+      // Wake first: a comment that fails must never stop it. Paperclip wakes the assignee on backlog -> todo.
+      await again(() => ctx.issues.update(ticketId, { status: "backlog" }, companyId));
+      await again(() => ctx.issues.update(ticketId, { status: "todo" }, companyId));
+      // No new text on the plan ticket (its wording is owned elsewhere); tasks keep their note.
+      if (!planning) await comment(ctx, companyId, ticketId, `Time limit of ${settings.handover.stepTimeoutMinutes} minutes passed. Retrying (attempt ${d.attempt}).`);
       return;
     }
 
@@ -328,8 +362,8 @@ async function advance(
       await setTaskOutcome(ctx.db, currentId, close.outcome, null);
       // A task the window cut off keeps its board status: the plugin cannot stop the run,
       // and flipping it under the agent could make it drop work that is nearly done (B4).
-      const status = close.cutOff ? null : (await ctx.issues.get(currentId, companyId))?.status;
-      if (status && !["done", "in_review", "cancelled"].includes(status)) await ctx.issues.update(currentId, { status: "blocked" }, companyId);
+      const status = close.cutOff ? null : (await again(() => ctx.issues.get(currentId, companyId)))?.status;
+      if (status && !["done", "in_review", "cancelled"].includes(status)) await again(() => ctx.issues.update(currentId, { status: "blocked" }, companyId));
       await comment(ctx, companyId, currentId, `The handover stopped this task: ${close.reason ?? close.outcome}.`);
     }
   }
@@ -342,11 +376,11 @@ async function advance(
       return;
     }
     await stampTasks(ctx.db, [nextId], "started_at", now);
-    await ctx.issues.update(nextId, { status: "todo" }, companyId);
+    await again(() => ctx.issues.update(nextId, { status: "todo" }, companyId));
   } else if ("budgetStop" in then) {
     // Automatic tier: pause the agent so it cannot keep spending; resuming stays manual.
     try {
-      await ctx.agents.pause(person.agentId, companyId);
+      await again(() => ctx.agents.pause(person.agentId, companyId));
     } catch (err) {
       ctx.logger.warn("could not pause agent at budget cap", { companyId, owner: person.email, error: err instanceof Error ? err.message : "unknown" });
     }

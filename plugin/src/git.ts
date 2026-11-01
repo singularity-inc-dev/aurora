@@ -4,9 +4,18 @@ import type { AddedLine } from "./secretscan.js";
 
 const run = promisify(execFile);
 
-/** Run git without a shell, so no argument can be interpreted as a command. */
-export async function git(cwd: string, args: string[]): Promise<string> {
-  const { stdout } = await run("git", args, { cwd, maxBuffer: 64 * 1024 * 1024, env: { PATH: process.env.PATH ?? "" } });
+/** Longest any one git command may run before it is killed, so a stuck disk or lock cannot hang a tick. */
+export const GIT_TIMEOUT_MS = 120_000;
+
+/** Run git without a shell, so no argument can be interpreted as a command. Killed after `timeoutMs`. */
+export async function git(cwd: string, args: string[], options: { timeoutMs?: number } = {}): Promise<string> {
+  const { stdout } = await run("git", args, {
+    cwd,
+    maxBuffer: 64 * 1024 * 1024,
+    env: { PATH: process.env.PATH ?? "" },
+    timeout: options.timeoutMs ?? GIT_TIMEOUT_MS,
+    killSignal: "SIGKILL",
+  });
   return stdout;
 }
 

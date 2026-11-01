@@ -139,18 +139,69 @@ function headersFor(cfg: ServiceConfig): Record<string, string> {
   return headers;
 }
 
+/** Longest any one HTTP call (to Paperclip or GitHub) may take, answer body included. */
+export const HTTP_TIMEOUT_MS = 30_000;
+
+export interface FetchLimits {
+  timeoutMs?: number;
+  /** Tries in all for a call that is safe to repeat (default 3). */
+  attempts?: number;
+  /** Pause before the second try; doubles each time (default 500 ms). */
+  baseDelayMs?: number;
+}
+
+/** Options for one call: `repeatable` marks a POST that is safe to send twice. GET and HEAD always are. */
+export type LimitedInit = RequestInit & { repeatable?: boolean };
+
+const LIMITED = Symbol("limitedFetch");
+
+/**
+ * fetch with a time limit on every call, so one slow answer never hangs a step.
+ * A call that is safe to repeat is retried with backoff after a network error, a
+ * time-out or a 5xx answer; never after a 4xx, and never a one-time action.
+ */
+export function limitedFetch(fetchImpl: typeof fetch = fetch, limits: FetchLimits = {}): typeof fetch {
+  if ((fetchImpl as { [LIMITED]?: boolean })[LIMITED]) return fetchImpl;
+  const timeoutMs = limits.timeoutMs ?? HTTP_TIMEOUT_MS;
+  const attempts = Math.max(1, limits.attempts ?? 3);
+  const base = limits.baseDelayMs ?? 500;
+  const limited = (async (input: string | URL | Request, init: LimitedInit = {}) => {
+    const { repeatable, ...rest } = init;
+    const method = (rest.method ?? "GET").toUpperCase();
+    const tries = repeatable || method === "GET" || method === "HEAD" ? attempts : 1;
+    let last: unknown;
+    for (let attempt = 1; attempt <= tries; attempt += 1) {
+      if (attempt > 1) await new Promise((r) => setTimeout(r, base * 2 ** (attempt - 2)));
+      const limit = AbortSignal.timeout(timeoutMs);
+      try {
+        const res = await fetchImpl(input, { ...rest, signal: rest.signal ? AbortSignal.any([rest.signal, limit]) : limit });
+        if (res.status < 500 || attempt === tries) return res;
+        last = new PaperclipError(res.status, `answered ${res.status}`);
+      } catch (err) {
+        last = err;
+      }
+    }
+    throw last;
+  }) as typeof fetch;
+  (limited as unknown as { [LIMITED]: boolean })[LIMITED] = true;
+  return limited;
+}
+
 /** Calls the plugin's board-only routes under /api/plugins/:plugin/api/. */
-export function paperclipApi(cfg: ServiceConfig, fetchImpl: typeof fetch = fetch): PluginApi {
+export function paperclipApi(cfg: ServiceConfig, rawFetch: typeof fetch = fetch): PluginApi {
+  const fetchImpl = limitedFetch(rawFetch);
   const base = `${cfg.paperclipUrl}/api/plugins/${encodeURIComponent(cfg.plugin)}/api`;
   const headers = headersFor(cfg);
   const company = `companyId=${encodeURIComponent(cfg.companyId)}`;
 
-  async function call<T>(method: "GET" | "POST", path: string, body?: Record<string, unknown>, okStatuses: number[] = []): Promise<T> {
-    const res = await fetchImpl(`${base}${path}`, {
+  async function call<T>(method: "GET" | "POST", path: string, body?: Record<string, unknown>, okStatuses: number[] = [], repeatable = false): Promise<T> {
+    const init: LimitedInit = {
       method,
       headers,
+      repeatable,
       ...(body ? { body: JSON.stringify({ companyId: cfg.companyId, ...body }) } : {}),
-    });
+    };
+    const res = await fetchImpl(`${base}${path}`, init);
     if (!res.ok && !okStatuses.includes(res.status)) throw new PaperclipError(res.status, `Paperclip answered ${res.status} for ${path.split("?")[0]}`);
     return (await res.json()) as T;
   }
@@ -160,7 +211,8 @@ export function paperclipApi(cfg: ServiceConfig, fetchImpl: typeof fetch = fetch
       return (await call<{ emails: Email[] }>("GET", `/briefings/pending?${company}`)).emails;
     },
     async markSent(briefingId) {
-      await call("POST", `/briefings/${encodeURIComponent(briefingId)}/sent`, {});
+      // Safe to repeat: it only moves a briefing from pending to sent.
+      await call("POST", `/briefings/${encodeURIComponent(briefingId)}/sent`, {}, [], true);
     },
     preview: (token) => call<LinkCheck>("POST", "/links/preview", { token }),
     execute: (token, reason) => call<LinkOutcome>("POST", "/links/execute", { token, ...(reason !== null ? { reason } : {}) }),
@@ -213,7 +265,8 @@ export interface PersonApi {
   acceptInvite(cookie: string, paperclipInviteToken: string): Promise<void>;
 }
 
-export function boardApi(cfg: ServiceConfig, fetchImpl: typeof fetch = fetch): BoardApi {
+export function boardApi(cfg: ServiceConfig, rawFetch: typeof fetch = fetch): BoardApi {
+  const fetchImpl = limitedFetch(rawFetch);
   const headers = headersFor(cfg);
   let pluginId: string | null = null;
   async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -281,7 +334,8 @@ export interface SessionApi {
   whoIs(cookie: string): Promise<{ email: string } | null>;
 }
 
-export function sessionApi(cfg: ServiceConfig, fetchImpl: typeof fetch = fetch): SessionApi {
+export function sessionApi(cfg: ServiceConfig, rawFetch: typeof fetch = fetch): SessionApi {
+  const fetchImpl = limitedFetch(rawFetch);
   const origin = new URL(cfg.paperclipPublicUrl).origin;
   return {
     async whoIs(cookie) {
@@ -306,7 +360,8 @@ async function sessionOf(res: Response): Promise<{ cookie: string; userId: strin
   return { cookie, userId: body.user.id };
 }
 
-export function personApi(cfg: ServiceConfig, fetchImpl: typeof fetch = fetch): PersonApi {
+export function personApi(cfg: ServiceConfig, rawFetch: typeof fetch = fetch): PersonApi {
+  const fetchImpl = limitedFetch(rawFetch);
   // Paperclip's auth checks that requests come from its own public address.
   const origin = new URL(cfg.paperclipPublicUrl).origin;
   return {

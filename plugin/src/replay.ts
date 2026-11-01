@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { GIT_TIMEOUT_MS } from "./git.js";
 
 const run = promisify(execFile);
 
@@ -11,13 +12,15 @@ const run = promisify(execFile);
  */
 export type ReplayResult = { status: "clean" } | { status: "conflict"; files: string[] } | { status: "error"; message: string };
 
-export async function replayMerge(cwd: string, a: string, b: string): Promise<ReplayResult> {
+export async function replayMerge(cwd: string, a: string, b: string, options: { timeoutMs?: number } = {}): Promise<ReplayResult> {
   for (const sha of [a, b]) if (!/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(sha)) return { status: "error", message: "not a commit id" };
   try {
     await run("git", ["merge-tree", "--write-tree", "--name-only", "--no-messages", "-z", a, b], {
       cwd,
       maxBuffer: 16 * 1024 * 1024,
       env: { PATH: process.env.PATH ?? "" },
+      timeout: options.timeoutMs ?? GIT_TIMEOUT_MS,
+      killSignal: "SIGKILL",
     });
     return { status: "clean" };
   } catch (err) {
@@ -55,7 +58,7 @@ export type SharedFiles = Conflict;
 
 const SHA = /^[0-9a-f]{40}([0-9a-f]{24})?$/;
 const gitOut = async (cwd: string, args: string[]) =>
-  (await run("git", args, { cwd, maxBuffer: 16 * 1024 * 1024, env: { PATH: process.env.PATH ?? "" } })).stdout;
+  (await run("git", args, { cwd, maxBuffer: 16 * 1024 * 1024, env: { PATH: process.env.PATH ?? "" }, timeout: GIT_TIMEOUT_MS, killSignal: "SIGKILL" })).stdout;
 
 /**
  * Files both branches change since they split (their merge base), whether or not

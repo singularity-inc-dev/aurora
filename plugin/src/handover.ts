@@ -117,6 +117,10 @@ export function decideHandover(
       if (run.kind === "now" ? windowOver : inItsWindow || windowOver) {
         return { kind: "expire", reason: run.kind === "now" ? "no tasks were proposed in time" : "no tasks were proposed before the handover started" };
       }
+      // Planning is an agent step too: past its time limit the agent is woken again on the plan ticket.
+      if (run.stepStartedAt && now.getTime() - run.stepStartedAt.getTime() > handover.stepTimeoutMinutes * 60_000 && run.currentAttempt <= handover.maxRetries) {
+        return { kind: "retry-step", attempt: run.currentAttempt + 1 };
+      }
       return { kind: "none" };
 
     case "awaiting_approval": {
