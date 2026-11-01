@@ -36,7 +36,7 @@ V1D_RES="$API_BODY"
 check "v1d: nothing is handed over when a task reaches into Bo's files" "$API_STATUS/$(echo "$V1D_RES" | json 'd.ok')" "409/false"
 check "v1d: it names Bo's area, by the committed CODEOWNERS line (not the uncommitted edit)" "$(echo "$V1D_RES" | json 'd.overlaps.some(o=>o.includes("\"Search API\": `src/api/search.ts` is in bo@example.com'"'"'s area (CODEOWNERS line 2)"))')" "true"
 check "v1d: and the files Bo's task already holds" "$(echo "$V1D_RES" | json 'd.overlaps.some(o=>o.includes("overlaps `docs`, which bo@example.com'"'"'s task \"Rewrite the docs\" already holds"))')" "true"
-check "v1d: nothing moved: every ticket is still Ana's, in Backlog" "$(for t in "$V1D_UI" "$V1D_API" "$V1D_TYPO"; do api GET "/api/issues/$t"; echo "$API_BODY" | json "d.assigneeAgentId==='$V1A_A'&&d.status==='backlog'"; done | sort -u)" "true"
+check "v1d: nothing moved: every ticket is still Ana's, in Backlog" "$(for t in "$V1D_UI" "$V1D_API" "$V1D_TYPO"; do api GET "/api/issues/$t"; echo "$API_BODY" | json "d.assigneeAgentId==='$V1A_A'&&d.status==='backlog'"; echo; done | sort -u)" "true"
 it_handover "$V1A_CID" ana@example.com now "[$(it_note "$V1D_UI" src/ui/search.tsx)]"
 check "v1d: the task in Ana's own area is handed over on its own" "$API_STATUS/$(echo "$API_BODY" | json 'd.taskIds.length')" "201/1"
 git -C "$V1A_REPO" checkout -q -- CODEOWNERS
