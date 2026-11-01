@@ -47,6 +47,13 @@ Notes for this branch only (PROGRESS.md is left alone). Built on `claude/handove
 - **`issue.interactions.*` capabilities stay in the manifest** though unused now. Removing them is safe in principle but was not live-tested; a later cleanup.
 - **Not yet run with a real Claude agent** (as before).
 
-## Test results
+## Test results (1 November 2026, cloud test machine, Node 24.22.2, Paperclip 2026.1012.0)
 
-(filled in below after the runs)
+- Unit tests: plugin **434 passed**, email service **57 passed**; both typechecks clean.
+- Full live suite, cold start, `scripts/integration-test.sh` on commit `66d9c1a`: **383 passed, 0 failed** (about 30 minutes), of which the deployment rehearsal **117 passed, 0 failed**. Run after `scripts/it/lib/setup-test-users.sh` (allowed on throwaway cloud machines, CLAUDE.md 2026-10-25).
+- `IT_ONLY=m3`: 61 passed, 0 failed. The SLOW=1 real 5-minute time-out was not run.
+- Earlier runs on the way, for the record:
+  - Paperclip refused to install the plugin: an apostrophe in a comment of migration 011 (Paperclip reads it as a quote). Fixed; every statement checked with Paperclip's own validator; a unit test now guards new migrations.
+  - 116/1: the rehearsal waited 30 s for the handback email, but a server sends mail every 60 s. Test fixed.
+  - 382/1: a v1d check printed three results on one line. Test bug, fixed.
+- **Live proof of the security hole and its fix:** in the rehearsal, Dee (signed in, operator) calling the plugin's route directly got the plugin's own "403 only the Aurora service may call this". So Paperclip does let any signed-in member reach board routes (CURRENT-STATE S1 was real), and the new guard closes it.

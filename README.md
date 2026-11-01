@@ -122,8 +122,8 @@ Milestone 3 was "the agent proposes a plan, a person approves it". That step is 
 
 ```bash
 cd plugin && pnpm install && pnpm test && cd ..
-scripts/integration-test.sh            # expect: Result: 82 passed, 0 failed (about 3 minutes)
-SLOW=1 scripts/integration-test.sh     # also waits out a real 5-minute time-out: 84 passed
+IT_ONLY=m3 scripts/integration-test.sh  # expect: Result: 61 passed, 0 failed (about 4 minutes)
+SLOW=1 IT_ONLY=m3 scripts/integration-test.sh  # also waits out a real 5-minute time-out: 63 passed
 ```
 
 **B. Try it by hand in your own Paperclip**
