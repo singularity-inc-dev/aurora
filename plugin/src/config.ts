@@ -56,6 +56,12 @@ export interface Person {
   handoverStartHour: number;
   maxTasksPerHandover: number;
   handoverBudgetCapCents: number;
+  /**
+   * "Help me plan": the owner may ask their agent to suggest tasks. Off by
+   * default. Suggestions are only drafts on the owner's Hand over page; nothing
+   * runs until the owner hands them over (the same tap as their own work).
+   */
+  helpMePlan: boolean;
   secrets: PersonSecret[];
 }
 
@@ -160,6 +166,13 @@ export interface PluginSettings {
   links: LinkSettings | null;
   github: GithubSettings | null;
   invites: InviteSettings;
+  /**
+   * The Paperclip user the Aurora service (email service) calls the plugin as:
+   * the owner of its board API key. Every plugin route refuses any other caller,
+   * so a signed-in teammate cannot act for someone else. Null: every route is
+   * refused (fail closed). vt-setup and vt-update set it.
+   */
+  serviceUserId: string | null;
 }
 
 /**
@@ -171,6 +184,10 @@ export const instanceConfigSchema: JsonSchema = {
   type: "object",
   required: ["people"],
   properties: {
+    serviceUserId: {
+      type: "string",
+      title: "Paperclip user id of the Aurora service (only it may call the plugin's routes; set by vt-setup)",
+    },
     isolation: {
       type: "object",
       title: "Agent isolation",
@@ -295,6 +312,11 @@ export const instanceConfigSchema: JsonSchema = {
             type: "integer",
             title: "Budget cap per handover (US cents)",
             minimum: 0,
+          },
+          helpMePlan: {
+            type: "boolean",
+            title: "Help me plan: the agent may suggest tasks (drafts only; nothing runs until the owner hands them over)",
+            default: false,
           },
           secrets: {
             type: "array",
@@ -445,6 +467,9 @@ export function parseSettings(stored: unknown): ParseResult {
       errors.push(`${at}.handoverBudgetCapCents: must be a whole number of cents, 0 or more`);
     }
 
+    const helpMePlan = entry.helpMePlan ?? false;
+    if (typeof helpMePlan !== "boolean") errors.push(`${at}.helpMePlan: must be true or false`);
+
     let githubLogin: string | null = null;
     if (entry.githubLogin !== undefined && entry.githubLogin !== null && entry.githubLogin !== "") {
       const login = typeof entry.githubLogin === "string" ? entry.githubLogin.trim().replace(/^@/, "") : "";
@@ -529,6 +554,7 @@ export function parseSettings(stored: unknown): ParseResult {
       handoverStartHour: handoverStartHour as number,
       maxTasksPerHandover: maxTasksPerHandover as number,
       handoverBudgetCapCents: handoverBudgetCapCents as number,
+      helpMePlan: helpMePlan === true,
       secrets,
     });
   });
@@ -549,8 +575,13 @@ export function parseSettings(stored: unknown): ParseResult {
   const links = parseLinks(raw.links, errors);
   const github = parseGithub(raw.github, errors);
   const invites = parseInvites(raw.invites, errors);
+  let serviceUserId: string | null = null;
+  if (raw.serviceUserId !== undefined && raw.serviceUserId !== null && raw.serviceUserId !== "") {
+    if (typeof raw.serviceUserId !== "string" || raw.serviceUserId.trim().length > 200) errors.push("serviceUserId: must be a Paperclip user id");
+    else serviceUserId = raw.serviceUserId.trim();
+  }
 
-  return errors.length > 0 ? { ok: false, errors } : { ok: true, settings: { people, isolation, checks, handover, links, github, invites, legacyNames } };
+  return errors.length > 0 ? { ok: false, errors } : { ok: true, settings: { people, isolation, checks, handover, links, github, invites, legacyNames, serviceUserId } };
 }
 
 const REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;

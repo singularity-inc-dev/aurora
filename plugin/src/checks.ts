@@ -3,7 +3,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { ChecksSettings } from "./config.js";
-import { addedLines, diffStats, headSha, mergeBase } from "./git.js";
+import { addedLines, changedFiles, diffStats, headSha, mergeBase } from "./git.js";
+import { fileAllowed } from "./notes.js";
 import { redact, scanAddedLines, scanFileNames, type SecretFinding } from "./secretscan.js";
 
 export type CheckStatus = "passed" | "failed" | "skipped";
@@ -17,7 +18,7 @@ export type CheckStatus = "passed" | "failed" | "skipped";
 export type GateResult = "passed" | "failed" | "not-tested" | "no-changes";
 
 export interface CheckResult {
-  name: "diff-size" | "secret-scan" | "tests" | "lint";
+  name: "diff-size" | "files" | "secret-scan" | "tests" | "lint";
   status: CheckStatus;
   summary: string;
   /** Tail of command output, already redacted. */
@@ -156,15 +157,19 @@ function describeFindings(findings: SecretFinding[]): string {
 }
 
 /**
- * Run the whole gate on the worktree's current commit: diff size, secret scan,
- * tests, lint. Only committed files count; uncommitted changes are ignored (the
- * owner approves a commit, so that is what is checked). Fails closed on errors.
+ * Run the whole gate on the worktree's current commit: diff size, the files the
+ * owner's note allows, secret scan, tests, lint. Only committed files count;
+ * uncommitted changes are ignored (the owner approves a commit, so that is what
+ * is checked). Fails closed on errors.
+ * `allowedFiles`: the files and folders of the owner's handover note; a change
+ * anywhere else fails. Null: the task has no note (e.g. a hand-off ticket).
  */
 export async function runChecksGate(
   cwd: string,
   baseRef: string,
   settings: ChecksSettings,
   runner: CommandRunner = localRunner(cwd),
+  allowedFiles: readonly string[] | null = null,
 ): Promise<ChecksReport> {
   const results: CheckResult[] = [];
   let base: string;
@@ -204,6 +209,16 @@ export async function runChecksGate(
     status: changed <= settings.maxDiffLines ? "passed" : "failed",
     summary: `${changed} changed lines in ${stats.files.length} files (limit ${settings.maxDiffLines})`,
   });
+
+  if (allowedFiles) {
+    const outside = (await changedFiles(cwd, base, head)).filter((f) => !fileAllowed(f, allowedFiles));
+    const shown = outside.slice(0, 10).map((f) => `\`${f}\``).join(", ") + (outside.length > 10 ? `, and ${outside.length - 10} more` : "");
+    results.push(
+      outside.length === 0
+        ? { name: "files", status: "passed", summary: "only the files the handover note allows" }
+        : { name: "files", status: "failed", summary: `${outside.length} file(s) outside the handover note: ${shown}` },
+    );
+  }
 
   const findings = [...scanFileNames(stats.files), ...scanAddedLines(await addedLines(cwd, base, head))];
   results.push(

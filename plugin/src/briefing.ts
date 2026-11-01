@@ -12,7 +12,9 @@ import {
   type BriefingConflict,
   type BriefingItem,
   type Category,
+  type ItemNote,
 } from "./briefstore.js";
+import { noteForTask, ticketDigest } from "./notes.js";
 import { recordConflict } from "./conflictstore.js";
 import { replayPairs, type ReadyBranch } from "./replay.js";
 import { isClean, revParse, shortStat } from "./merge.js";
@@ -36,6 +38,8 @@ export interface TaskFacts {
   branchHead: string | null;
   clean: boolean;
   summary: string;
+  /** Fingerprint of the ticket's text now (to compare with the one handed over). */
+  digest: string | null;
 }
 
 export interface Classified {
@@ -85,6 +89,7 @@ async function gatherFacts(ctx: PluginContext, companyId: string, taskId: string
     branchHead: null,
     clean: false,
     summary: issue?.title ?? "(missing ticket)",
+    digest: issue ? ticketDigest(issue.title, issue.description) : null,
   };
   const ws = issue?.executionWorkspaceId ? await ctx.executionWorkspaces.get(issue.executionWorkspaceId, companyId) : null;
   const cwd = ws?.cwd ?? ws?.path ?? null;
@@ -146,8 +151,10 @@ export async function createBriefing(
   const thisOne = run?.taskIds ?? [];
   const taskIds = [...thisOne, ...carriedTaskIds.filter((id) => !thisOne.includes(id))];
   const mine: ReadyBranch[] = [];
+  const factsDigest = new Map<string, string | null>();
   for (const taskId of taskIds) {
     const f = await gatherFacts(ctx, companyId, taskId);
+    factsDigest.set(taskId, f.digest);
     if (f.outcome === "accepted" || f.outcome === "rejected") continue;
     const carried = !thisOne.includes(taskId);
     if (f.decisionActionId) {
@@ -203,6 +210,7 @@ export async function createBriefing(
       carried,
     });
   }
+  for (const item of items) item.note = await itemNote(ctx, item.taskId, factsDigest.get(item.taskId) ?? null);
   if (!run && items.length === 0) return null;
   const notes = run?.status === "budget_stopped" ? ["Your agent hit this handover's budget cap and was paused. Resume it in Paperclip when you are ready."] : [];
 
@@ -244,6 +252,33 @@ export async function createBriefing(
   return { ...briefing, status: "pending" };
 }
 
+/** The owner's locked note for a handback item, and whether the ticket was edited since. */
+async function itemNote(ctx: PluginContext, taskId: string, digestNow: string | null): Promise<ItemNote | null> {
+  const n = await noteForTask(ctx.db, taskId);
+  if (!n) return null;
+  return {
+    what: n.what,
+    doneWhen: n.doneWhen,
+    files: n.claims,
+    maxMinutes: n.maxMinutes,
+    budgetCents: n.budgetCents,
+    ticketEdited: !!n.ticketDigest && !!digestNow && n.ticketDigest !== digestNow,
+    ...(n.source === "agent" ? { suggestedByAgent: true } : {}),
+  };
+}
+
+/** The note's lines in the handback: what was asked, the owner's own "done when", the limits. */
+export function noteLines(n: ItemNote): string[] {
+  const what = n.what.length > 300 ? `${n.what.slice(0, 297)}...` : n.what;
+  const lines = [
+    `You asked: ${what.replace(/\s+/g, " ")}`,
+    `Done when (your words; Aurora does not check this, you do): ${n.doneWhen.replace(/\s+/g, " ")}`,
+    `Limits: only ${n.files.join(", ")}; ${n.maxMinutes} minutes; ${n.budgetCents} cents.`,
+  ];
+  if (n.ticketEdited) lines.push("WARNING: the ticket's text was changed after you handed it over. The note above is what you handed over.");
+  return lines;
+}
+
 /** "2026-10-24" (a scheduled handover) or "2026-10-24 14:05 UTC" (Hand over now). */
 export function describeKey(key: string): string {
   return key.length > 10 ? `${key.replace("T", " ")} UTC` : key;
@@ -279,7 +314,7 @@ export function renderBriefing(b: Briefing, links: LinkSettings, secret: string,
     ? `A teammate's new work conflicts with yours${conflictCount ? ` (${conflicts.length})` : ""}: ${count("ready")} ready for your decision`
     : `Your handover of ${describeKey(b.handoverKey)}: ${count("ready")} ready, ${count("blocked")} blocked, ${count("failed")} failed${waiting ? `, ${waiting} waiting for review` : ""}${conflictCount}`;
   const intro = notice
-    ? "Vision and Tom test-merged a teammate's new work with yours and found a conflict. Your tasks below are still waiting for your decision."
+    ? "Aurora test-merged a teammate's new work with yours and found a conflict. Your tasks below are still waiting for your decision."
     : `Here is what your agent did in your handover of ${describeKey(b.handoverKey)}.`;
 
   const text: string[] = [intro, ""];
@@ -334,6 +369,8 @@ export function renderBriefing(b: Briefing, links: LinkSettings, secret: string,
       const approve = i.approveActionId ? url(i.approveActionId, i, "approve") : null;
       const reject = i.rejectActionId ? url(i.rejectActionId, i, "reject") : null;
       text.push(`- ${name}`, `  ${i.checks}${i.reason ? ` (${i.reason})` : ""}`);
+      const noted = i.note ? noteLines(i.note) : [];
+      for (const l of noted) text.push(`  ${l}`);
       if (i.carried) text.push("  From an earlier email; still waiting for your decision.");
       if (i.prUrl) text.push(`  Pull request: ${i.prUrl}`);
       if (approve) text.push(`  Approve: ${approve}`);
@@ -341,6 +378,7 @@ export function renderBriefing(b: Briefing, links: LinkSettings, secret: string,
       text.push("");
       html.push(
         `<li><p><strong>${esc(name)}</strong><br>${esc(i.checks)}${i.reason ? ` (${esc(i.reason)})` : ""}` +
+          noted.map((l) => `<br>${l.startsWith("WARNING") ? `<strong>${esc(l)}</strong>` : esc(l)}`).join("") +
           (i.carried ? "<br><em>From an earlier email; still waiting for your decision.</em>" : "") +
           `</p><p>` +
           (i.prUrl ? `<a href="${esc(i.prUrl)}">Pull request</a> &nbsp; ` : "") +
@@ -352,7 +390,7 @@ export function renderBriefing(b: Briefing, links: LinkSettings, secret: string,
     html.push("</ul>");
   }
   const footer = [
-    `Links expire ${expiresAt.toISOString().replace("T", " ").slice(0, 16)} UTC and work once. Approve merges only if the branch is unchanged since this email. Anything you have not decided comes back in your next handback email with fresh links.`,
+    `Only you can use these links: the button works only while you are signed in to Paperclip as ${b.owner}. Links expire ${expiresAt.toISOString().replace("T", " ").slice(0, 16)} UTC and work once. Approve merges only if the branch is unchanged since this email. Anything you have not decided comes back in your next handback email with fresh links.`,
     `Happens automatically: ${actionsIn("automatic").join(", ")}. Needs your tap: ${actionsIn("needs-tap").join(", ")}. Never: ${actionsIn("never").join(", ")}.`,
   ];
   text.push(...footer);

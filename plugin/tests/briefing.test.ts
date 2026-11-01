@@ -17,6 +17,7 @@ const facts = (o: Partial<TaskFacts> = {}): TaskFacts => ({
   branchHead: "abc1234",
   clean: true,
   summary: "Fix login: 1 file changed",
+  digest: null,
   ...o,
 });
 

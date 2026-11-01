@@ -38,13 +38,25 @@ export interface HandoverRun {
   stopReason: string | null;
 }
 
+/** What the current task's handover note allows, and what it has used so far. */
+export interface TaskLimitsSeen {
+  maxMinutes: number;
+  budgetCents: number;
+  /** When the task first started (its first attempt). */
+  startedAt: Date | null;
+  /** Cost recorded for the agent since the task started, in cents. */
+  spentCents: number;
+}
+
 export interface HandoverObservations {
-  /** Owner's answer on the plan ticket, once there is one. */
-  approval: { status: string; outcome: string | null; reason: string | null } | null;
   /** Board status of the task currently being worked on. */
   currentTaskStatus: string | null;
   /** Cost recorded for this agent since the handover's window started, in cents. */
   spentCents: number;
+  /** The current task's note limits (null: a task without a note, e.g. from before notes existed). */
+  currentTask?: TaskLimitsSeen | null;
+  /** Notes the owner handed over for their next scheduled window that have not started yet. */
+  queuedNotes?: number;
 }
 
 export type StepClose = { outcome: "finished" | "blocked" | "failed"; reason: string | null };
@@ -52,9 +64,8 @@ export type NextStep = { start: number } | { finish: string } | { budgetStop: tr
 
 export type HandoverDecision =
   | { kind: "none" }
-  | { kind: "open-plan" }
-  | { kind: "approve" }
-  | { kind: "reject"; reason: string | null }
+  /** Start the scheduled handover with exactly the notes the owner queued for it. */
+  | { kind: "start-queued" }
   | { kind: "expire"; reason: string }
   | { kind: "retry-step"; attempt: number }
   | { kind: "advance"; close: StepClose | null; then: NextStep };
@@ -93,7 +104,8 @@ export function decideHandover(
   handover: HandoverSettings,
   now: Date,
 ): HandoverDecision {
-  if (!run) return clock.phase === "proposal" ? { kind: "open-plan" } : { kind: "none" };
+  // The owner's tap is the approval: a scheduled handover only ever starts from notes the owner queued.
+  if (!run) return (obs.queuedNotes ?? 0) > 0 ? { kind: "start-queued" } : { kind: "none" };
 
   const w = windowOf(run, clock);
   const inItsWindow = now >= w.start && now < w.end;
@@ -101,26 +113,11 @@ export function decideHandover(
   const overBudget = obs.spentCents >= person.handoverBudgetCapCents;
 
   switch (run.status) {
+    // Handovers from before the owner's note: the agent proposed and someone approved a plan.
+    // That step no longer exists, so such a handover ends without work.
     case "proposing":
-      if (!run.planIssueId) {
-        // A "now" handover plans right away; a scheduled one only in its planning hours.
-        const canOpen = run.kind === "now" ? !windowOver : clock.phase === "proposal" && clock.handoverKey === run.handoverKey;
-        return canOpen ? { kind: "open-plan" } : { kind: "expire", reason: "plan could not be opened" };
-      }
-      if (run.kind === "now" ? windowOver : inItsWindow || windowOver) {
-        return { kind: "expire", reason: run.kind === "now" ? "no tasks were proposed in time" : "no tasks were proposed before the handover started" };
-      }
-      return { kind: "none" };
-
-    case "awaiting_approval": {
-      const a = obs.approval;
-      if (a && a.status !== "pending") {
-        if (a.status === "accepted" || a.outcome === "accepted") return { kind: "approve" };
-        return { kind: "reject", reason: a.reason ?? a.outcome ?? a.status };
-      }
-      if (windowOver) return { kind: "expire", reason: "plan was not approved before the handover ended" };
-      return { kind: "none" };
-    }
+    case "awaiting_approval":
+      return { kind: "expire", reason: "plans are no longer approved in Paperclip; hand the tasks over on your Hand over page" };
 
     case "approved":
       if (windowOver) return { kind: "expire", reason: "the handover ended before work started" };
@@ -139,7 +136,12 @@ export function decideHandover(
       if (overBudget) {
         return { kind: "advance", close: { outcome: "blocked", reason: "handover budget cap reached" }, then: { budgetStop: true } };
       }
+      const task = obs.currentTask ?? null;
+      if (task && task.spentCents >= task.budgetCents) return next({ outcome: "blocked", reason: `its budget of ${task.budgetCents} cents was reached` });
       if (status && STOPPED_STATUSES.has(status)) return next({ outcome: "blocked", reason: `agent marked the task ${status}` });
+      if (task?.startedAt && now.getTime() - task.startedAt.getTime() > task.maxMinutes * 60_000) {
+        return next({ outcome: "failed", reason: `its time limit of ${task.maxMinutes} minutes was reached` });
+      }
       const started = run.stepStartedAt?.getTime() ?? now.getTime();
       if (now.getTime() - started > handover.stepTimeoutMinutes * 60_000) {
         if (run.currentAttempt <= handover.maxRetries) return { kind: "retry-step", attempt: run.currentAttempt + 1 };

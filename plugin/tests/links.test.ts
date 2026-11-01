@@ -21,6 +21,7 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 const config = {
+  serviceUserId: "svc-user",
   links: { baseUrl: "http://mail.test", signingSecret: { type: "secret_ref", secretId: "sig" }, expiresMinutes: 60 },
   people: [
     { email: "ana@example.com", agentId: "agent-ana", timezone: "UTC", handoverStartHour: 22, handoverBudgetCapCents: 500 },
@@ -71,7 +72,8 @@ async function setup() {
   for (const person of settings.people) await tickPerson(h.ctx, CO, settings, person, MORNING);
 
   const api = async (routeKey: string, body: Record<string, unknown> = {}, params: Record<string, string> = {}) =>
-    (await plugin.definition.onApiRequest!({ routeKey, method: "POST", path: "", params, query: {}, body, actor: { actorType: "user", actorId: "board" }, companyId: CO, headers: {} } as PluginApiRequestInput)) as {
+    // The email service says who is signed in; by default the task's owner, Ana.
+    (await plugin.definition.onApiRequest!({ routeKey, method: "POST", path: "", params, query: {}, body: routeKey === "link-execute" ? { signedInAs: "ana@example.com", ...body } : body, actor: { actorType: "user", actorId: "svc-user", userId: "svc-user" }, companyId: CO, headers: {} } as PluginApiRequestInput)) as {
       status: number;
       body: Record<string, any>;
     };
@@ -135,7 +137,7 @@ describe("approve link", () => {
     const forged = token.slice(0, -2) + (token.endsWith("AA") ? "BB" : "AA");
     expect((await t.api("link-execute", { token: forged })).body.status).toBe("invalid");
     const later = new Date(MORNING.getTime() + 2 * 3600_000); // links were made at MORNING, valid 60 min
-    expect(await executeLink(t.h.ctx, settings, CO, token, null, later)).toMatchObject({ ok: false, status: "expired" });
+    expect(await executeLink(t.h.ctx, settings, CO, token, null, later, "ana@example.com")).toMatchObject({ ok: false, status: "expired" });
     expect(t.merges("t1")).toBe(0);
   });
 
@@ -192,5 +194,63 @@ describe("reject link", () => {
     t.db.tables.task_events.find((r) => r.task_id === "t1")!.outcome = "failed";
     expect((await t.api("link-execute", { token: t.linkFor("ana@example.com", "Approve") })).body.status).toBe("refused");
     expect(t.merges("t1")).toBe(0);
+  });
+});
+
+describe("only the owner decides their own tasks", () => {
+  it("a teammate signed in to Paperclip cannot approve or reject the owner's task, and the link still works for the owner", async () => {
+    const t = await setup();
+    const approve = t.linkFor("ana@example.com", "Approve");
+    const reject = t.linkFor("ana@example.com", "Reject");
+    for (const who of ["bo@example.com", "", undefined, "ANA@example.com.evil"]) {
+      const res = await t.api("link-execute", { token: approve, signedInAs: who });
+      expect(res.body).toMatchObject({ ok: false, status: "refused", message: expect.stringContaining("Only ana@example.com can approve") });
+    }
+    expect((await t.api("link-execute", { token: reject, signedInAs: "bo@example.com", reason: "mine now" })).body.status).toBe("refused");
+    expect(t.merges("t1")).toBe(0);
+    expect((await t.api("link-preview", { token: approve })).body).toMatchObject({ ok: true, owner: "ana@example.com" });
+    // Case does not matter for the owner's own sign-in.
+    expect((await t.api("link-execute", { token: approve, signedInAs: "Ana@Example.com" })).body.status).toBe("merged");
+    expect(t.merges("t1")).toBe(1);
+  });
+
+  const call = (routeKey: string, actor: Record<string, unknown>, body: Record<string, unknown> = {}) =>
+    plugin.definition.onApiRequest!({ routeKey, method: "POST", path: "", params: {}, query: {}, body, actor, companyId: CO, headers: {} } as PluginApiRequestInput) as Promise<{
+      status: number;
+      body: Record<string, any>;
+    }>;
+
+  it("every route refuses any caller but the Aurora service's own Paperclip user", async () => {
+    const t = await setup();
+    const token = t.linkFor("ana@example.com", "Approve");
+    const teammate = { actorType: "user", actorId: "bo-user", userId: "bo-user" };
+    const agent = { actorType: "agent", actorId: "agent-bo", agentId: "agent-bo", userId: null };
+    for (const actor of [teammate, agent]) {
+      for (const [route, body] of [
+        ["briefings-pending", {}],
+        ["link-execute", { token, signedInAs: "ana@example.com" }],
+        ["handover-start", { email: "ana@example.com", tasks: [] }],
+        ["handover-status", { email: "ana@example.com" }],
+        ["handover-withdraw", { email: "ana@example.com" }],
+        ["pr-update", { taskId: "t1", state: "merged" }],
+        ["invite-create", { email: "eve@example.com" }],
+        ["numbers", {}],
+      ] as const) {
+        const res = await call(route, actor, body);
+        expect(res.status, `${route} as ${actor.actorId}`).toBe(403);
+      }
+    }
+    expect(t.merges("t1")).toBe(0);
+    // The caller route only echoes who is calling (vt-setup uses it to learn the service's user).
+    expect((await call("caller", teammate)).body).toEqual({ actorType: "user", userId: "bo-user" });
+  });
+
+  it("with no service user configured, every route is refused (fail closed)", async () => {
+    const t = await setup();
+    const { serviceUserId: _s, ...rest } = config;
+    (t.h.ctx.config as { get: unknown }).get = async () => rest;
+    const res = await call("briefings-pending", { actorType: "user", actorId: "svc-user", userId: "svc-user" });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toContain("serviceUserId");
   });
 });

@@ -4,247 +4,371 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { createTestHarness } from "@paperclipai/plugin-sdk/testing";
-import type { Agent, Company, Issue, PluginAccessMember, Project } from "@paperclipai/plugin-sdk";
+import type { Agent, Company, Issue, PluginApiRequestInput, Project } from "@paperclipai/plugin-sdk";
 import manifest from "../src/manifest.js";
 import plugin from "../src/worker.js";
-import { parseSettings } from "../src/config.js";
-import { startHandoverNow, tickPerson } from "../src/handoverrunner.js";
-import { TOOL_PROPOSE } from "../src/tools.js";
-import { HANDOFF_ORIGIN, HANDOVER_TASK_ORIGIN, PLAN_ORIGIN } from "../src/ids.js";
+import { parseSettings, type Person } from "../src/config.js";
+import { askForSuggestions, handOver, parseHandoverRequest, tickPerson, withdrawQueued, type HandoverRequest } from "../src/handoverrunner.js";
+import { TOOL_HANDOFF, TOOL_PROPOSE } from "../src/tools.js";
+import { HANDOVER_TASK_ORIGIN, PLAN_ORIGIN } from "../src/ids.js";
+import { renderBriefing } from "../src/briefing.js";
 import { createFakeDb } from "./fakedb.js";
 import { isolatedAgentFields, isolatedPersonFields } from "./helpers.js";
 
 const CO = "co-1";
-// Ana's night starts at 22:00 UTC; the evening plan opens at 20:00.
-const EVENING = new Date("2026-10-21T20:30:00Z");
+// Ana's scheduled handover starts at 22:00 UTC and lasts 8 hours.
+const DAY = new Date("2026-10-21T14:05:00Z");
 const NIGHT = new Date("2026-10-21T22:05:00Z");
-const config = {
-  night: { projectId: "proj-1", stepTimeoutMinutes: 60, maxRetries: 1 },
+const baseConfig = {
+  serviceUserId: "svc-user",
+  handover: { projectId: "proj-1", stepTimeoutMinutes: 60, maxRetries: 1 },
+  links: { baseUrl: "http://mail.test", signingSecret: { type: "secret_ref", secretId: "sig" }, expiresMinutes: 60 },
   people: [
     { email: "ana@example.com", agentId: "agent-ana", ...isolatedPersonFields("agent-ana"), timezone: "UTC", handoverStartHour: 22, handoverBudgetCapCents: 500, maxTasksPerHandover: 2 },
     { email: "bo@example.com", agentId: "agent-bo", ...isolatedPersonFields("agent-bo"), githubLogin: "bo-dev", timezone: "UTC", handoverStartHour: 22, handoverBudgetCapCents: 500 },
   ],
 };
-const settings = (() => {
+const settingsOf = (config: unknown) => {
   const r = parseSettings(config);
   if (!r.ok) throw new Error(r.errors.join(";"));
   return r.settings;
-})();
+};
+const settings = settingsOf(baseConfig);
 const ana = settings.people[0]!;
+const bo = settings.people[1]!;
 
-async function setup() {
-  const capabilities = [...manifest.capabilities, "issue.interactions.respond" as const];
-  const h = createTestHarness({ manifest, capabilities, config });
+const ticket = (id: string, assignee: string, o: Record<string, unknown> = {}) =>
+  ({ id, companyId: CO, identifier: id.toUpperCase(), title: `Title ${id}`, description: `Description ${id}`, status: "backlog", assigneeAgentId: assignee, projectId: "proj-1", ...o }) as unknown as Issue;
+
+async function setup(config: Record<string, unknown> = baseConfig) {
+  // The tests read ticket comments; the plugin itself never needs to.
+  const h = createTestHarness({ manifest, capabilities: [...manifest.capabilities, "issue.comments.read" as const], config });
   const db = createFakeDb();
   (h.ctx as { db: unknown }).db = db;
   const agent = (id: string) => ({ ...isolatedAgentFields(id), id, companyId: CO, name: id, role: "engineer", status: "idle", permissions: { canCreateAgents: false, canCreateSkills: false } }) as unknown as Agent;
   h.seed({
     companies: [{ id: CO, name: "Co" } as unknown as Company],
     agents: [agent("agent-ana"), agent("agent-bo")],
-    accessMembers: [{ id: "m1", companyId: CO, principalType: "user", principalId: "owner-user", status: "active", membershipRole: "owner", grants: [], createdAt: "", updatedAt: "" } as unknown as PluginAccessMember],
+    issues: [ticket("a1", "agent-ana"), ticket("a2", "agent-ana"), ticket("a3", "agent-ana"), ticket("b1", "agent-bo")],
   });
   await plugin.definition.setup(h.ctx);
-  const tick = (now: Date) => tickPerson(h.ctx, CO, settings, ana, now);
-  const runRow = () => db.tables.handover_runs.find((r) => r.owner === ana.email)!;
+  const s = settingsOf(config);
+  const me = s.people[0]!;
+  const tick = (now: Date, who: Person = me) => tickPerson(h.ctx, CO, s, who, now);
+  const runRow = (owner = me.email) => db.tables.handover_runs.find((r) => r.owner === owner);
   const event = (taskId: string) => db.tables.task_events.find((r) => r.task_id === taskId)!;
+  const status = async (id: string) => (await h.ctx.issues.get(id, CO))?.status;
   const run = { agentId: "agent-ana", runId: "run-1", companyId: CO, projectId: "proj-1" };
-  return { h, db, tick, runRow, event, run };
+  const api = async (routeKey: string, body: Record<string, unknown>) =>
+    (await plugin.definition.onApiRequest!({
+      routeKey,
+      method: "POST",
+      path: "",
+      params: {},
+      query: {},
+      body,
+      actor: { actorType: "user", actorId: "svc-user", userId: "svc-user" },
+      companyId: CO,
+      headers: {},
+    } as PluginApiRequestInput)) as { status: number; body: Record<string, any> };
+  return { h, db, s, me, tick, runRow, event, status, run, api };
 }
 
-async function proposedNight() {
-  const t = await setup();
-  await t.tick(EVENING);
-  const res = await t.h.executeTool<{ error?: string; data: { planIssueId: string; taskIds: string[] } }>(
-    TOOL_PROPOSE,
-    { tasks: [{ title: "Fix login", claims: ["src/"] }, { title: "Write docs", description: "README section", claims: ["src/"] }] },
-    t.run,
-  );
-  expect(res.error).toBeUndefined();
-  return { ...t, plan: res.data.planIssueId, tasks: res.data.taskIds };
-}
+const note = (issueId: string, o: Record<string, unknown> = {}) => ({ issueId, what: `Do ${issueId}`, doneWhen: `${issueId} works`, files: `${issueId}.txt`, ...o });
+const request = (when: "now" | "scheduled", tasks: Array<Record<string, unknown>>, who: Person = ana): HandoverRequest => {
+  const r = parseHandoverRequest({ when, tasks }, settings, who);
+  if (typeof r === "string") throw new Error(r);
+  return r;
+};
 
-async function approve(t: Awaited<ReturnType<typeof proposedNight>>, action: "accept" | "reject" = "accept") {
-  const [interaction] = await t.h.ctx.issues.listInteractions(t.plan, CO);
-  await t.h.ctx.issues.respondInteraction(t.plan, interaction!.id, { action, actorUserId: "owner-user" }, CO);
-}
-
-describe("evening proposal", () => {
-  it("opens exactly one plan ticket per person per night, assigned to their agent", async () => {
+describe("1. a handover note per task, stored in one place", () => {
+  it("the owner's note (what, done when, files, time, budget) is stored in handover_notes and given to the agent as its brief", async () => {
     const t = await setup();
-    expect((await t.tick(new Date("2026-10-21T12:00:00Z"))).kind).toBe("none");
-    expect((await t.tick(EVENING)).kind).toBe("open-plan");
-    await t.tick(new Date(EVENING.getTime() + 5 * 60_000));
-    expect(t.db.tables.handover_runs).toHaveLength(1);
-    const plans = (await t.h.ctx.issues.list({ companyId: CO })).filter((i) => i.originKind === PLAN_ORIGIN);
-    expect(plans).toHaveLength(1);
-    expect(plans[0]).toMatchObject({ assigneeAgentId: "agent-ana", status: "todo" });
-  });
-
-  it("creates backlog tasks with their own worktree and asks the owner (board only) to approve", async () => {
-    const t = await proposedNight();
-    for (const id of t.tasks) {
-      const issue = await t.h.ctx.issues.get(id, CO);
-      expect(issue).toMatchObject({ status: "backlog", assigneeAgentId: "agent-ana", originKind: HANDOVER_TASK_ORIGIN, projectId: "proj-1" });
-      expect(issue?.executionWorkspaceSettings).toMatchObject({ workspaceStrategy: { type: "git_worktree" } });
-      expect(t.event(id).proposed_at).toBeTruthy();
-    }
-    const [interaction] = await t.h.ctx.issues.listInteractions(t.plan, CO);
-    expect(interaction).toMatchObject({ kind: "request_confirmation", status: "pending" });
-    expect(t.runRow().status).toBe("awaiting_approval");
-    expect((await t.h.ctx.issues.get(t.plan, CO))?.status).toBe("in_review");
-  });
-
-  it("refuses more tasks than the person's limit (and never more than 3)", async () => {
-    const t = await setup();
-    await t.tick(EVENING);
-    const res = await t.h.executeTool<{ error?: string }>(TOOL_PROPOSE, { tasks: [{ title: "a", claims: ["src/"] }, { title: "b", claims: ["src/"] }, { title: "c", claims: ["src/"] }] }, t.run);
-    expect(res.error).toBe("propose at most 2 tasks");
-  });
-
-  it("refuses when no plan is open, or a second proposal for the same night", async () => {
-    const t = await setup();
-    expect((await t.h.executeTool<{ error?: string }>(TOOL_PROPOSE, { tasks: [{ title: "a", claims: ["src/"] }] }, t.run)).error).toBe(
-      "no handover plan is open for you right now",
-    );
-    const p = await proposedNight();
-    expect((await p.h.executeTool<{ error?: string }>(TOOL_PROPOSE, { tasks: [{ title: "again", claims: ["src/"] }] }, p.run)).error).toBe(
-      "no handover plan is open for you right now",
-    );
-  });
-
-  it("can pick up a handed-off backlog ticket, but not someone else's", async () => {
-    const t = await setup();
-    t.h.seed({
-      issues: [
-        { id: "mine", companyId: CO, title: "from Bo", status: "backlog", assigneeAgentId: "agent-ana" } as unknown as Issue,
-        { id: "bos", companyId: CO, title: "Bo's", status: "backlog", assigneeAgentId: "agent-bo" } as unknown as Issue,
-      ],
+    const res = await handOver(t.h.ctx, CO, settings, ana, request("now", [note("a1", { maxMinutes: "30", budgetCents: "120", files: "src/login/, a1.txt" })]), DAY);
+    expect(res.ok).toBe(true);
+    expect(t.db.tables.handover_notes).toHaveLength(1);
+    expect(t.db.tables.handover_notes[0]).toMatchObject({
+      task_id: "a1",
+      owner: "ana@example.com",
+      source: "owner",
+      status: "handed_over",
+      schedule: "now",
+      what: "Do a1",
+      done_when: "a1 works",
+      claims: JSON.stringify(["src/login", "a1.txt"]),
+      max_minutes: 30,
+      budget_cents: 120,
+      submitted_by: "ana@example.com",
     });
-    await t.tick(EVENING);
-    expect((await t.h.executeTool<{ error?: string }>(TOOL_PROPOSE, { tasks: [{ issueId: "bos", claims: ["src/"] }] }, t.run)).error).toBe(
-      "you can only propose tickets assigned to you",
-    );
-    const ok = await t.h.executeTool<{ error?: string; data: { taskIds: string[] } }>(TOOL_PROPOSE, { tasks: [{ issueId: "mine", claims: ["src/"] }] }, t.run);
-    expect(ok.data.taskIds).toEqual(["mine"]);
+    const comments = await t.h.ctx.issues.listComments("a1", CO);
+    expect(comments.map((c) => c.body).join("\n")).toMatch(/What to do:\*\* Do a1[\s\S]*Done when:\*\* a1 works[\s\S]*`src\/login`, `a1.txt`[\s\S]*30 minutes[\s\S]*120 cents/);
+    // The event log still has one row per task, and the claims come from the note.
+    expect(JSON.parse(String(t.event("a1").claims))).toEqual(["src/login", "a1.txt"]);
+  });
+
+  it("refuses an incomplete note, or more tasks than the person's limit, before anything changes", () => {
+    expect(parseHandoverRequest({ when: "now", tasks: [note("a1", { doneWhen: "" })] }, settings, ana)).toBe('ticket 1: write how you will know it is done ("Done when")');
+    expect(parseHandoverRequest({ when: "now", tasks: [note("a1", { files: "" })] }, settings, ana)).toMatch(/^ticket 1: list the files/);
+    expect(parseHandoverRequest({ when: "now", tasks: [note("a1", { budgetCents: "501" })] }, settings, ana)).toMatch(/budget must be 1 to 500 cents/);
+    expect(parseHandoverRequest({ when: "now", tasks: [note("a1"), note("a2"), note("a3")] }, settings, ana)).toBe("choose at most 2 ticket(s)");
+    expect(parseHandoverRequest({ when: "now", tasks: [note("a1"), note("a1")] }, settings, ana)).toBe("ticket 2: chosen twice");
+    expect(parseHandoverRequest({ when: "tonight", tasks: [note("a1")] }, settings, ana)).toMatch(/choose Hand over now/);
   });
 });
 
-describe("approval and the night routine", () => {
-  it("approval alone starts nothing; the first task starts at night start", async () => {
-    const t = await proposedNight();
-    await approve(t);
-    expect((await t.tick(EVENING)).kind).toBe("approve");
-    expect(t.event(t.tasks[0]!).approved_at).toBeTruthy();
-    expect((await t.tick(new Date(EVENING.getTime() + 10 * 60_000))).kind).toBe("none");
-    expect((await t.h.ctx.issues.get(t.tasks[0]!, CO))?.status).toBe("backlog");
-
-    await t.tick(NIGHT);
-    expect((await t.h.ctx.issues.get(t.tasks[0]!, CO))?.status).toBe("todo");
-    expect(t.runRow()).toMatchObject({ status: "running", current_index: 0 });
-    expect(t.event(t.tasks[0]!).started_at).toBeTruthy();
-  });
-
-  it("works through the tasks one at a time and finishes", async () => {
-    const t = await proposedNight();
-    await approve(t);
-    await t.tick(EVENING);
-    await t.tick(NIGHT);
-    await t.h.ctx.issues.update(t.tasks[0]!, { status: "done" }, CO);
-    await t.tick(new Date(NIGHT.getTime() + 10 * 60_000));
-    expect((await t.h.ctx.issues.get(t.tasks[1]!, CO))?.status).toBe("todo");
-    expect(t.event(t.tasks[0]!).finished_at).toBeTruthy();
-    await t.h.ctx.issues.update(t.tasks[1]!, { status: "in_review" }, CO);
-    await t.tick(new Date(NIGHT.getTime() + 20 * 60_000));
+describe("2. Hand over now and scheduled handovers run exactly the owner's tickets", () => {
+  it("Hand over now runs exactly the chosen tickets, in order, and nothing else from the backlog", async () => {
+    const t = await setup();
+    const res = await handOver(t.h.ctx, CO, settings, ana, request("now", [note("a2"), note("a1")]), DAY);
+    expect(res).toMatchObject({ ok: true, when: "now", handoverKey: "2026-10-21T14:05:00", taskIds: ["a2", "a1"] });
+    expect(t.runRow()).toMatchObject({ kind: "now", status: "running", task_ids: JSON.stringify(["a2", "a1"]), current_index: 0 });
+    expect(await t.status("a2")).toBe("todo");
+    expect(await t.status("a1")).toBe("backlog");
+    expect(await t.status("a3")).toBe("backlog"); // not chosen: never touched
+    await t.h.ctx.issues.update("a2", { status: "done" }, CO);
+    await t.tick(new Date(DAY.getTime() + 5 * 60_000));
+    expect(await t.status("a1")).toBe("todo");
+    await t.h.ctx.issues.update("a1", { status: "done" }, CO);
+    await t.tick(new Date(DAY.getTime() + 10 * 60_000));
     expect(t.runRow()).toMatchObject({ status: "finished", stop_reason: "all tasks done" });
+    expect(await t.status("a3")).toBe("backlog");
   });
 
-  it("a rejected plan records the reason and runs nothing", async () => {
-    const t = await proposedNight();
-    await approve(t, "reject");
-    expect((await t.tick(EVENING)).kind).toBe("reject");
-    expect(t.runRow().status).toBe("rejected");
-    expect(t.event(t.tasks[0]!).outcome).toBe("rejected");
-    await t.tick(NIGHT);
-    expect((await t.h.ctx.issues.get(t.tasks[0]!, CO))?.status).toBe("backlog");
-  });
-});
-
-describe("budget cap", () => {
-  it("stops the night and blocks the running task when spend reaches the cap", async () => {
-    const t = await proposedNight();
-    await approve(t);
-    await t.tick(EVENING);
-    await t.tick(NIGHT);
-    t.db.costs.push({ company_id: CO, agent_id: "agent-ana", cost_cents: 500, occurred_at: new Date(NIGHT.getTime() + 60_000) });
-    await t.tick(new Date(NIGHT.getTime() + 5 * 60_000));
-    expect(t.runRow().status).toBe("budget_stopped");
-    expect((await t.h.ctx.issues.get(t.tasks[0]!, CO))?.status).toBe("blocked");
-    expect(t.event(t.tasks[0]!).outcome).toBe("blocked");
-    expect((await t.h.ctx.issues.get(t.tasks[1]!, CO))?.status).toBe("backlog");
-  });
-
-  it("spend from before the night does not count", async () => {
-    const t = await proposedNight();
-    await approve(t);
-    await t.tick(EVENING);
-    t.db.costs.push({ company_id: CO, agent_id: "agent-ana", cost_cents: 9999, occurred_at: EVENING });
-    await t.tick(NIGHT);
-    expect(t.runRow().status).toBe("running");
-  });
-});
-
-describe("time-outs and retries", () => {
-  it("retries a stuck task once, then fails it and moves on", async () => {
-    const t = await proposedNight();
-    await approve(t);
-    await t.tick(EVENING);
-    await t.tick(NIGHT);
-    await t.h.ctx.issues.update(t.tasks[0]!, { status: "in_progress" }, CO);
-
-    const retry = await t.tick(new Date(NIGHT.getTime() + 61 * 60_000));
-    expect(retry).toEqual({ kind: "retry-step", attempt: 2 });
-    expect((await t.h.ctx.issues.get(t.tasks[0]!, CO))?.status).toBe("todo");
-    expect(t.runRow().current_attempt).toBe(2);
-
-    await t.h.ctx.issues.update(t.tasks[0]!, { status: "in_progress" }, CO);
-    await t.tick(new Date(NIGHT.getTime() + 123 * 60_000));
-    expect(t.event(t.tasks[0]!).outcome).toBe("failed");
-    expect((await t.h.ctx.issues.get(t.tasks[0]!, CO))?.status).toBe("blocked");
-    expect((await t.h.ctx.issues.get(t.tasks[1]!, CO))?.status).toBe("todo");
-  });
-});
-
-describe("Hand over now", () => {
-  // 14:05 UTC: far from Ana's scheduled handover at 22:00.
-  const AFTERNOON = new Date("2026-10-21T14:05:00Z");
-
-  it("starts a handover at once: plan, approval, then work right away", async () => {
+  it("a scheduled handover runs exactly the notes the owner queued, and starts at the scheduled time", async () => {
     const t = await setup();
-    const started = await startHandoverNow(t.h.ctx, CO, settings, ana, AFTERNOON);
-    expect(started).toMatchObject({ ok: true, handoverKey: "2026-10-21T14:05:00" });
-    expect(t.runRow()).toMatchObject({ kind: "now", handover_key: "2026-10-21T14:05:00", status: "proposing" });
-    const planId = (started as { planIssueId: string }).planIssueId;
-    expect((await t.h.ctx.issues.get(planId, CO))?.title).toContain("handover now");
+    const res = await handOver(t.h.ctx, CO, settings, ana, request("scheduled", [note("a1")]), DAY);
+    expect(res).toMatchObject({ ok: true, when: "scheduled", message: expect.stringContaining("22:00 UTC") });
+    expect(t.db.tables.handover_notes[0]).toMatchObject({ status: "queued", schedule: "scheduled" });
+    // A new ticket appears in the agent's backlog after the owner queued (e.g. the agent wrote it).
+    t.h.seed({ issues: [ticket("sneaky", "agent-ana")] });
+    await t.tick(new Date("2026-10-21T20:30:00Z"));
+    expect(t.runRow()).toMatchObject({ status: "approved", kind: "scheduled", task_ids: JSON.stringify(["a1"]) });
+    expect(await t.status("a1")).toBe("backlog"); // nothing before the window
+    await t.tick(NIGHT);
+    expect(t.runRow()).toMatchObject({ status: "running", task_ids: JSON.stringify(["a1"]) });
+    expect(await t.status("a1")).toBe("todo");
+    expect(await t.status("sneaky")).toBe("backlog");
+    expect(t.db.tables.handover_notes[0]).toMatchObject({ status: "handed_over", handover_key: "2026-10-21" });
+  });
 
-    const res = await t.h.executeTool<{ error?: string; data: { taskIds: string[] } }>(TOOL_PROPOSE, { tasks: [{ title: "Fix login", claims: ["src/"] }] }, t.run);
+  it("with nothing queued, the schedule starts nothing and opens no plan (agent proposals are off by default)", async () => {
+    const t = await setup();
+    for (const at of [new Date("2026-10-21T20:30:00Z"), NIGHT, new Date("2026-10-22T03:00:00Z")]) expect((await t.tick(at)).kind).toBe("none");
+    expect(t.db.tables.handover_runs).toHaveLength(0);
+    expect((await t.h.ctx.issues.list({ companyId: CO })).filter((i) => i.originKind === PLAN_ORIGIN)).toEqual([]);
+    expect((await t.h.ctx.issues.list({ companyId: CO })).every((i) => i.status === "backlog")).toBe(true);
+  });
+
+  it("the owner can take queued tasks back before they start; then nothing runs and their files are free", async () => {
+    const t = await setup();
+    await handOver(t.h.ctx, CO, settings, ana, request("scheduled", [note("a1")]), DAY);
+    expect((await withdrawQueued(t.h.ctx, CO, ana)).withdrawn).toBe(1);
+    expect(t.event("a1").claims_released_at).toBeTruthy();
+    await t.tick(NIGHT);
+    expect(t.db.tables.handover_runs).toHaveLength(0);
+    expect(await t.status("a1")).toBe("backlog");
+  });
+
+  it("refuses, changing nothing: a ticket not on the owner's agent, not in backlog, or already queued", async () => {
+    const t = await setup();
+    t.h.seed({ issues: [ticket("busy", "agent-ana", { status: "in_progress" })] });
+    expect(await handOver(t.h.ctx, CO, settings, ana, request("now", [note("a1"), note("b1")]), DAY)).toEqual({ ok: false, message: "you can only hand over tickets assigned to your own agent" });
+    expect(await handOver(t.h.ctx, CO, settings, ana, request("now", [note("busy")]), DAY)).toMatchObject({ ok: false, message: "ticket BUSY is not in backlog" });
+    await handOver(t.h.ctx, CO, settings, ana, request("scheduled", [note("a1")]), DAY);
+    expect(await handOver(t.h.ctx, CO, settings, ana, request("now", [note("a1")]), DAY)).toMatchObject({ ok: false, message: "ticket A1 already waits for your scheduled handover" });
+    expect(await handOver(t.h.ctx, CO, settings, ana, request("scheduled", [note("a2"), note("a3")]), DAY)).toMatchObject({ ok: false, message: expect.stringContaining("at most 2 in all") });
+    expect(t.db.tables.handover_runs).toHaveLength(0);
+    expect(t.db.tables.handover_notes).toHaveLength(1);
+  });
+
+  it("only one handover at a time, and never for an agent that is not locked down", async () => {
+    const t = await setup();
+    expect((await handOver(t.h.ctx, CO, settings, ana, request("now", [note("a1")]), DAY)).ok).toBe(true);
+    expect(await handOver(t.h.ctx, CO, settings, ana, request("now", [note("a2")]), DAY)).toEqual({ ok: false, message: "a handover is already in progress (running)" });
+    const loose = { ...bo, agentEnvironmentId: "someone-elses" };
+    expect(await handOver(t.h.ctx, CO, settings, loose, request("now", [note("b1")], loose), DAY)).toMatchObject({ ok: false, message: expect.stringContaining("not locked down") });
+  });
+});
+
+describe("2. the agent may not add, swap or rewrite the owner's tasks", () => {
+  it("cannot suggest tasks unless the owner turned on Help me plan (off by default)", async () => {
+    const t = await setup();
+    await handOver(t.h.ctx, CO, settings, ana, request("now", [note("a1")]), DAY);
+    const res = await t.h.executeTool<{ error?: string }>(TOOL_PROPOSE, { tasks: [{ title: "Extra", claims: ["x/"] }] }, t.run);
+    expect(res.error).toBe("your owner chooses the work; Help me plan is off, so you cannot suggest tasks");
+    expect(JSON.parse(String(t.runRow()!.task_ids))).toEqual(["a1"]);
+    expect((await t.h.ctx.issues.list({ companyId: CO })).map((i) => i.id).sort()).toEqual(["a1", "a2", "a3", "b1"]);
+  });
+
+  it("cannot hand a running or queued task of its owner's to someone else", async () => {
+    const t = await setup();
+    await handOver(t.h.ctx, CO, settings, ana, request("now", [note("a1")]), DAY);
+    await handOver(t.h.ctx, CO, settings, ana, request("scheduled", [note("a2")]), DAY);
+    for (const issueId of ["a1", "a2"]) {
+      const res = await t.h.executeTool<{ error?: string }>(TOOL_HANDOFF, { toEmail: "bo@example.com", issueId }, t.run);
+      expect(res.error).toBe("your owner handed this ticket over to you; only your owner can change that");
+      expect((await t.h.ctx.issues.get(issueId, CO))?.assigneeAgentId).toBe("agent-ana");
+    }
+    // A ticket the owner did not hand over may still be passed on, through the board.
+    expect((await t.h.executeTool<{ error?: string }>(TOOL_HANDOFF, { toEmail: "bo@example.com", issueId: "a3" }, t.run)).error).toBeUndefined();
+  });
+
+  it("editing the ticket changes nothing: the handback shows the locked note and says the ticket was edited", async () => {
+    const t = await setup();
+    await handOver(t.h.ctx, CO, settings, ana, request("now", [note("a1")]), DAY);
+    await t.h.ctx.issues.update("a1", { description: "Actually, rewrite the whole app", status: "done" }, CO);
+    await t.tick(new Date(DAY.getTime() + 5 * 60_000));
+    expect(t.runRow()).toMatchObject({ status: "finished" });
+    expect(t.db.tables.handover_notes[0]).toMatchObject({ what: "Do a1", done_when: "a1 works" });
+    const b = t.db.tables.briefings[0]!;
+    const item = JSON.parse(String(b.items))[0];
+    expect(item.note).toMatchObject({ what: "Do a1", doneWhen: "a1 works", files: ["a1.txt"], ticketEdited: true });
+    const email = renderBriefing(
+      { id: String(b.id), companyId: CO, owner: ana.email, handoverKey: String(b.handover_key), items: JSON.parse(String(b.items)), notes: [], conflicts: [], shared: [], status: "pending" },
+      settings.links!,
+      "secret",
+      new Date(DAY.getTime() + 3600_000),
+    );
+    expect(email.text).toContain("You asked: Do a1");
+    expect(email.text).toContain("Done when (your words; Aurora does not check this, you do): a1 works");
+    expect(email.text).toContain("Limits: only a1.txt; 120 minutes; 500 cents.");
+    expect(email.text).toContain("WARNING: the ticket's text was changed after you handed it over");
+    expect(email.text).toContain("Only you can use these links");
+  });
+});
+
+describe("3. the owner's tap is the approval: no plan step", () => {
+  it("creates no plan ticket and no approval request; the tasks are approved at the tap", async () => {
+    const t = await setup();
+    await handOver(t.h.ctx, CO, settings, ana, request("now", [note("a1")]), DAY);
+    const all = await t.h.ctx.issues.list({ companyId: CO });
+    expect(all.filter((i) => i.originKind === PLAN_ORIGIN)).toEqual([]);
+    for (const i of all) expect(await t.h.ctx.issues.listInteractions(i.id, CO)).toEqual([]);
+    expect(t.event("a1").proposed_at).toBe(DAY.toISOString());
+    expect(t.event("a1").approved_at).toBe(DAY.toISOString());
+    expect(t.event("a1").started_at).toBe(DAY.toISOString());
+  });
+
+  it("a handover left waiting for the old plan approval ends without work", async () => {
+    const t = await setup();
+    t.db.tables.handover_runs.push({ company_id: CO, owner: ana.email, agent_id: "agent-ana", handover_key: "2026-10-21", kind: "scheduled", status: "awaiting_approval", task_ids: JSON.stringify(["a1"]), current_index: -1, current_attempt: 0 });
+    expect((await t.tick(new Date("2026-10-21T20:30:00Z"))).kind).toBe("expire");
+    expect(t.runRow()).toMatchObject({ status: "expired" });
+    await t.tick(NIGHT);
+    expect(await t.status("a1")).toBe("backlog");
+  });
+});
+
+describe("4. only the owner hands over their own tasks", () => {
+  it("the route acts for the owner the service names, on that owner's tickets only", async () => {
+    const t = await setup();
+    // Bo cannot hand over Ana's ticket: it is not on Bo's agent.
+    const res = await t.api("handover-start", { email: "bo@example.com", when: "now", tasks: [note("a1")] });
+    expect(res).toMatchObject({ status: 409, body: { ok: false, message: "you can only hand over tickets assigned to your own agent" } });
+    expect((await t.api("handover-start", { email: "eve@example.com", when: "now", tasks: [note("a1")] })).status).toBe(404);
+    const ok = await t.api("handover-start", { email: "ana@example.com", when: "now", tasks: [note("a1")] });
+    expect(ok).toMatchObject({ status: 201, body: { ok: true, taskIds: ["a1"] } });
+  });
+
+  it("the status route lists only the owner's own backlog, with what waits", async () => {
+    const t = await setup();
+    await handOver(t.h.ctx, CO, settings, ana, request("scheduled", [note("a1")]), DAY);
+    const res = await t.api("handover-status", { email: "ana@example.com" });
+    expect(res.body).toMatchObject({ ok: true, maxTasks: 2, helpMePlan: false, limits: { defaultMinutes: 120, maxMinutes: 480, maxBudgetCents: 500 } });
+    expect(res.body.tickets.map((x: { id: string }) => x.id)).toEqual(["a2", "a3"]);
+    expect(res.body.queued).toMatchObject([{ taskId: "a1", doneWhen: "a1 works" }]);
+    expect((await t.api("handover-withdraw", { email: "ana@example.com" })).body).toMatchObject({ ok: true, withdrawn: 1 });
+  });
+});
+
+describe("5. Help me plan: off by default, and suggestions still need the owner's tap", () => {
+  const withHelp = { ...baseConfig, people: [{ ...baseConfig.people[0]!, helpMePlan: true }, baseConfig.people[1]!] };
+
+  it("is off by default: the owner cannot ask, the agent cannot suggest", async () => {
+    const t = await setup();
+    expect(await askForSuggestions(t.h.ctx, CO, settings, ana)).toMatchObject({ ok: false, message: expect.stringContaining("Help me plan is off") });
+  });
+
+  it("when on, the agent's suggestions are only drafts: nothing runs, now or on the schedule, until the owner hands them over", async () => {
+    const t = await setup(withHelp);
+    expect((await t.h.executeTool<{ error?: string }>(TOOL_PROPOSE, { tasks: [{ title: "x", claims: ["x/"] }] }, t.run)).error).toBe("your owner has not asked for suggestions");
+    const asked = await askForSuggestions(t.h.ctx, CO, t.s, t.me);
+    expect(asked).toMatchObject({ ok: true });
+    expect(await t.h.ctx.issues.get(asked.planIssueId!, CO)).toMatchObject({ originKind: PLAN_ORIGIN, assigneeAgentId: "agent-ana" });
+
+    const res = await t.h.executeTool<{ error?: string; data: { taskIds: string[] } }>(
+      TOOL_PROPOSE,
+      { tasks: [{ title: "Speed up search", description: "Cache results", doneWhen: "search under 200 ms", claims: ["src/search/"] }, { issueId: "a3", claims: ["a3.txt"] }] },
+      t.run,
+    );
     expect(res.error).toBeUndefined();
-    await approve({ ...t, plan: planId, tasks: res.data.taskIds });
-    const soon = new Date(AFTERNOON.getTime() + 2 * 60_000);
-    expect((await t.tick(soon)).kind).toBe("approve");
-    expect((await t.tick(soon)).kind).toBe("advance");
-    expect((await t.h.ctx.issues.get(res.data.taskIds[0]!, CO))?.status).toBe("todo");
+    const [newId] = res.data.taskIds;
+    expect(await t.h.ctx.issues.get(newId!, CO)).toMatchObject({ status: "backlog", originKind: HANDOVER_TASK_ORIGIN, assigneeAgentId: "agent-ana" });
+    expect(t.db.tables.handover_notes.map((n) => [n.task_id, n.source, n.status])).toEqual([
+      [newId, "agent", "draft"],
+      ["a3", "agent", "draft"],
+    ]);
+    expect(await t.status(asked.planIssueId!)).toBe("done");
+    // No run, no claims, no work: on the schedule either.
+    for (const at of [DAY, NIGHT]) await t.tick(at);
+    expect(t.db.tables.handover_runs).toHaveLength(0);
+    expect(await t.status(newId!)).toBe("backlog");
+    expect(t.db.tables.task_events).toHaveLength(0);
+
+    // The owner sees the drafts, edits one, and hands it over: the owner's note is what runs.
+    const status = await t.api("handover-status", { email: "ana@example.com" });
+    expect(status.body.tickets.find((x: { id: string }) => x.id === newId).draft).toMatchObject({ source: "agent", doneWhen: "search under 200 ms", files: "src/search" });
+    const r = parseHandoverRequest({ when: "now", tasks: [{ issueId: newId, what: "Cache search results for 60 s", doneWhen: "p95 under 200 ms", files: "src/search/" }] }, t.s, t.me);
+    expect((await handOver(t.h.ctx, CO, t.s, t.me, r as HandoverRequest, DAY)).ok).toBe(true);
+    expect(t.db.tables.handover_notes.find((n) => n.task_id === newId && n.source === "agent")!.status).toBe("withdrawn");
+    expect(t.db.tables.handover_notes.find((n) => n.task_id === newId && n.source === "owner")).toMatchObject({ status: "handed_over", what: "Cache search results for 60 s" });
+    expect(JSON.parse(String(t.runRow()!.task_ids))).toEqual([newId]);
+  });
+});
+
+describe("limits from the note are enforced", () => {
+  it("a task over its own budget is blocked and the next one starts", async () => {
+    const t = await setup();
+    await handOver(t.h.ctx, CO, settings, ana, request("now", [note("a1", { budgetCents: "50" }), note("a2")]), DAY);
+    t.db.costs.push({ company_id: CO, agent_id: "agent-ana", cost_cents: 50, occurred_at: new Date(DAY.getTime() + 60_000) });
+    await t.tick(new Date(DAY.getTime() + 5 * 60_000));
+    expect(t.event("a1").outcome).toBe("blocked");
+    expect(await t.status("a1")).toBe("blocked");
+    expect(await t.status("a2")).toBe("todo");
   });
 
-  it("only one handover at a time", async () => {
+  it("a task past its own time limit fails and the next one starts", async () => {
     const t = await setup();
-    expect((await startHandoverNow(t.h.ctx, CO, settings, ana, AFTERNOON)).ok).toBe(true);
-    expect(await startHandoverNow(t.h.ctx, CO, settings, ana, new Date(AFTERNOON.getTime() + 60_000))).toEqual({ ok: false, message: "a handover is already in progress (proposing)" });
+    await handOver(t.h.ctx, CO, settings, ana, request("now", [note("a1", { maxMinutes: "20" }), note("a2")]), DAY);
+    await t.h.ctx.issues.update("a1", { status: "in_progress" }, CO);
+    await t.tick(new Date(DAY.getTime() + 15 * 60_000));
+    expect(await t.status("a1")).toBe("in_progress");
+    await t.tick(new Date(DAY.getTime() + 21 * 60_000));
+    expect(t.event("a1").outcome).toBe("failed");
+    expect(await t.status("a2")).toBe("todo");
+    const comments = (await t.h.ctx.issues.listComments("a1", CO)).map((c) => c.body);
+    expect(comments).toContain("The handover stopped this task: its time limit of 20 minutes was reached.");
   });
 
-  it("refuses an agent that is not locked down", async () => {
+  it("the handover's own budget cap still stops everything and pauses the agent", async () => {
     const t = await setup();
-    const loose = { ...ana, agentEnvironmentId: "someone-elses" };
-    expect(await startHandoverNow(t.h.ctx, CO, settings, loose, AFTERNOON)).toMatchObject({ ok: false, message: expect.stringContaining("not locked down") });
+    await handOver(t.h.ctx, CO, settings, ana, request("now", [note("a1"), note("a2")]), DAY);
+    t.db.costs.push({ company_id: CO, agent_id: "agent-ana", cost_cents: 500, occurred_at: new Date(DAY.getTime() + 60_000) });
+    await t.tick(new Date(DAY.getTime() + 5 * 60_000));
+    expect(t.runRow()).toMatchObject({ status: "budget_stopped" });
+    expect(await t.status("a2")).toBe("backlog");
+  });
+
+  it("a stuck task is retried once within its time, then fails", async () => {
+    const t = await setup();
+    await handOver(t.h.ctx, CO, settings, ana, request("now", [note("a1"), note("a2")]), DAY);
+    await t.h.ctx.issues.update("a1", { status: "in_progress" }, CO);
+    expect(await t.tick(new Date(DAY.getTime() + 61 * 60_000))).toEqual({ kind: "retry-step", attempt: 2 });
+    expect(await t.status("a1")).toBe("todo");
+    await t.h.ctx.issues.update("a1", { status: "in_progress" }, CO);
+    await t.tick(new Date(DAY.getTime() + 123 * 60_000));
+    expect(t.event("a1").outcome).toBe("failed");
+    expect(await t.status("a2")).toBe("todo");
   });
 });
 
@@ -263,96 +387,39 @@ function repoWithOwners(codeowners = "/src/ui/  ana@example.com\n/src/api/  @bo-
   return dir;
 }
 
-describe("claims and the pre-handover check", () => {
-  type Proposed = { error?: string; content?: string; data: { planIssueId: string; taskIds: string[]; moved: Array<{ title: string; ticketId: string; keeper: string }>; questions: string[] } };
-  const workspace = (dir: string) =>
-    ({ id: "ws-1", projectId: "proj-1", name: "repo", path: dir, repoUrl: null, repoRef: null, defaultRef: "main", isPrimary: true, createdAt: "", updatedAt: "" });
-  const bo = settings.people[1]!;
-  const boRun = { agentId: "agent-bo", runId: "run-2", companyId: CO, projectId: "proj-1" };
-
-  it("refuses a task that does not say which files it may change", async () => {
+describe("the pre-handover check on the owner's own tasks", () => {
+  const workspace = (dir: string) => ({ id: "ws-1", projectId: "proj-1", name: "repo", path: dir, repoUrl: null, repoRef: null, defaultRef: "main", isPrimary: true, createdAt: "", updatedAt: "" });
+  const withRepo = async (codeowners?: string) => {
     const t = await setup();
-    await t.tick(EVENING);
-    const res = await t.h.executeTool<{ error?: string }>(TOOL_PROPOSE, { tasks: [{ title: "Fix login" }] }, t.run);
-    expect(res.error).toMatch(/^task 1: list the files and folders it may change \(claims\)/);
-    expect((await t.h.executeTool<{ error?: string }>(TOOL_PROPOSE, { tasks: [{ title: "x", claims: ["../etc"] }] }, t.run)).error).toMatch(/must be a path inside the repository/);
+    t.h.seed({ projects: [{ id: "proj-1", companyId: CO, name: "App" } as unknown as Project], projectWorkspaces: [workspace(repoWithOwners(codeowners))] });
+    return t;
+  };
+
+  it("a task reaching into a teammate's CODEOWNERS area is not handed over; nothing changes and nothing moves", async () => {
+    const t = await withRepo();
+    const res = await handOver(t.h.ctx, CO, settings, ana, request("now", [note("a1", { files: "src/ui/" }), note("a2", { files: "src/api/search.ts" })]), DAY);
+    expect(res).toMatchObject({ ok: false, overlaps: ['"Title a2": `src/api/search.ts` is in bo@example.com\'s area (CODEOWNERS line 2).'] });
+    expect(t.db.tables.handover_runs).toHaveLength(0);
+    expect(t.db.tables.handover_notes).toHaveLength(0);
+    expect((await t.h.ctx.issues.get("a2", CO))?.assigneeAgentId).toBe("agent-ana");
+    expect(t.db.tables.overlaps).toMatchObject([{ owner: "ana@example.com", keeper: "bo@example.com", kind: "area", claim: "src/api/search.ts", ticket_id: "a2" }]);
   });
 
-  it("a task in another owner's area goes to that owner's agent, and the owner is asked", async () => {
+  it("files a teammate's handed-over task holds are refused until that task is decided", async () => {
     const t = await setup();
-    t.h.seed({ projects: [{ id: "proj-1", companyId: CO, name: "App" } as unknown as Project], projectWorkspaces: [workspace(repoWithOwners())] });
-    await t.tick(EVENING);
-    const res = await t.h.executeTool<Proposed>(
-      TOOL_PROPOSE,
-      { tasks: [{ title: "Search box", claims: ["src/ui/search.tsx"] }, { title: "Search API", claims: ["src/api/search.ts"] }] },
-      t.run,
-    );
-    expect(res.error).toBeUndefined();
-    expect(res.data.taskIds).toHaveLength(1);
-    expect(res.data.moved).toMatchObject([{ title: "Search API", keeper: "bo@example.com" }]);
-    expect(res.content).toContain("went to their agent");
-
-    const ticket = await t.h.ctx.issues.get(res.data.moved[0]!.ticketId, CO);
-    expect(ticket).toMatchObject({ assigneeAgentId: "agent-bo", status: "backlog", originKind: HANDOFF_ORIGIN });
-    expect(ticket?.description).toContain("is in bo@example.com's area (CODEOWNERS line 2)");
-    expect(t.event(ticket!.id)).toMatchObject({ handed_off_to: "bo@example.com" });
-    expect(t.db.tables.overlaps).toMatchObject([{ owner: "ana@example.com", keeper: "bo@example.com", kind: "area", claim: "src/api/search.ts", ticket_id: ticket!.id }]);
-
-    const kept = res.data.taskIds[0]!;
-    expect(JSON.parse(String(t.event(kept).claims))).toEqual(["src/ui/search.tsx"]);
-    expect(t.runRow().task_ids).toBe(JSON.stringify([kept]));
-    const [interaction] = await t.h.ctx.issues.listInteractions(res.data.planIssueId, CO);
-    const details = (interaction as unknown as { payload: { detailsMarkdown: string } }).payload.detailsMarkdown;
-    expect(details).toContain("claims `src/ui/search.tsx`");
-    expect(details).toContain("**Pre-handover check: one question**");
-    expect(details).toContain('1. "Search API": `src/api/search.ts` is in bo@example.com\'s area');
+    expect((await handOver(t.h.ctx, CO, settings, bo, request("scheduled", [note("b1", { files: "docs/" })], bo), DAY)).ok).toBe(true);
+    const res = await handOver(t.h.ctx, CO, settings, ana, request("now", [note("a1", { files: "docs/guide.md" })]), DAY);
+    expect(res).toMatchObject({ ok: false, overlaps: [expect.stringContaining('overlaps `docs`, which bo@example.com\'s task "Title b1" already holds')] });
+    await withdrawQueued(t.h.ctx, CO, bo);
+    expect((await handOver(t.h.ctx, CO, settings, ana, request("now", [note("a1", { files: "docs/guide.md" })]), DAY)).ok).toBe(true);
   });
 
-  it("a GitHub team in CODEOWNERS: the plan warns, naming the team, and the admin's view lists it", async () => {
-    const t = await setup();
-    t.h.seed({ projects: [{ id: "proj-1", companyId: CO, name: "App" } as unknown as Project], projectWorkspaces: [workspace(repoWithOwners("/src/ui/  ana@example.com\n/src/api/  @acme/backend\n"))] });
-    await t.tick(EVENING);
-    const res = await t.h.executeTool<Proposed>(TOOL_PROPOSE, { tasks: [{ title: "Search API", claims: ["src/api/search.ts"] }] }, t.run);
-    expect(res.data.taskIds).toHaveLength(1); // nobody is matched through a team
-    const [interaction] = await t.h.ctx.issues.listInteractions(res.data.planIssueId, CO);
-    const details = (interaction as unknown as { payload: { detailsMarkdown: string } }).payload.detailsMarkdown;
-    expect(details).toContain("_WARNING: CODEOWNERS names GitHub team @acme/backend (line 2).");
-    expect(details).toContain("list the people instead");
-    const view = await t.h.getData<{ ok: boolean; source: string; teams: unknown[] }>("codeowners", { companyId: CO });
-    expect(view).toEqual({ ok: true, source: "CODEOWNERS", teams: [{ team: "@acme/backend", lines: [2] }], notes: [expect.stringContaining("WARNING")] });
-  });
-
-  it("a later claim on the same files goes to the owner who claimed them first", async () => {
-    const t = await setup();
-    await tickPerson(t.h.ctx, CO, settings, bo, EVENING);
-    const first = await t.h.executeTool<Proposed>(TOOL_PROPOSE, { tasks: [{ title: "Rewrite docs", claims: ["docs/"] }] }, boRun);
-    expect(first.data.taskIds).toHaveLength(1);
-    await t.tick(EVENING);
-    const later = await t.h.executeTool<Proposed>(TOOL_PROPOSE, { tasks: [{ title: "Fix a typo", claims: ["docs/guide.md"] }] }, t.run);
-    expect(later.data.taskIds).toEqual([]);
-    expect(later.data.moved).toMatchObject([{ keeper: "bo@example.com" }]);
-    expect(later.data.questions[0]).toContain('overlaps `docs`, claimed by bo@example.com\'s task "Rewrite docs"');
-    expect(t.db.tables.overlaps).toMatchObject([{ kind: "claim", claim: "docs/guide.md" }]);
-  });
-
-  it("claims end when the task is decided or its plan expires", async () => {
-    const t = await setup();
-    await tickPerson(t.h.ctx, CO, settings, bo, EVENING);
-    const first = await t.h.executeTool<Proposed>(TOOL_PROPOSE, { tasks: [{ title: "Rewrite docs", claims: ["docs/"] }] }, boRun);
-    // Nobody approves Bo's plan; it expires when Bo's handover ends.
-    await tickPerson(t.h.ctx, CO, settings, bo, new Date("2026-10-22T06:30:00Z"));
-    expect(t.db.tables.task_events.find((r) => r.task_id === first.data.taskIds[0])?.claims_released_at).toBeTruthy();
-    await t.tick(new Date("2026-10-22T20:30:00Z"));
-    const later = await t.h.executeTool<Proposed>(TOOL_PROPOSE, { tasks: [{ title: "Fix a typo", claims: ["docs/guide.md"] }] }, t.run);
-    expect(later.data.moved).toEqual([]);
-  });
-
-  it("never passes on a guess: an unreadable repository refuses the proposal", async () => {
-    const t = await setup();
-    t.h.seed({ projects: [{ id: "proj-1", companyId: CO, name: "App" } as unknown as Project], projectWorkspaces: [workspace(path.join(tmpdir(), "vt-no-such-repo"))] });
-    await t.tick(EVENING);
-    const res = await t.h.executeTool<{ error?: string }>(TOOL_PROPOSE, { tasks: [{ title: "x", claims: ["src/"] }] }, t.run);
-    expect(res.error).toBe("the project's repository could not be read for the pre-handover check");
-    expect(await t.h.ctx.issues.list({ companyId: CO, assigneeAgentId: "agent-ana", status: "backlog" })).toEqual([]);
+  it("warns the owner about GitHub teams in CODEOWNERS, and never passes on a guess", async () => {
+    const t = await withRepo("/src/ui/  ana@example.com\n/src/api/  @acme/backend\n");
+    const res = await handOver(t.h.ctx, CO, settings, ana, request("now", [note("a1", { files: "src/api/" })]), DAY);
+    expect(res).toMatchObject({ ok: true, notes: [expect.stringContaining("WARNING: CODEOWNERS names GitHub team @acme/backend (line 2).")] });
+    const u = await setup();
+    u.h.seed({ projects: [{ id: "proj-1", companyId: CO, name: "App" } as unknown as Project], projectWorkspaces: [workspace(path.join(tmpdir(), "vt-no-such-repo"))] });
+    expect(await handOver(u.h.ctx, CO, settings, ana, request("now", [note("a1")]), DAY)).toEqual({ ok: false, message: "the project's repository could not be read for the pre-handover check" });
   });
 });

@@ -14,6 +14,7 @@ const CO = "co-1";
 const MORNING = new Date("2026-10-22T08:00:00Z");
 const NEXT_MORNING = new Date("2026-10-23T08:00:00Z");
 const baseConfig = {
+  serviceUserId: "svc-user",
   links: { baseUrl: "http://mail.test", signingSecret: { type: "secret_ref", secretId: "sig" }, expiresMinutes: 60 },
   github: { repo: "acme/app" },
   invites: { expiresMinutes: 30, agentAdapterType: "process", agentAdapterConfig: { command: "pwd" } },
@@ -69,7 +70,8 @@ async function setup(config: Record<string, unknown> = baseConfig) {
   await tick(MORNING);
 
   const api = async (routeKey: string, body: Record<string, unknown> = {}, query: Record<string, string> = {}) =>
-    (await plugin.definition.onApiRequest!({ routeKey, method: "POST", path: "", params: {}, query, body, actor: { actorType: "user", actorId: "board" }, companyId: CO, headers: {} } as PluginApiRequestInput)) as {
+    // The email service says who is signed in; by default the task's owner, Ana.
+    (await plugin.definition.onApiRequest!({ routeKey, method: "POST", path: "", params: {}, query, body: routeKey === "link-execute" ? { signedInAs: "ana@example.com", ...body } : body, actor: { actorType: "user", actorId: "svc-user", userId: "svc-user" }, companyId: CO, headers: {} } as PluginApiRequestInput)) as {
       status: number;
       body: Record<string, any>;
     };

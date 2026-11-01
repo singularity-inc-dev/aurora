@@ -20,6 +20,7 @@ const person = (email: string, githubLogin: string | null = null): Person => ({
   handoverStartHour: 22,
   maxTasksPerHandover: 3,
   handoverBudgetCapCents: 500,
+  helpMePlan: false,
   secrets: [],
 });
 const ana = person("ana@example.com", "ana");

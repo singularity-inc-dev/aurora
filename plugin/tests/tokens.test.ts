@@ -53,8 +53,8 @@ describe("signed invite links", () => {
 });
 
 describe("action tiers", () => {
-  it("merge, reject, publishing to GitHub and joining from an invite and Hand over now need a tap; nothing else does", () => {
-    expect(actionsIn("needs-tap").sort()).toEqual(["join-from-invite", "merge-task", "publish-to-github", "reject-task", "start-handover-now"]);
+  it("merge, reject, publishing to GitHub, joining from an invite and handing over (now or scheduled) need a tap; nothing else does", () => {
+    expect(actionsIn("needs-tap").sort()).toEqual(["join-from-invite", "merge-task", "publish-to-github", "queue-handover", "reject-task", "start-handover-now"]);
     expect(() => assertTier("merge-task", "needs-tap")).not.toThrow();
   });
 
