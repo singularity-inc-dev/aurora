@@ -39,6 +39,25 @@ def interval(xs):
     return [quantile(xs, 0.025), quantile(xs, 0.975)]
 
 
+WINDOW_START = "2025-11-01"
+WINDOW_END = "2026-11-01"
+
+
+def read_ages():
+    """repo-age.tsv (age.sh): the oldest author date in a commit-only clone from 2025-10-02."""
+    import datetime
+    ages = {}
+    p = os.path.join(HERE, "repo-age.tsv")
+    if os.path.exists(p):
+        for line in open(p).read().split("\n")[1:]:
+            if line.strip():
+                _, name, oldest, _ = line.split("\t")
+                start = max(oldest, WINDOW_START)
+                days = (datetime.date.fromisoformat(WINDOW_END) - datetime.date.fromisoformat(start)).days
+                ages[name] = {"activeFrom": start, "activeWeeks": days / 7.0}
+    return ages
+
+
 def load_repo(run, name, bin_, screen):
     d = os.path.join(run, name.replace("/", "_"))
     r = {"name": name, "bin": bin_, "coreScreened": screen[name]["core"]}
@@ -57,7 +76,9 @@ def load_repo(run, name, bin_, screen):
     pairs = _audit.read_jsonl(os.path.join(d, "pairs.jsonl")) if os.path.exists(os.path.join(d, "pairs.jsonl")) else []
     ind = [1 if c["status"] == "conflict" else 0 for c in classified if c["relation"] == "independent"]
     allc = [1 if c["status"] == "conflict" else 0 for c in classified]
+    age = AGES.get(name, {"activeFrom": WINDOW_START, "activeWeeks": WEEKS})
     r.update({
+        "activeFrom": age["activeFrom"], "activeWeeks": age["activeWeeks"],
         "window": overlap["window"], "commits": overlap["commits"], "peopleTool": overlap["people"],
         "overlaps": len(overlap["overlaps"]), "overlapsPerWeek": len(overlap["overlaps"]) / WEEKS,
         "threeDayPerWeek": weekly["perWeek"]["threeDay"],
@@ -67,6 +88,8 @@ def load_repo(run, name, bin_, screen):
         "outcomes": ind if ind else allc, "rateBasis": "independent" if ind else ("all clean replays" if allc else "none"),
         "topFiles": overlap["topFiles"][:5],
     })
+    r["overlapsPerWeekActive"] = len(overlap["overlaps"]) / age["activeWeeks"]
+    r["threeDayPerWeekActive"] = weekly["perWeek"]["threeDay"] * WEEKS / age["activeWeeks"]
     r["conflictFiles"] = rates.get("conflictFiles", [])
     return r
 
@@ -209,7 +232,17 @@ def publish(run, out, repos):
                     f.write(json.dumps(p, sort_keys=True) + "\n")
 
 
+def active_view(r):
+    if "failed" in r:
+        return r
+    v = dict(r)
+    v["overlapsPerWeek"], v["threeDayPerWeek"] = r["overlapsPerWeekActive"], r["threeDayPerWeekActive"]
+    return v
+
+
 def main(argv):
+    global AGES
+    AGES = read_ages()
     run, out = argv[1], argv[2]
     screen = {c["name"]: c for c in _audit.read_json(os.path.join(HERE, "screening-final.json"))["candidates"]}
     rows = [l.rstrip("\n").split("\t") for l in open(os.path.join(HERE, "repos.tsv")) if l.strip() and not l.startswith("#")]
@@ -217,9 +250,19 @@ def main(argv):
     bins = [summarize(b, [r for r in repos if r["bin"] == b]) for b in BIN_ORDER]
     five_ten = summarize("5-10 (bins 5-6 and 7-10)", [r for r in repos if r["bin"] in ("5-6", "7-10")])
     verdict = hardy(five_ten)
+    arepos = [active_view(r) for r in repos]
+    abins = [summarize(b, [r for r in arepos if r["bin"] == b]) for b in BIN_ORDER]
+    afive = summarize("5-10 (bins 5-6 and 7-10)", [r for r in arepos if r["bin"] in ("5-6", "7-10")])
+    averdict = hardy(afive)
     os.makedirs(out, exist_ok=True)
-    _audit.write_json(os.path.join(out, "results.json"), {"bins": bins, "fiveToTen": five_ten, "hardy": verdict, "bootstrap": {"resamples": BOOT, "seed": SEED}})
+    _audit.write_json(os.path.join(out, "results.json"), {"bins": bins, "fiveToTen": five_ten, "hardy": verdict,
+                      "sensitivityActivePeriod": {"bins": abins, "fiveToTen": afive, "hardy": averdict},
+                      "bootstrap": {"resamples": BOOT, "seed": SEED}})
     md = markdown(bins, five_ten, repos)
+    md += "\n### Sensitivity: weekly rates over each repository's active weeks (not pre-registered)\n\nA repository that began part-way through the window is divided by the weeks since its first commit in the window, not by 52.\n\n"
+    md += "### By team size (active weeks)\n" + markdown(abins, afive, arepos).split("### By team size\n", 1)[1]
+    md += "\nActive weeks per team: " + ", ".join("%s %.0f" % (r["name"].split("/")[1], r["activeWeeks"]) for r in repos if "failed" not in r and r["activeWeeks"] < WEEKS - 0.5) + " (all others 52).\n"
+    md += "\n### Hardy test\n\nPre-registered: " + json.dumps(verdict) + "\n\nActive-weeks sensitivity: " + json.dumps(averdict) + "\n"
     with open(os.path.join(out, "results.md"), "w") as f:
         f.write(md)
     publish(run, out, repos)
