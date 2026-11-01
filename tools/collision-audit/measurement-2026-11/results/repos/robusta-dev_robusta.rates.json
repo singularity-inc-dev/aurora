@@ -1,0 +1,23 @@
+{
+  "all": {
+    "conflicts": 0,
+    "interval95": null,
+    "pairs": 0,
+    "rate": null
+  },
+  "cleanReplays": 0,
+  "conflictFiles": [],
+  "independent": {
+    "conflicts": 0,
+    "interval95": null,
+    "pairs": 0,
+    "rate": null
+  },
+  "notReplayable": 0,
+  "overlapsPerWeek": 0.0,
+  "rateUsed": "all clean replays",
+  "replayed": 0,
+  "repo": "robusta-dev/robusta",
+  "topOverlapFiles": [],
+  "wouldBeConflictsPerWeek": null
+}

@@ -1,0 +1,65 @@
+{
+  "activeFrom": "2025-11-01",
+  "activeWeeks": 52.142857142857146,
+  "bin": "11-30",
+  "busiestDay": "2026-09-23",
+  "busiestDayOverlaps": 16,
+  "busiestDayShare": 0.05517241379310345,
+  "cleanReplays": 98,
+  "commits": 1715,
+  "conflictFiles": [],
+  "conflictsAll": 0,
+  "conflictsIndependent": 0,
+  "coreScreened": 15,
+  "independentPairs": 98,
+  "manifest": {
+    "bin": "11-30",
+    "branch": "main",
+    "cloneSince": "2025-10-02",
+    "commitsInClone": 1805,
+    "finished": "2026-11-01T18:04:36Z",
+    "git": "2.43.0",
+    "head": "c40e86c6533eac94b28652f0255f7cd07ea86c15",
+    "name": "GreptimeTeam/greptimedb",
+    "python": "3.13.18",
+    "started": "2026-11-01T18:04:12Z",
+    "status": "ok"
+  },
+  "name": "GreptimeTeam/greptimedb",
+  "notReplayable": 52,
+  "overlaps": 290,
+  "overlapsPerWeek": 5.561643835616438,
+  "overlapsPerWeekActive": 5.561643835616438,
+  "peopleTool": 16,
+  "rateBasis": "independent",
+  "replayed": 150,
+  "threeDayPerWeek": 12.16,
+  "threeDayPerWeekActive": 12.16,
+  "topFiles": [
+    [
+      "tests-integration/tests/http.rs",
+      38
+    ],
+    [
+      "src/frontend/src/instance.rs",
+      8
+    ],
+    [
+      "src/mito2/src/read/scan_region.rs",
+      8
+    ],
+    [
+      "src/mito2/src/engine.rs",
+      7
+    ],
+    [
+      "src/operator/src/statement/ddl.rs",
+      7
+    ]
+  ],
+  "window": {
+    "days": 365,
+    "since": "2025-11-01T00:00:00+00:00",
+    "until": "2026-11-01T00:00:00+00:00"
+  }
+}

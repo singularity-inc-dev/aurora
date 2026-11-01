@@ -1,0 +1,13 @@
+{
+  "bin": "11-30",
+  "branch": "develop",
+  "cloneSince": "2025-10-02",
+  "commitsInClone": 2358,
+  "finished": "2026-11-01T18:05:00Z",
+  "git": "2.43.0",
+  "head": "797e58db7d2ba76a7831e926b24c27be9d8666ec",
+  "name": "OpenNMS/opennms",
+  "python": "3.13.18",
+  "started": "2026-11-01T18:04:29Z",
+  "status": "ok"
+}

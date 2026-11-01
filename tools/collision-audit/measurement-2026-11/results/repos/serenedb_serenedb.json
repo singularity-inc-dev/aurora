@@ -1,0 +1,65 @@
+{
+  "activeFrom": "2025-12-02",
+  "activeWeeks": 47.714285714285715,
+  "bin": "11-30",
+  "busiestDay": "2026-06-02",
+  "busiestDayOverlaps": 68,
+  "busiestDayShare": 0.12386156648451731,
+  "cleanReplays": 43,
+  "commits": 833,
+  "conflictFiles": [],
+  "conflictsAll": 0,
+  "conflictsIndependent": 0,
+  "coreScreened": 11,
+  "independentPairs": 43,
+  "manifest": {
+    "bin": "11-30",
+    "branch": "main",
+    "cloneSince": "2025-10-02",
+    "commitsInClone": 836,
+    "finished": "2026-11-01T18:05:04Z",
+    "git": "2.43.0",
+    "head": "a93d858a8e9a6fd37bd7c73aee4f223d00c6d425",
+    "name": "serenedb/serenedb",
+    "python": "3.13.18",
+    "started": "2026-11-01T18:04:37Z",
+    "status": "ok"
+  },
+  "name": "serenedb/serenedb",
+  "notReplayable": 107,
+  "overlaps": 549,
+  "overlapsPerWeek": 10.52876712328767,
+  "overlapsPerWeekActive": 11.505988023952096,
+  "peopleTool": 9,
+  "rateBasis": "independent",
+  "replayed": 150,
+  "threeDayPerWeek": 27.1,
+  "threeDayPerWeekActive": 29.615269461077844,
+  "topFiles": [
+    [
+      "server/pg/sql_analyzer_velox.cpp",
+      15
+    ],
+    [
+      "server/connector/optimizer/iresearch_plan.cpp",
+      13
+    ],
+    [
+      "server/connector/serenedb_connector.hpp",
+      9
+    ],
+    [
+      "server/connector/duckdb_table_function.cpp",
+      9
+    ],
+    [
+      "server/search/search_table.cpp",
+      7
+    ]
+  ],
+  "window": {
+    "days": 365,
+    "since": "2025-11-01T00:00:00+00:00",
+    "until": "2026-11-01T00:00:00+00:00"
+  }
+}

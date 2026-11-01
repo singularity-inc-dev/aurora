@@ -1,0 +1,51 @@
+{
+  "handoverDays": 3,
+  "perWeek": {
+    "sameDay": 0.21,
+    "threeDay": 0.31
+  },
+  "rate": 0.0,
+  "repo": "timeplus-io/proton",
+  "weeks": [
+    {
+      "sameDay": 7,
+      "threeDay": 7,
+      "week": "2025-09-29"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 1,
+      "week": "2026-01-19"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 1,
+      "week": "2026-01-26"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 2,
+      "week": "2026-02-23"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 2,
+      "week": "2026-06-15"
+    },
+    {
+      "sameDay": 2,
+      "threeDay": 2,
+      "week": "2026-07-13"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 1,
+      "week": "2026-10-12"
+    }
+  ],
+  "windowDays": 365,
+  "wouldBeConflictsPerWeek": {
+    "sameDay": 0.0,
+    "threeDay": 0.0
+  }
+}

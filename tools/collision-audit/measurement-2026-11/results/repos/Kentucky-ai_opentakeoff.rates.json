@@ -1,0 +1,75 @@
+{
+  "all": {
+    "conflicts": 1,
+    "interval95": [
+      0.036,
+      0.624
+    ],
+    "pairs": 5,
+    "rate": 0.2
+  },
+  "cleanReplays": 5,
+  "conflictFiles": [
+    [
+      "web/src/components/SheetGallery.jsx",
+      1
+    ]
+  ],
+  "independent": {
+    "conflicts": 1,
+    "interval95": [
+      0.036,
+      0.624
+    ],
+    "pairs": 5,
+    "rate": 0.2
+  },
+  "notReplayable": 42,
+  "overlapsPerWeek": 0.9,
+  "rateUsed": "independent",
+  "replayed": 47,
+  "repo": "Kentucky-ai/opentakeoff",
+  "topOverlapFiles": [
+    [
+      "web/src/pages/TakeoffCanvas.jsx",
+      15
+    ],
+    [
+      "mcp/bin.js",
+      3
+    ],
+    [
+      "web/src/lib/markedset.js",
+      2
+    ],
+    [
+      "web/src/components/ReportPanel.jsx",
+      2
+    ],
+    [
+      "web/src/lib/totals.js",
+      2
+    ],
+    [
+      "mcp/src/session.ts",
+      2
+    ],
+    [
+      "web/test/totals.test.ts",
+      1
+    ],
+    [
+      "web/src/brand/icons.jsx",
+      1
+    ],
+    [
+      "web/src/lib/sheets.ts",
+      1
+    ],
+    [
+      "web/index.html",
+      1
+    ]
+  ],
+  "wouldBeConflictsPerWeek": 0.18
+}

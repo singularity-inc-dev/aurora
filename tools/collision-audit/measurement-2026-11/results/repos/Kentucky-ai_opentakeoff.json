@@ -1,0 +1,70 @@
+{
+  "activeFrom": "2026-06-15",
+  "activeWeeks": 19.857142857142858,
+  "bin": "2-3",
+  "busiestDay": "2026-07-10",
+  "busiestDayOverlaps": 11,
+  "busiestDayShare": 0.23404255319148937,
+  "cleanReplays": 5,
+  "commits": 651,
+  "conflictFiles": [
+    [
+      "web/src/components/SheetGallery.jsx",
+      1
+    ]
+  ],
+  "conflictsAll": 1,
+  "conflictsIndependent": 1,
+  "coreScreened": 2,
+  "independentPairs": 5,
+  "manifest": {
+    "bin": "2-3",
+    "branch": "main",
+    "cloneSince": "2025-10-02",
+    "commitsInClone": 738,
+    "finished": "2026-11-01T18:03:04Z",
+    "git": "2.43.0",
+    "head": "c49de422e754d344ab95eac9c78cf62e8e8475d0",
+    "name": "Kentucky-ai/opentakeoff",
+    "python": "3.13.18",
+    "started": "2026-11-01T18:02:49Z",
+    "status": "ok"
+  },
+  "name": "Kentucky-ai/opentakeoff",
+  "notReplayable": 42,
+  "overlaps": 47,
+  "overlapsPerWeek": 0.9013698630136986,
+  "overlapsPerWeekActive": 2.366906474820144,
+  "peopleTool": 3,
+  "rateBasis": "independent",
+  "replayed": 47,
+  "threeDayPerWeek": 1.5,
+  "threeDayPerWeekActive": 3.9388489208633097,
+  "topFiles": [
+    [
+      "web/src/pages/TakeoffCanvas.jsx",
+      15
+    ],
+    [
+      "mcp/bin.js",
+      3
+    ],
+    [
+      "web/src/lib/markedset.js",
+      2
+    ],
+    [
+      "web/src/components/ReportPanel.jsx",
+      2
+    ],
+    [
+      "web/src/lib/totals.js",
+      2
+    ]
+  ],
+  "window": {
+    "days": 365,
+    "since": "2025-11-01T00:00:00+00:00",
+    "until": "2026-11-01T00:00:00+00:00"
+  }
+}

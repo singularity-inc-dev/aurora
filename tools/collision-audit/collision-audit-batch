@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# Batch collision audit: run the audit on several repos and print a summary table.
+#
+#   tools/collision-audit/collision-audit-batch CLONE1 NAME1 [CLONE2 NAME2 ...] [--days 56] [--max-pairs 60] [--out OUTDIR]
+#   tools/collision-audit/collision-audit-batch --fetch NAME1 [NAME2 ...] [--days 56] [--max-pairs 60] [--out OUTDIR]
+#
+# The --fetch form clones each GitHub owner/name using --shallow-since so the clone
+# covers exactly the requested window. Never uses --depth (a fixed depth silently
+# truncates repos with high commit volume). The first form uses pre-made clones.
+#
+# Runs the full audit on each repo and writes one workdir per repo under OUTDIR
+# (default: collision-audit-batch-DATE). Also writes report.md and report.html
+# for each repo (file paths hidden). Prints a summary table of raw counts (no
+# percentages) to stdout. Repos that fail are reported; results are never dropped.
+set -euo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+usage() { sed -n '3,13p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+[ $# -ge 1 ] || usage
+
+DAYS=56; MAX=60; OUT=""; FETCH=0
+CLONES=(); NAMES=()
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --fetch) FETCH=1; shift ;;
+    --days) DAYS="$2"; shift 2 ;;
+    --max-pairs) MAX="$2"; shift 2 ;;
+    --out) OUT="$2"; shift 2 ;;
+    -h|--help) usage ;;
+    *)
+      if [ "$FETCH" = "1" ]; then
+        NAMES+=("$1"); shift
+      else
+        CLONES+=("$1")
+        shift
+        [ $# -gt 0 ] || { echo "collision-audit-batch: each clone path must be followed by owner/name"; exit 2; }
+        NAMES+=("$1"); shift
+      fi
+      ;;
+  esac
+done
+
+[ ${#NAMES[@]} -ge 1 ] || usage
+[ "$FETCH" = "0" ] && [ ${#CLONES[@]} -ge 1 ] || [ "$FETCH" = "1" ] || usage
+
+OUT="${OUT:-collision-audit-batch-$(date +%Y%m%d)}"
+mkdir -p "$OUT"
+OUT="$(cd "$OUT" && pwd)"
+
+# --fetch: clone each owner/name from GitHub using --shallow-since.
+# Using --shallow-since (not --depth) ensures the clone always covers the full window,
+# even for high-volume repos where a fixed depth would be truncated.
+if [ "$FETCH" = "1" ]; then
+  SINCE=$(python3 -c "
+import datetime, sys
+d = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=$DAYS)
+print(d.strftime('%Y-%m-%d'))
+")
+  for name in "${NAMES[@]}"; do
+    dir="$OUT/repos/$(echo "$name" | tr '/' '__')"
+    echo "  Cloning $name (--shallow-since $SINCE) ..." >&2
+    git clone --quiet --shallow-since="$SINCE" -- "https://github.com/$name.git" "$dir" >&2
+    CLONES+=("$dir")
+  done
+fi
+
+PASS=(); FAIL=()
+for i in "${!CLONES[@]}"; do
+  clone="${CLONES[$i]}"
+  name="${NAMES[$i]}"
+  repo_out="$OUT/$(echo "$name" | tr / _)"
+  echo "=== $name ===" >&2
+  if "$HERE/collision-audit" "$clone" "$name" --days "$DAYS" --max-pairs "$MAX" --out "$repo_out" --report 2>&1; then
+    PASS+=("$name")
+  else
+    echo "FAILED: $name" >&2
+    FAIL+=("$name")
+  fi
+done
+
+echo >&2
+echo "=== Summary ===" >&2
+
+python3 -I "$HERE/batch_summary.py" "$OUT" "${NAMES[@]}"
+
+echo >&2
+if [ ${#FAIL[@]} -gt 0 ]; then
+  echo "Failed repos (${#FAIL[@]}): ${FAIL[*]}" >&2
+fi
+echo "Passed: ${#PASS[@]} of ${#CLONES[@]}" >&2
+echo "Output in: $OUT" >&2

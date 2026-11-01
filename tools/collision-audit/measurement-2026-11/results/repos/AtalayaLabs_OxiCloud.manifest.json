@@ -1,0 +1,14 @@
+{
+  "bin": "11-30",
+  "branch": "main",
+  "cloneSince": "full clone",
+  "commitsInClone": 2818,
+  "finished": "2026-11-01T18:07:16Z",
+  "git": "2.43.0",
+  "head": "36c5d43ae7cc7c54f2c5c08bdf1066bb44b52e07",
+  "name": "AtalayaLabs/OxiCloud",
+  "note": "full clone: the shallow-since clone was refused by the truncated-clone guard",
+  "python": "3.13.18",
+  "started": "2026-11-01T18:07:05Z",
+  "status": "ok"
+}

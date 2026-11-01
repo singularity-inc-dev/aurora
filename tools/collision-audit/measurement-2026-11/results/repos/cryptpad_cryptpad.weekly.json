@@ -1,0 +1,111 @@
+{
+  "handoverDays": 3,
+  "perWeek": {
+    "sameDay": 0.27,
+    "threeDay": 0.58
+  },
+  "rate": 0.0,
+  "repo": "cryptpad/cryptpad",
+  "weeks": [
+    {
+      "sameDay": 2,
+      "threeDay": 2,
+      "week": "2025-11-17"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 1,
+      "week": "2026-01-12"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 1,
+      "week": "2026-02-09"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 0,
+      "week": "2026-02-16"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 1,
+      "week": "2026-02-23"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 3,
+      "week": "2026-03-09"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 2,
+      "week": "2026-03-16"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 1,
+      "week": "2026-03-23"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 1,
+      "week": "2026-06-01"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 2,
+      "week": "2026-06-08"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 0,
+      "week": "2026-06-15"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 4,
+      "week": "2026-07-20"
+    },
+    {
+      "sameDay": 2,
+      "threeDay": 3,
+      "week": "2026-07-27"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 2,
+      "week": "2026-08-03"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 2,
+      "week": "2026-08-10"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 2,
+      "week": "2026-08-17"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 1,
+      "week": "2026-09-07"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 1,
+      "week": "2026-09-28"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 1,
+      "week": "2026-10-05"
+    }
+  ],
+  "windowDays": 365,
+  "wouldBeConflictsPerWeek": {
+    "sameDay": 0.0,
+    "threeDay": 0.0
+  }
+}

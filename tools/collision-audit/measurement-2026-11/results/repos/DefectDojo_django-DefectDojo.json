@@ -1,0 +1,65 @@
+{
+  "activeFrom": "2025-11-01",
+  "activeWeeks": 52.142857142857146,
+  "bin": "11-30",
+  "busiestDay": "2025-11-14",
+  "busiestDayOverlaps": 15,
+  "busiestDayShare": 0.16483516483516483,
+  "cleanReplays": 39,
+  "commits": 2530,
+  "conflictFiles": [],
+  "conflictsAll": 0,
+  "conflictsIndependent": 0,
+  "coreScreened": 17,
+  "independentPairs": 39,
+  "manifest": {
+    "bin": "11-30",
+    "branch": "master",
+    "cloneSince": "2025-10-02",
+    "commitsInClone": 3162,
+    "finished": "2026-11-01T18:04:29Z",
+    "git": "2.43.0",
+    "head": "c360df03a9399cbe6b26138bd0289949c27eb732",
+    "name": "DefectDojo/django-DefectDojo",
+    "python": "3.13.18",
+    "started": "2026-11-01T18:04:07Z",
+    "status": "ok"
+  },
+  "name": "DefectDojo/django-DefectDojo",
+  "notReplayable": 52,
+  "overlaps": 91,
+  "overlapsPerWeek": 1.7452054794520546,
+  "overlapsPerWeekActive": 1.7452054794520546,
+  "peopleTool": 17,
+  "rateBasis": "independent",
+  "replayed": 91,
+  "threeDayPerWeek": 4.32,
+  "threeDayPerWeekActive": 4.32,
+  "topFiles": [
+    [
+      "dojo/settings/settings.dist.py",
+      13
+    ],
+    [
+      "dojo/utils.py",
+      5
+    ],
+    [
+      "dojo/finding/helper.py",
+      4
+    ],
+    [
+      "unittests/test_importers_performance.py",
+      4
+    ],
+    [
+      "dojo/importers/default_reimporter.py",
+      3
+    ]
+  ],
+  "window": {
+    "days": 365,
+    "since": "2025-11-01T00:00:00+00:00",
+    "until": "2026-11-01T00:00:00+00:00"
+  }
+}
