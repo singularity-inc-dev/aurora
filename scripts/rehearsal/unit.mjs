@@ -64,6 +64,16 @@ if (cmd === "stop") {
   process.exit(0);
 }
 
+// Like systemd: starting a service that is running already does nothing.
+if (existsSync(pidFile)) {
+  try {
+    process.kill(Number(readFileSync(pidFile, "utf8")), 0);
+    process.exit(0);
+  } catch {
+    rmSync(pidFile, { force: true });
+  }
+}
+
 const service = parseUnit(readFileSync(unitFile, "utf8"));
 const credDir = path.join(stateDir, "credentials", name);
 rmSync(credDir, { recursive: true, force: true });
@@ -73,7 +83,12 @@ let cwd = "/";
 let exec = null;
 for (const [k, v] of service) {
   if (k === "WorkingDirectory") cwd = v;
-  else if (k === "EnvironmentFile") Object.assign(env, envFile(v.replace(/^-/, "")));
+  else if (k === "EnvironmentFile") {
+    // Like systemd: a leading "-" means the file may be missing.
+    const optional = v.startsWith("-");
+    const file = v.replace(/^-/, "");
+    if (!optional || existsSync(file)) Object.assign(env, envFile(file));
+  }
   else if (k === "Environment") {
     const i = v.indexOf("=");
     env[v.slice(0, i)] = v.slice(i + 1).replaceAll("%d", credDir);

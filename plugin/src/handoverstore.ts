@@ -1,12 +1,12 @@
 import type { PluginDatabaseClient } from "@paperclipai/plugin-sdk";
-import { OPEN_STATUSES, type NightRun, type NightStatus } from "./night.js";
+import { OPEN_STATUSES, type HandoverRun, type HandoverStatus } from "./handover.js";
 
 type Db = Pick<PluginDatabaseClient, "namespace" | "execute" | "query">;
 
-const table = (db: Db) => `"${db.namespace}".night_runs`;
+const table = (db: Db) => `"${db.namespace}".handover_runs`;
 const events = (db: Db) => `"${db.namespace}".task_events`;
 
-function toRun(row: Record<string, unknown>): NightRun {
+function toRun(row: Record<string, unknown>): HandoverRun {
   let taskIds: string[] = [];
   try {
     const parsed = JSON.parse(String(row.task_ids ?? "[]"));
@@ -18,8 +18,11 @@ function toRun(row: Record<string, unknown>): NightRun {
     companyId: String(row.company_id),
     owner: String(row.owner),
     agentId: String(row.agent_id),
-    nightDate: String(row.night_date),
-    status: String(row.status) as NightStatus,
+    handoverKey: String(row.handover_key),
+    kind: row.kind === "now" ? "now" : "scheduled",
+    startsAt: row.starts_at ? new Date(String(row.starts_at)) : null,
+    endsAt: row.ends_at ? new Date(String(row.ends_at)) : null,
+    status: String(row.status) as HandoverStatus,
     planIssueId: (row.plan_issue_id as string | null) ?? null,
     interactionId: (row.interaction_id as string | null) ?? null,
     taskIds,
@@ -30,51 +33,54 @@ function toRun(row: Record<string, unknown>): NightRun {
   };
 }
 
-/** The person's newest night that is still in progress, if any. */
-export async function getOpenRun(db: Db, companyId: string, owner: string): Promise<NightRun | null> {
+/** The person's newest handover that is still in progress, if any. */
+export async function getOpenRun(db: Db, companyId: string, owner: string): Promise<HandoverRun | null> {
   const rows = await db.query(
-    `SELECT * FROM ${table(db)} WHERE company_id = $1 AND owner = $2 AND status IN ('${OPEN_STATUSES.join("','")}') ORDER BY night_date DESC LIMIT 1`,
+    `SELECT * FROM ${table(db)} WHERE company_id = $1 AND owner = $2 AND status IN ('${OPEN_STATUSES.join("','")}') ORDER BY created_at DESC LIMIT 1`,
     [companyId, owner],
   );
   return rows[0] ? toRun(rows[0]) : null;
 }
 
-/** The person's newest night that ran and is over (a candidate for the morning briefing). */
-export async function getLatestDoneRun(db: Db, companyId: string, owner: string): Promise<NightRun | null> {
+/** The person's newest handover that ran and is over (a candidate for the handback email). */
+export async function getLatestDoneRun(db: Db, companyId: string, owner: string): Promise<HandoverRun | null> {
   const rows = await db.query(
-    `SELECT * FROM ${table(db)} WHERE company_id = $1 AND owner = $2 AND status IN ('finished','budget_stopped') ORDER BY night_date DESC LIMIT 1`,
+    `SELECT * FROM ${table(db)} WHERE company_id = $1 AND owner = $2 AND status IN ('finished','budget_stopped') ORDER BY created_at DESC LIMIT 1`,
     [companyId, owner],
   );
   return rows[0] ? toRun(rows[0]) : null;
 }
 
-export async function getRun(db: Db, companyId: string, owner: string, nightDate: string): Promise<NightRun | null> {
-  const rows = await db.query(`SELECT * FROM ${table(db)} WHERE company_id = $1 AND owner = $2 AND night_date = $3`, [
+export async function getRun(db: Db, companyId: string, owner: string, handoverKey: string): Promise<HandoverRun | null> {
+  const rows = await db.query(`SELECT * FROM ${table(db)} WHERE company_id = $1 AND owner = $2 AND handover_key = $3`, [
     companyId,
     owner,
-    nightDate,
+    handoverKey,
   ]);
   return rows[0] ? toRun(rows[0]) : null;
 }
 
-export async function listRuns(db: Db, companyId: string, limit = 50): Promise<NightRun[]> {
-  const rows = await db.query(`SELECT * FROM ${table(db)} WHERE company_id = $1 ORDER BY night_date DESC, owner LIMIT ${Math.trunc(limit)}`, [
+export async function listRuns(db: Db, companyId: string, limit = 50): Promise<HandoverRun[]> {
+  const rows = await db.query(`SELECT * FROM ${table(db)} WHERE company_id = $1 ORDER BY created_at DESC LIMIT ${Math.trunc(limit)}`, [
     companyId,
   ]);
   return rows.map(toRun);
 }
 
-/** Claim tonight's routine for a person. Returns false if one already exists. */
-export async function claimRun(db: Db, run: Pick<NightRun, "companyId" | "owner" | "agentId" | "nightDate">): Promise<boolean> {
+/** Claim a handover for a person (scheduled or "now"). Returns false if that one already exists. */
+export async function claimRun(
+  db: Db,
+  run: Pick<HandoverRun, "companyId" | "owner" | "agentId" | "handoverKey" | "kind"> & { startsAt: Date; endsAt: Date },
+): Promise<boolean> {
   const { rowCount } = await db.execute(
-    `INSERT INTO ${table(db)} (company_id, owner, agent_id, night_date, status) VALUES ($1, $2, $3, $4, 'proposing') ON CONFLICT (company_id, owner, night_date) DO NOTHING`,
-    [run.companyId, run.owner, run.agentId, run.nightDate],
+    `INSERT INTO ${table(db)} (company_id, owner, agent_id, handover_key, kind, starts_at, ends_at, status) VALUES ($1, $2, $3, $4, $5, $6, $7, 'proposing') ON CONFLICT (company_id, owner, handover_key) DO NOTHING`,
+    [run.companyId, run.owner, run.agentId, run.handoverKey, run.kind, run.startsAt.toISOString(), run.endsAt.toISOString()],
   );
   return rowCount === 1;
 }
 
 export interface RunPatch {
-  status?: NightStatus;
+  status?: HandoverStatus;
   planIssueId?: string;
   interactionId?: string;
   taskIds?: string[];
@@ -99,7 +105,7 @@ const COLUMNS: Record<keyof RunPatch, string> = {
  * Move a run on, but only if it is still in the state we decided from
  * (status and step). Returns false when another tick got there first.
  */
-export async function updateRun(db: Db, run: NightRun, patch: RunPatch): Promise<boolean> {
+export async function updateRun(db: Db, run: HandoverRun, patch: RunPatch): Promise<boolean> {
   const sets: string[] = [];
   const params: unknown[] = [];
   for (const [key, column] of Object.entries(COLUMNS) as Array<[keyof RunPatch, string]>) {
@@ -108,10 +114,10 @@ export async function updateRun(db: Db, run: NightRun, patch: RunPatch): Promise
     params.push(key === "taskIds" ? JSON.stringify(value) : value instanceof Date ? value.toISOString() : value);
     sets.push(`${column} = $${params.length}`);
   }
-  params.push(run.companyId, run.owner, run.nightDate, run.status, run.currentIndex, run.currentAttempt);
+  params.push(run.companyId, run.owner, run.handoverKey, run.status, run.currentIndex, run.currentAttempt);
   const n = params.length;
   const { rowCount } = await db.execute(
-    `UPDATE ${table(db)} SET ${sets.join(", ")}, updated_at = now() WHERE company_id = $${n - 5} AND owner = $${n - 4} AND night_date = $${n - 3} AND status = $${n - 2} AND current_index = $${n - 1} AND current_attempt = $${n}`,
+    `UPDATE ${table(db)} SET ${sets.join(", ")}, updated_at = now() WHERE company_id = $${n - 5} AND owner = $${n - 4} AND handover_key = $${n - 3} AND status = $${n - 2} AND current_index = $${n - 1} AND current_attempt = $${n}`,
     params,
   );
   return rowCount === 1;

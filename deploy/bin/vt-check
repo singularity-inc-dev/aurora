@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# Is everything working? Prints one line per check: OK or PROBLEM.
+# Is everything working? Prints one line per check: OK, PROBLEM (fails) or WARNING (does not fail).
 #   sudo vt-check
 . "$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)/lib/common.sh"
 need_root
 load_conf
 bad=0
+warnings=0
 ok() { printf '  OK       %s\n' "$1"; }
 problem() { printf '  PROBLEM  %s\n' "$1"; bad=$((bad + 1)); }
+warn() { printf '  WARNING  %s\n' "$1"; warnings=$((warnings + 1)); }
 if ! rehearsal; then
   for s in postgresql paperclip vt-email caddy vt-backup.timer; do
     systemctl is-active --quiet "$s" && ok "$s is running" || problem "$s is not running (see: journalctl -u $s -n 50)"
@@ -33,6 +35,29 @@ for f in smtp-password github-token; do
   [ -s "$SECRETS/$f" ] && ok "secret $f is set" || problem "secret $f is missing (add it with: vt-secret $f)"
 done
 [ -s "$SECRETS/paperclip-api-key" ] && ok "the email service has its Paperclip key" || problem "the email service has no Paperclip key (run: vt-setup)"
+# Agent isolation (thin version 1, piece A): each agent runs as its own system user.
+COMPANY=$(sed -n 's/^VT_COMPANY_ID=//p' "$ETC/email-service.env" 2>/dev/null || true)
+if [ -n "$COMPANY" ] && [ -s "$SECRETS/paperclip-api-key" ]; then
+  while read -r kind rest; do
+    case "$kind" in
+      OK) ok "$rest" ;;
+      PROBLEM) problem "$rest" ;;
+      WARNING) warn "$rest" ;;
+      USER)
+        if ! id "$rest" >/dev/null 2>&1; then problem "system user $rest is missing"; continue; fi
+        id -nG "$rest" | tr ' ' '\n' | grep -qx paperclip && problem "$rest is in the paperclip group (it could read Paperclip's files)"
+        if runuser -u "$rest" -- test -r "$PCINSTANCE/config.json" || runuser -u "$rest" -- test -r "$SECRETS/db-url" || runuser -u "$rest" -- ls "$PCDATA" >/dev/null 2>&1; then
+          problem "$rest can read Paperclip's files"
+        else ok "$rest cannot read Paperclip's files, its database password or its secrets"; fi ;;
+    esac
+  done < <("$NODE_BIN/node" "$KIT/bin/vt-check-agents.mjs" "http://127.0.0.1:${PAPERCLIP_PORT:-3100}" "$SECRETS/paperclip-api-key" "$COMPANY" 2>&1 || echo "PROBLEM could not ask Paperclip about the agents")
+fi
+if ! rehearsal; then
+  [ "$(systemctl show -p ProtectProc --value ssh.service 2>/dev/null)" = "invisible" ] && ok "agents see only their own processes" || problem "the SSH service does not hide other users' processes (run install.sh again)"
+fi
+# Only checks that the file exists; its contents are never read.
+[ -e "$PCDATA/.claude/.credentials.json" ] && problem "Paperclip's own user has a Claude login; remove it (each owner signs in on their own agent, DEPLOY.md step 12)" || ok "Paperclip's own user has no Claude login of its own"
 free=$(df -P "${VT_ROOT:-/}" | awk 'NR==2{print 100-$5}')
 [ "$free" -ge 15 ] && ok "disk $free% free" || problem "disk only $free% free"
-echo; [ "$bad" -eq 0 ] && echo "All good." || { echo "$bad problem(s)."; exit 1; }
+echo; [ "$bad" -eq 0 ] || { echo "$bad problem(s)."; exit 1; }
+[ "${warnings:-0}" -eq 0 ] && echo "All good." || echo "All good, but ${warnings} warning(s) above."

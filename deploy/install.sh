@@ -23,18 +23,22 @@ if ! rehearsal; then
   say "1/9 System packages (PostgreSQL $POSTGRES_MAJOR from Ubuntu, git, firewall)"
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -q
-  apt-get install -y -q "postgresql-$POSTGRES_MAJOR" git curl ca-certificates openssl xz-utils ufw util-linux
+  apt-get install -y -q "postgresql-$POSTGRES_MAJOR" git curl ca-certificates openssl xz-utils ufw util-linux openssh-server openssh-client
   # Ubuntu's security updates still apply; only a jump to another major version is blocked.
   apt-mark hold "postgresql-$POSTGRES_MAJOR" >/dev/null
   systemctl enable --now postgresql
 
-  say "2/9 Users: paperclip (Paperclip and its agents), vt-mail (email service), caddy (HTTPS)"
+  say "2/9 Users: paperclip (Paperclip), vt-mail (email service), caddy (HTTPS); each agent gets its own user later"
   id paperclip >/dev/null 2>&1 || useradd --system --home-dir "$PCDATA" --create-home --shell /bin/bash paperclip
   id vt-mail >/dev/null 2>&1 || useradd --system --home-dir "$MAILDATA" --create-home --shell /usr/sbin/nologin vt-mail
   id caddy >/dev/null 2>&1 || useradd --system --home-dir /var/lib/caddy --create-home --shell /usr/sbin/nologin caddy
   usermod -aG paperclip vt-mail
 fi
-mkdir -p "$OPT/bin" "$ETC" "$SECRETS" "$PCDATA/repos" "$MAILDATA" "$BACKUPS"
+mkdir -p "$OPT/bin" "$ETC" "$SECRETS" "$PCDATA/repos" "$MAILDATA" "$BACKUPS" "$VT_ROOT/etc/ssh/vision-and-tom"
+# The agents' SSH keys (root-owned; sshd reads each file as that agent's user, so the
+# folder must be open to read). The real /etc/ssh already is; the rehearsal's is new.
+chmod 755 "$VT_ROOT/etc/ssh/vision-and-tom"
+rehearsal && chmod 755 "$VT_ROOT/etc/ssh"
 chmod 755 "$OPT" "$OPT/bin"
 chmod 750 "$ETC" && chmod 700 "$SECRETS" "$BACKUPS"
 if ! rehearsal; then
@@ -141,14 +145,24 @@ mkdir -p "$SYSTEMD_DIR"
 for unit in "$KIT"/systemd/*; do
   sed -e "s#@OPT@#$OPT#g" -e "s#@ETC@#$ETC#g" -e "s#@PCDATA@#$PCDATA#g" -e "s#@MAILDATA@#$MAILDATA#g" -e "s#@VTROOT@#$VT_ROOT#g" -e "s#@BASE@#${GITHUB_BASE_BRANCH:-main}#g" -e "s#@PUBLIC_URL@#$PUBLIC_URL#g" "$unit" >"$SYSTEMD_DIR/$(basename "$unit")"
 done
-for cmd in vt-invite vt-secret vt-check vt-backup vt-restore vt-setup; do
+for cmd in vt-invite vt-secret vt-check vt-backup vt-restore vt-setup vt-model-access vt-numbers vt-replay vt-tracing vt-stop vt-start vt-update; do
   ln -sf "$KIT/bin/$cmd" "$OPT/bin/$cmd"
   rehearsal || ln -sf "$OPT/bin/$cmd" "/usr/local/bin/$cmd"
 done
 if ! rehearsal; then
+  # Agents run as their own users over SSH on 127.0.0.1 (thin version 1, piece A):
+  # strict rules for those users, and nothing started through SSH sees other users' processes.
+  cp "$KIT/templates/sshd-vision-and-tom.conf" /etc/ssh/sshd_config.d/vision-and-tom.conf
+  if ! sshd -t; then rm -f /etc/ssh/sshd_config.d/vision-and-tom.conf; die "the SSH settings did not pass sshd -t; nothing was changed"; fi
+  mkdir -p /etc/systemd/system/ssh.service.d
+  cp "$KIT/templates/ssh-hide-processes.conf" /etc/systemd/system/ssh.service.d/vision-and-tom.conf
+  sed -e "s#@OPT@#$OPT#g" "$KIT/templates/profile-agents.sh" >/etc/profile.d/vision-and-tom-agents.sh
+  [ -s /etc/ssh/ssh_host_ed25519_key.pub ] || ssh-keygen -A
   mkdir -p /var/lib/caddy && chown caddy:caddy /var/lib/caddy
   systemctl daemon-reload
   systemctl enable --now paperclip.service caddy.service vt-backup.timer
+  # Your own SSH session stays open while the SSH service restarts with the new rules.
+  systemctl restart ssh.service
   # The email service and the repo sync start after vt-setup (they need its results).
   ufw allow OpenSSH >/dev/null && ufw allow 80/tcp >/dev/null && ufw allow 443/tcp >/dev/null && ufw --force enable >/dev/null
 else

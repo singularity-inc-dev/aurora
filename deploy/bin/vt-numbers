@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# The pilot's numbers from the event log: handover yield, minutes to approve,
+# decisions per owner, overlaps caught before and conflicts found after, and the
+# measurement sheet as CSV. Only an admin (root on the server) can read them.
+#   sudo vt-numbers numbers.csv      (or: sudo vt-numbers > numbers.csv)
+. "$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)/lib/common.sh"
+need_root
+while IFS= read -r line; do
+  case "$line" in '' | \#*) continue ;; *=*) export "${line%%=*}=${line#*=}" ;; esac
+done <"$ETC/email-service.env"
+[ -n "${VT_COMPANY_ID:-}" ] || die "run vt-setup first"
+export PAPERCLIP_API_KEY_FILE="$SECRETS/paperclip-api-key"
+unset GITHUB_TOKEN GITHUB_TOKEN_FILE SMTP_PASS_FILE
+OUT="${1:-}"
+[ -z "$OUT" ] || OUT="$(cd "$(dirname "$OUT")" && pwd)/$(basename "$OUT")"
+cd "$APP/email-service" && "$NODE_BIN/node" src/numbers.ts ${OUT:+"$OUT"}
