@@ -41,8 +41,8 @@
 
 - **Intent.** Nothing is offered for approval unless machine checks passed on exactly the commit the owner approves.
 - **Status.** Diff size, built-in secret scan, tests, lint (`plugin/src/checks.ts:107-147`; rules at `plugin/src/secretscan.ts:11`); tests and lint run as the owner's agent user over SSH, in a fresh folder (`plugin/src/checksandbox.ts:54-68`); Ready needs checks passed on the branch head and a clean worktree (`plugin/src/briefing.ts:60-63`).
-- **Gap.** The **agent** decides when checks run (`plugin/src/worker.ts:231-286`); if it never calls `run_checks`, the task is just "checks not run". The tests that run are the agent's copy, so it can weaken them. Changed files are not compared with claims (S6). Commands are one global setting, not per task.
-- **Target.** The tick runs the gate when a task reaches `checks` (ARCHITECTURE.md section 4.1); claims-vs-diff becomes a fail-closed check; per-task locked commands come from the handover note; later, tests are taken from the base branch, not the agent's branch, and run as Hardy's user (HARDY.md section 4.3).
+- **Gap.** The **agent** decides when checks run (`plugin/src/worker.ts:231-286`); if it never calls `run_checks`, the task is just "checks not run". The tests that run are the agent's copy, so it can weaken them. Changed files are not compared with claims (S6). Commands are one global setting, not per task. A missing test command counts as passed (B8; partly fixed in #7: shown as NOT TESTED but still approvable), and checks can pass on files the commit does not have (B9; fixed in #7).
+- **Target.** The tick runs the gate when a task reaches `checks` (ARCHITECTURE.md section 4.1); claims-vs-diff becomes a fail-closed check; per-task locked commands come from the handover note; later, tests are taken from the base branch, not the agent's branch, and run as Hardy's user (HARDY.md section 5, "Evidence agents can't touch").
 - **Priority / size.** Tick-triggered and claims-vs-diff: now, S each. Locked test files: after pilot, M.
 
 ## 4. "Done when" check

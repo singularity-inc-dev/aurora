@@ -4,6 +4,8 @@
 
 **Which code.** Every `file:line` points at commit `0137939` on `claude/eloquent-hopper-9m2e04`, the newest code. `main` is behind it (main still has the old night-only build without pieces A to G). Paperclip facts were checked in the installed SDK, `@paperclipai/plugin-sdk` 2026.1012.0, in `plugin/node_modules`. Anything not proven there is marked **ASSUMPTION**.
 
+**Also see** `DEVIATIONS.md` on `claude/intent-audit`, an independent audit against `INTENT.md` that found most of the same issues; B8 and B9 below come from it.
+
 **Checked today.** Plugin: 388 unit tests pass, typecheck clean. Email service: 51 pass. Collision audit: 20 pass (PROGRESS.md still says 9). No live run was repeated.
 
 ## Words used below
@@ -153,6 +155,8 @@ sequenceDiagram
 | B5 | A retry re-wakes the agent (`plugin/src/handoverrunner.ts:273-274`) while the timed-out run may still be going; the plugin cannot stop a run. **ASSUMPTION:** Paperclip's checkout lock prevents two runs. |
 | B6 | Tasks run strictly one after another (`plugin/src/handover.ts:78-82`); one stuck task delays the rest by a full time-out. |
 | B7 | Local Approve makes a merge commit (`plugin/src/merge.ts:67`); GitHub Approve squashes (`email-service/src/github.ts:132`). Two different histories for "the same" action. |
+| B8 | **A missing test command counts as passed.** With no test or lint command set, that check is "skipped" (`plugin/src/checks.ts:88`), and the gate passes when nothing failed (`:146`), so an item can be Ready with no tests ever run. Found by `DEVIATIONS.md` (B3, on `claude/intent-audit`). **Partly fixed in [#7](https://github.com/singularity-inc-dev/aurora/pull/7), by your decision** (`03a6af7`): the result is NOT TESTED everywhere, never "passed", but the item is still Ready and can be approved (`plugin/src/briefing.ts:66` and `plugin/src/checks.ts:140`, `:220` at `e5b6b38` on `claude/handover-alignment`). |
+| B9 | **Checks can pass on files the commit does not have.** The gate records the commit (`plugin/src/checks.ts:117`) but tests the working folder, untracked files included (`plugin/src/git.ts:35-81`, `plugin/src/checksandbox.ts:36-45`); cleanliness is only checked at handback. An agent can pass with an untracked helper file, delete it, and the commit is Ready untested. Found by `DEVIATIONS.md` (C2). **Fixed in [#7](https://github.com/singularity-inc-dev/aurora/pull/7)** (`03a6af7`): checks run on the commit's files only, unpacked with `git archive` (`plugin/src/checks.ts:66-82` at `e5b6b38`); live-tested in `scripts/it/m2.sh:103-106`. |
 
 ### Product gaps against the intent
 

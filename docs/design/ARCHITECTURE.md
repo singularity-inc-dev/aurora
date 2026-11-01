@@ -2,7 +2,7 @@
 
 **Words.** Technical terms are defined once, in the "Words used below" list of CURRENT-STATE.md.
 
-**What this is.** The shape the code should grow into for the team handover. It keeps what works (see CURRENT-STATE.md) and fixes the seams that don't. Hardy is not in the core: it plugs into four named extension points (section 5). Code references point at commit `0137939` on `claude/eloquent-hopper-9m2e04`.
+**What this is.** The shape the code should grow into for the team handover. It keeps what works (see CURRENT-STATE.md) and fixes the seams that don't. Hardy is not in the core: it plugs into named extension points (section 5). Code references point at commit `0137939` on `claude/eloquent-hopper-9m2e04`.
 
 ## 1. Rules the design follows
 
@@ -150,7 +150,7 @@ Unchanged and proven: the approval row moves `new → processing` only once (`pl
 
 ## 5. Extension points
 
-Four named interfaces. Hardy (HARDY.md) and any later framework plug in here; the core never needs rewriting. Each extension is a module registered in a list in the plugin, called with **structured data only**, and returns findings. Agent-written text reaches an extension only inside an `UntrustedText` field (shown escaped, never followed as instructions).
+Four named interfaces, plus two smaller ones listed below the table. Hardy (HARDY.md) and any later framework plug in here; the core never needs rewriting. Each extension is a module registered in a list in the plugin, called with **structured data only**, and returns findings. Agent-written text reaches an extension only inside an `UntrustedText` field (shown escaped, never followed as instructions).
 
 | Extension point | Called | Receives | May return | May never |
 | --- | --- | --- | --- | --- |
@@ -165,6 +165,7 @@ Common rules, enforced by the core, not by the extension:
 - No extension receives the Paperclip context, secrets, or a way to call routes. Output types have no "approve" or "merge" member.
 - The core's own merge replay (`plugin/src/replay.ts:58`) and claims-vs-diff check are re-written as the first two `PreHandbackChecker`s. If the core can host its own checks through the seam, Hardy fits without changes.
 - A fifth, read-only listener, `DecisionListener`, receives each final decision from the event log, for learning (Hardy's precedents).
+- A sixth, `ClaimSource`, supplies claims from outside Aurora's own agents: another vendor's branches and pull requests, or an MCP claim tool any agent can call (Hardy v2's Intake layer, research p.12, p.14). Its claims enter the pre-handover gate as **open claims of that owner**, with the same validation as `propose_handover`; a `ClaimSource` can never create tasks or start runs.
 
 ## 6. What lives where, and why
 

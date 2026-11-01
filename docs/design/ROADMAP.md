@@ -59,23 +59,22 @@ The first real run (FIRST-REAL-RUN.md) has one owner, one test repository and on
 | 1.12 | **Extension points, no behaviour change.** Define `PreHandoverHook`, `RunWatcher`, `PreHandbackChecker`, `DecisionRouter`; move today's claims check and merge replay behind them | Makes Phase 2 additive; proves the seam by hosting the core's own checks | M | Medium: touches the two most important checks. Same tests must pass unchanged | 1.4 | Yes: this is the main structural refactor |
 | 1.13 | **Operations journal** for note submission, handback creation and approval publishing | B2 and every future multi-step write | M | Medium | 1.6 | Consolidate the store modules (one `Db` type, one JSON helper; today copied in `plugin/src/briefstore.ts:71`, `plugin/src/claimstore.ts:9`, `plugin/src/handoverstore.ts:12`) |
 | 1.14 | **One shared package for wire types** used by plugin and email service | Today copied by hand (`plugin/src/links.ts:24-45` vs `email-service/src/paperclip.ts:21-41`) | S | Low | — | Yes |
-| 1.15 | **Shadow mode command** (HARDY.md section 4.1) | Produces the evidence for the Phase 2 trigger | S | None (read-only) | Read-only GitHub token per pilot team | Reuse `plugin/src/replay.ts:14-33` logic |
+| 1.15 | **Shadow mode command** (HARDY.md section 2, Prove) | Produces the evidence for the Phase 2 trigger | S | None (read-only) | Read-only GitHub token per pilot team | Reuse `plugin/src/replay.ts:14-33` logic |
 | 1.16 | **Live checks** for S8 (does reassigning wake the new assignee?) and B5 (does a retry overlap the old run?) | Two **ASSUMPTIONS** with real consequences | S | None | — | — |
 | 1.17 | **Spike: does an approval posted by a GitHub App for a person count under branch protection?** | The spec's stop rule depends on it (aurora-v1-spec.md:390-394) | S | None (test repository) | A test GitHub App | — |
+| 1.18 | **Re-run the research's 20-repository replay** with the repo's audit (repositories listed in research p.28, method p.22) | Settles whether the 33% holds with the rebuilt scripts (HARDY.md section 3.1) | S (about half a day, mostly waiting) | None (read-only) | — | — |
 
 ## Phase 2: Hardy, only if triggered
 
-Trigger: HARDY.md section 3. Build order follows the pilot's Hardy log (pilot-playbook.md:172-177); this is the default if the log is silent.
+Trigger: HARDY.md section 3. Default order is the research's Hardy v2 build order (research p.15; H0, the collision audit, is already built; H2, shadow mode, is Phase 1 item 1.15); the pilot's Hardy log (pilot-playbook.md:172-177) may reorder it.
 
-| # | What | Why | Size | Risk | Depends on |
+| # | What (research milestone) | Why | Size | Risk | Depends on |
 | --- | --- | --- | --- | --- | --- |
-| 2.1 | Lanes: `RunWatcher` warns while a task strays outside its claims | Earlier warning than 1.4 | M | Low | 1.12 |
-| 2.2 | Locked checks in Hardy's own sandbox user, test files from the base branch | Agents cannot weaken their own tests | M | Medium (new system user in the server kit) | 1.3 |
-| 2.3 | Evidence cards and fixed recipes (order, split, contract first) | Owners settle conflicts in one screen | M | Low | 1.12 |
-| 2.4 | `DecisionRouter`: changes in another owner's area go to that owner too | Spec "Decide" | M | Low | 1.12 |
-| 2.5 | Contracts and the contract guard | Only if the log shows cross-area breakage that claims miss | L | Medium | 2.1, 2.4 |
-| 2.6 | Precedents and rulebook (rules change routing and tier only) | Fewer repeated decisions | M | Low | 2.4 |
-| 2.7 | Conflicts in meaning: distinguishing tests and a blind pick by a different model family | Version 2 in the spec | L | Medium | 2.2, 2.3 |
+| 2.1 | Plan check, any vendor (H1): a GitHub App and an MCP claim tool feed the `ClaimSource` extension; claims may name functions, API routes and database tables; producers before consumers | Only if a pilot team mixes agent vendors (research condition 4, p.21) | M | Medium (a GitHub App with read access) | 1.12 |
+| 2.2 | Night watch and notices (H3): lane enforcement (pause on a write outside the claim), loop breaker (same lines changed back and forth twice), notices to agents whose code relies on a changed contract | Earlier than the checks gate's claims-vs-diff (1.4) | M | Low | 1.12 |
+| 2.3 | Evidence (H3 in v1): merge-queue run, mechanical recipes (lockfile regenerated, changelog and translations keep both), each version's tests, the combined run, distinguishing tests in Hardy's own sandbox user | Agents cannot edit the evidence | L | Medium (new system user in the server kit) | 1.3, 2.2 |
+| 2.4 | Decisions (H4): conflict card, the who-decides table and escalation (HARDY.md section 4), recommendation by a different model family on A/B evidence, approval only in GitHub | Owners settle a conflict in one place | L | Medium | 2.3, 3.1 |
+| 2.5 | Rulebook and report (H5): precedents, a rulebook file in the team's repo, weekly report, signed log, owner-agreement rate. Precedents only pre-fill and tier; they never merge (HARDY.md section 5) | Something that improves with use, and proof Hardy can be trusted | M | Low | 2.4 |
 
 ## Phase 3: later
 
@@ -108,7 +107,7 @@ Trigger: HARDY.md section 3. Build order follows the pilot's Hardy log (pilot-pl
 | # | Choice | Options | My recommendation | Why |
 | --- | --- | --- | --- | --- |
 | D1 | How to build on Paperclip (decision 13) | (a) plugin plus own service; (b) plus small upstream changes; (c) fork | **(a) now, (b) as asks, never (c)** | Everything in ARCHITECTURE.md fits (a). Ask upstream for three small things (a "this user only" confirmation policy, public plugin routes, plugin database transactions) but depend on none. A fork means owning a codebase that shipped 28 releases in 7 months (aurora-v1-spec.md:297) |
-| D2 | Licence (decision 14). **Answer requested 31 Oct; the reply had the blank template, so nothing is decided.** The LICENSE file stays MIT until you decide | MIT (in the repo now), Apache-2.0, AGPL-3.0 | **Apache-2.0 before the repository goes public** | As permissive as MIT and compatible with Paperclip's MIT, plus an explicit patent grant that companies' lawyers look for. AGPL would deter GitHub-scale copiers but also the teams you want. The moat is the hosted service and the decision data, not the licence |
+| D2 | Licence (decision 14). **Answer requested 31 Oct and again 1 Nov; both replies had the blank template ("[Apache-2.0 / keep MIT]"), so nothing is decided.** The LICENSE file stays MIT until you decide | MIT (in the repo now), Apache-2.0, AGPL-3.0 | **Apache-2.0 before the repository goes public** | As permissive as MIT and compatible with Paperclip's MIT, plus an explicit patent grant that companies' lawyers look for. AGPL would deter GitHub-scale copiers but also the teams you want. The moat is the hosted service and the decision data, not the licence |
 | D3 | Hosting (decision 17) | One instance per team; shared multi-team cloud; self-host only | **One instance per team, plus self-hosting with the same kit** | Paperclip's plugin runtime is single-tenant (aurora-v1-spec.md:296); the kit is built and rehearsed; a shared cloud is a rewrite |
-| D4 | Approval channel | (a) email link only (today); (b) email notifies, Approve needs a signed-in Aurora page; (c) Slack | **(a) for the first pilot team; (b) before a team with more than 3 owners or any paying team; (c) after** | (a) is fastest to approve, but anyone with the mail can approve (S3). (b) closes that at the cost of one sign-in; measure minutes-to-approve before and after |
+| D4 | Approval channel | (a) email link only (today); (b) email notifies, Approve needs a signed-in Aurora page; (c) Slack | **(a) for the first pilot team; (b) before a team with more than 3 owners or any paying team; (c) after** | (a) is fastest to approve, but anyone with the mail can approve (S3). (b) closes that at the cost of one sign-in; measure minutes-to-approve before and after. For Hardy's conflict rulings the research wants approval **only in GitHub** (research p.8, p.10); that comes with 3.1 |
 | D6 | Low-risk tier (decision 15) | One tap per item; one tap per batch | **One tap per batch, never without the owner** | Agrees with the spec; build only after tiers exist (3.2) |
