@@ -16,6 +16,8 @@ export interface LinkCheck {
   kind?: "approve" | "reject";
   task?: { identifier: string | null; title: string };
   github?: string;
+  /** The task's owner: only they may press Approve or Reject (checked against their Paperclip sign-in). */
+  owner?: string;
 }
 
 /** What the plugin asks the email service to publish on GitHub for an approved task. */
@@ -89,13 +91,49 @@ export type InviteClaim =
     }
   | { ok: false; status: "invalid" | "expired" | "already-used" | "refused"; message: string };
 
+/** One ticket the owner can hand over (in their agent's backlog), with a draft note if there is one. */
+export interface HandoverTicket {
+  id: string;
+  identifier: string | null;
+  title: string;
+  description: string;
+  /** A note started earlier: "agent" = suggested by the owner's agent (Help me plan). */
+  draft: { source: "owner" | "agent"; what: string; doneWhen: string; files: string } | null;
+}
+
 export interface HandoverStatus {
   ok: boolean;
   message?: string;
   email?: string;
   timezone?: string;
   handoverStartHour?: number;
+  maxTasks?: number;
+  helpMePlan?: boolean;
+  limits?: { defaultMinutes: number; maxMinutes: number; defaultBudgetCents: number; maxBudgetCents: number };
+  tickets?: HandoverTicket[];
+  /** Handed over for the next scheduled handover, not started yet. */
+  queued?: Array<{ taskId: string; title: string; doneWhen: string }>;
   handovers?: Array<{ handoverKey: string; kind: "scheduled" | "now"; status: string; stopReason: string | null }>;
+}
+
+/** One task of the owner's handover: their note. */
+export interface HandoverTask {
+  issueId: string;
+  what: string;
+  doneWhen: string;
+  files: string;
+  maxMinutes?: string;
+  budgetCents?: string;
+}
+
+export interface HandoverAnswer {
+  ok: boolean;
+  message?: string;
+  /** Teammates' files a ticket reached into (nothing was handed over). */
+  overlaps?: string[];
+  /** Warnings worth the owner's attention (e.g. GitHub teams in CODEOWNERS). */
+  notes?: string[];
+  handoverKey?: string | null;
 }
 
 /** What the service needs from the plugin. Kept as an interface so tests can fake it. */
@@ -103,16 +141,22 @@ export interface PluginApi {
   pendingEmails(): Promise<Email[]>;
   markSent(briefingId: string): Promise<void>;
   preview(token: string): Promise<LinkCheck>;
-  execute(token: string, reason: string | null): Promise<LinkOutcome>;
+  /** `signedInAs`: who is signed in to Paperclip in the browser that pressed the button (the plugin refuses anyone but the owner). */
+  execute(token: string, reason: string | null, signedInAs: string): Promise<LinkOutcome>;
   publishResult(token: string, result: PublishResult): Promise<LinkOutcome>;
   waitingPullRequests(): Promise<{ repo: string | null; pullRequests: WaitingPullRequest[] }>;
   pullRequestUpdate(taskId: string, state: "merged" | "closed", mergeSha: string | null): Promise<void>;
   createInvite(email: string, timezone: string | null, agent?: AgentBinding | null): Promise<{ ok: boolean; message?: string; url?: string; email?: string; expiresAt?: string }>;
   previewInvite(token: string): Promise<InviteCheck>;
   claimInvite(token: string, timezone: string | null): Promise<InviteClaim>;
-  /** Hand over now (only ever called for the owner signed in to Paperclip). */
+  /** The owner's Hand over page (only ever called for the owner signed in to Paperclip). */
   handoverStatus(email: string): Promise<HandoverStatus>;
-  startHandover(email: string): Promise<{ ok: boolean; message?: string; handoverKey?: string }>;
+  /** The owner's tap: exactly these tasks with these notes, now or at their scheduled time. */
+  startHandover(email: string, when: "now" | "scheduled", tasks: HandoverTask[]): Promise<HandoverAnswer>;
+  /** Take back what waits for the scheduled handover. */
+  withdrawHandover(email: string): Promise<HandoverAnswer>;
+  /** Help me plan (only if it is on for the owner): ask the agent for draft suggestions. */
+  askSuggestions(email: string): Promise<HandoverAnswer>;
   /** The pilot's numbers from the event log (piece F): a summary, and the measurement sheet as CSV. */
   numbers(): Promise<Record<string, unknown>>;
   numbersCsv(): Promise<string>;
@@ -163,7 +207,7 @@ export function paperclipApi(cfg: ServiceConfig, fetchImpl: typeof fetch = fetch
       await call("POST", `/briefings/${encodeURIComponent(briefingId)}/sent`, {});
     },
     preview: (token) => call<LinkCheck>("POST", "/links/preview", { token }),
-    execute: (token, reason) => call<LinkOutcome>("POST", "/links/execute", { token, ...(reason !== null ? { reason } : {}) }),
+    execute: (token, reason, signedInAs) => call<LinkOutcome>("POST", "/links/execute", { token, signedInAs, ...(reason !== null ? { reason } : {}) }),
     publishResult: (token, result) => call<LinkOutcome>("POST", "/links/publish-result", { token, ...result }),
     waitingPullRequests: () => call("GET", `/prs/waiting?${company}`),
     async pullRequestUpdate(taskId, state, mergeSha) {
@@ -178,7 +222,9 @@ export function paperclipApi(cfg: ServiceConfig, fetchImpl: typeof fetch = fetch
     },
     recoverApproval: (actionId, olderThanMinutes, result) => call<LinkOutcome>("POST", "/links/recover", { actionId, olderThanMinutes, ...result }),
     handoverStatus: (email) => call<HandoverStatus>("GET", `/handovers/status?${company}&email=${encodeURIComponent(email)}`, undefined, [404]),
-    startHandover: (email) => call("POST", "/handovers/start", { email }, [404, 409]),
+    startHandover: (email, when, tasks) => call("POST", "/handovers/start", { email, when, tasks }, [400, 404, 409]),
+    withdrawHandover: (email) => call("POST", "/handovers/withdraw", { email }, [404]),
+    askSuggestions: (email) => call("POST", "/handovers/suggest", { email }, [404, 409]),
     numbers: () => call("GET", `/numbers?${company}`),
     async numbersCsv() {
       return (await call<{ csv: string }>("GET", `/numbers/csv?${company}`)).csv;
@@ -225,7 +271,7 @@ export function boardApi(cfg: ServiceConfig, fetchImpl: typeof fetch = fetch): B
     if (pluginId) return pluginId;
     const list = await req<Array<{ id: string; pluginKey?: string; key?: string }>>("GET", "/api/plugins");
     const found = list.find((p) => (p.pluginKey ?? p.key) === cfg.plugin);
-    if (!found) throw new PaperclipError(404, "the Vision and Tom plugin is not installed");
+    if (!found) throw new PaperclipError(404, "the Aurora plugin is not installed");
     pluginId = found.id;
     return pluginId;
   }

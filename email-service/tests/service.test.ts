@@ -20,10 +20,11 @@ function fakeApi(over: Partial<PluginApi> = {}): PluginApi & { calls: string[] }
     },
     async preview(token): Promise<LinkCheck> {
       calls.push(`preview:${token === TOKEN}`);
-      return { ok: true, status: "valid", message: "ok", kind: "approve", task: { identifier: "VT-1", title: "Fix <login>" } };
+      return { ok: true, status: "valid", message: "ok", kind: "approve", task: { identifier: "VT-1", title: "Fix <login>" }, owner: "ana@example.com" };
     },
-    async execute(_token, reason): Promise<LinkOutcome> {
-      calls.push(`execute:${reason}`);
+    async execute(_token, reason, signedInAs): Promise<LinkOutcome> {
+      calls.push(`execute:${reason}:${signedInAs}`);
+      if (signedInAs !== "ana@example.com") return { ok: false, status: "refused", message: "Only ana@example.com can approve this task." };
       return { ok: true, status: "merged", message: "VT-1 was merged into main." };
     },
     async publishResult(_token, result): Promise<LinkOutcome> {
@@ -62,6 +63,12 @@ function fakeApi(over: Partial<PluginApi> = {}): PluginApi & { calls: string[] }
     async startHandover() {
       return { ok: false, message: "not in this test" };
     },
+    async withdrawHandover() {
+      return { ok: false, message: "not in this test" };
+    },
+    async askSuggestions() {
+      return { ok: false, message: "not in this test" };
+    },
     async finishInvite(_id, result) {
       calls.push(`finish:${result.ok}`);
       return { ok: true, message: "joined" };
@@ -78,8 +85,11 @@ function fakeApi(over: Partial<PluginApi> = {}): PluginApi & { calls: string[] }
 
 let server: ReturnType<typeof createLinkServer> | null = null;
 afterEach(() => server?.close());
-async function start(api: PluginApi): Promise<string> {
-  server = createLinkServer(api);
+/** Who is signed in to Paperclip, by session cookie. */
+const session = { whoIs: async (cookie: string) => (cookie.includes("ana-session") ? { email: "ana@example.com" } : cookie.includes("bo-session") ? { email: "bo@example.com" } : null) };
+const ANA = { cookie: "s=ana-session" };
+async function start(api: PluginApi, deps: Parameters<typeof createLinkServer>[2] = { session, signInUrl: "https://team.example.com" }): Promise<string> {
+  server = createLinkServer(api, () => {}, deps);
   await new Promise<void>((r) => server!.listen(0, "127.0.0.1", r));
   return `http://127.0.0.1:${(server!.address() as AddressInfo).port}`;
 }
@@ -88,7 +98,7 @@ describe("link pages", () => {
   it("opening a link only shows a confirmation page; nothing is executed", async () => {
     const api = fakeApi();
     const base = await start(api);
-    const res = await fetch(`${base}/l/${TOKEN}`);
+    const res = await fetch(`${base}/l/${TOKEN}`, { headers: ANA });
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain("Approve and merge");
@@ -101,16 +111,16 @@ describe("link pages", () => {
   it("the button (POST) executes once per press and shows the result", async () => {
     const api = fakeApi();
     const base = await start(api);
-    const res = await fetch(`${base}/l/${TOKEN}`, { method: "POST", body: "", headers: { "content-type": "application/x-www-form-urlencoded" } });
+    const res = await fetch(`${base}/l/${TOKEN}`, { method: "POST", body: "", headers: { "content-type": "application/x-www-form-urlencoded", ...ANA } });
     expect(await res.text()).toContain("VT-1 was merged into main.");
-    expect(api.calls).toEqual(["execute:null"]);
+    expect(api.calls).toEqual(["execute:null:ana@example.com"]);
   });
 
   it("passes the reject reason from the form", async () => {
     const api = fakeApi();
     const base = await start(api);
-    await fetch(`${base}/l/${TOKEN}`, { method: "POST", body: "reason=Wrong+approach", headers: { "content-type": "application/x-www-form-urlencoded" } });
-    expect(api.calls).toEqual(["execute:Wrong approach"]);
+    await fetch(`${base}/l/${TOKEN}`, { method: "POST", body: "reason=Wrong+approach", headers: { "content-type": "application/x-www-form-urlencoded", ...ANA } });
+    expect(api.calls).toEqual(["execute:Wrong approach:ana@example.com"]);
   });
 
   it("asks again for a reason when the plugin needs one", async () => {
@@ -119,11 +129,11 @@ describe("link pages", () => {
         return { ok: false, status: "needs-reason", message: "Please give a one-line reason." };
       },
       async preview() {
-        return { ok: true, status: "valid", message: "ok", kind: "reject", task: { identifier: "VT-1", title: "x" } };
+        return { ok: true, status: "valid", message: "ok", kind: "reject", task: { identifier: "VT-1", title: "x" }, owner: "ana@example.com" };
       },
     });
     const base = await start(api);
-    const html = await (await fetch(`${base}/l/${TOKEN}`, { method: "POST", body: "" })).text();
+    const html = await (await fetch(`${base}/l/${TOKEN}`, { method: "POST", body: "", headers: ANA })).text();
     expect(html).toContain("Please give a one-line reason.");
     expect(html).toContain('name="reason"');
   });
@@ -138,12 +148,44 @@ describe("link pages", () => {
 
   it("refuses oversized form bodies", async () => {
     const base = await start(fakeApi());
-    expect((await fetch(`${base}/l/${TOKEN}`, { method: "POST", body: "reason=" + "x".repeat(5000) })).status).toBe(413);
+    expect((await fetch(`${base}/l/${TOKEN}`, { method: "POST", body: "reason=" + "x".repeat(5000), headers: ANA })).status).toBe(413);
+  });
+
+  it("only the task's owner, signed in to Paperclip in this browser, gets the button", async () => {
+    const api = fakeApi();
+    const base = await start(api);
+    const anon = await (await fetch(`${base}/l/${TOKEN}`)).text();
+    expect(anon).toContain("Only ana@example.com can decide it.");
+    expect(anon).toContain("sign in to Paperclip</a> as ana@example.com");
+    expect(anon).not.toContain("<button");
+    const bo = await (await fetch(`${base}/l/${TOKEN}`, { headers: { cookie: "s=bo-session" } })).text();
+    expect(bo).toContain("You are signed in to Paperclip as <strong>bo@example.com</strong>.");
+    expect(bo).not.toContain("<button");
+    expect(await (await fetch(`${base}/l/${TOKEN}`, { headers: ANA })).text()).toContain("<button");
+  });
+
+  it("pressing the button without signing in does nothing; signed in as a teammate, the plugin refuses", async () => {
+    const api = fakeApi();
+    const base = await start(api);
+    const anon = await fetch(`${base}/l/${TOKEN}`, { method: "POST", body: "" });
+    expect(anon.status).toBe(401);
+    expect(api.calls).not.toContain(expect.stringMatching(/^execute/));
+    const bo = await fetch(`${base}/l/${TOKEN}`, { method: "POST", body: "", headers: { cookie: "s=bo-session" } });
+    expect(bo.status).toBe(409);
+    expect(await bo.text()).toContain("Only ana@example.com can approve this task.");
+    expect(api.calls.filter((c) => c.startsWith("execute"))).toEqual(["execute:null:bo@example.com"]);
+  });
+
+  it("with no sign-in check set up, links never act (fail closed)", async () => {
+    const api = fakeApi();
+    const base = await start(api, {});
+    expect((await fetch(`${base}/l/${TOKEN}`, { method: "POST", body: "", headers: ANA })).status).toBe(503);
+    expect(api.calls).toEqual([]);
   });
 
   it("shows a friendly page when Paperclip is down", async () => {
     const base = await start(fakeApi({ preview: () => Promise.reject(new Error("down")) }));
-    const res = await fetch(`${base}/l/${TOKEN}`);
+    const res = await fetch(`${base}/l/${TOKEN}`, { headers: ANA });
     expect(res.status).toBe(502);
   });
 });

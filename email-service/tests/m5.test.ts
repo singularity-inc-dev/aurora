@@ -29,7 +29,7 @@ function plugin(over: Partial<PluginApi> = {}): PluginApi & { calls: string[] } 
   const base: PluginApi = {
     pendingEmails: async () => [],
     markSent: async () => undefined,
-    preview: async (): Promise<LinkCheck> => ({ ok: true, status: "valid", message: "ok", kind: "approve", task: { identifier: "T-1", title: "x" }, github: "acme/app" }),
+    preview: async (): Promise<LinkCheck> => ({ ok: true, status: "valid", message: "ok", kind: "approve", task: { identifier: "T-1", title: "x" }, github: "acme/app", owner: "ana@example.com" }),
     execute: async (): Promise<LinkOutcome> => {
       calls.push("execute");
       return { ok: true, status: "publish", message: "publish", publish: PUBLISH };
@@ -47,7 +47,9 @@ function plugin(over: Partial<PluginApi> = {}): PluginApi & { calls: string[] } 
       return { ok: true, status: "claimed", plan: PLAN };
     },
     handoverStatus: async (email) => ({ ok: true, email, timezone: "UTC", handoverStartHour: 22, handovers: [] }),
-    startHandover: async (email) => (calls.push(`start:${email}`), { ok: true, handoverKey: "2026-10-24T14:05:00" }),
+    startHandover: async (email, when, tasks) => (calls.push(`start:${email}:${when}:${JSON.stringify(tasks)}`), { ok: true, message: "Handed over 1 task(s). Your agent starts now.", handoverKey: "2026-10-24T14:05:00" }),
+    withdrawHandover: async (email) => (calls.push(`withdraw:${email}`), { ok: true, message: "Took back 1 task(s)." }),
+    askSuggestions: async (email) => (calls.push(`suggest:${email}`), { ok: false, message: "Help me plan is off for you." }),
     numbers: async () => ({ team: {} }),
     numbersCsv: async () => "Date\r\n",
     finishInvite: async (_id, r) => {
@@ -85,17 +87,20 @@ function github(result: PublishResult | Error, onPublish: () => Promise<void> = 
 
 let server: ReturnType<typeof createLinkServer> | null = null;
 afterEach(() => server?.close());
+/** Ana is signed in to Paperclip in the browser that opens the links. */
+const anaSignedIn = { whoIs: async (cookie: string) => (cookie.includes("ana-session") ? { email: "ana@example.com" } : null) };
 async function start(api: PluginApi, deps: Parameters<typeof createLinkServer>[2] = {}): Promise<string> {
+  deps = { session: anaSignedIn, ...deps };
   server = createLinkServer(api, () => {}, deps);
   await new Promise<void>((r) => server!.listen(0, "127.0.0.1", r));
   return `http://127.0.0.1:${(server!.address() as AddressInfo).port}`;
 }
-const post = (url: string, body = "") => fetch(url, { method: "POST", body, headers: { "content-type": "application/x-www-form-urlencoded" } });
+const post = (url: string, body = "") => fetch(url, { method: "POST", body, headers: { "content-type": "application/x-www-form-urlencoded", cookie: "s=ana-session" } });
 
 describe("Approve with GitHub", () => {
   it("the confirm page says what will happen on GitHub", async () => {
     const base = await start(plugin());
-    const html = await (await fetch(`${base}/l/${TOKEN}`)).text();
+    const html = await (await fetch(`${base}/l/${TOKEN}`, { headers: { cookie: "s=ana-session" } })).text();
     expect(html).toContain("Push <strong>T-1 x</strong> to GitHub (acme/app), open a pull request and merge it.");
     expect(html).toContain('<form method="post">');
   });
@@ -368,32 +373,105 @@ describe("secrets come from files", () => {
   });
 });
 
-describe("Hand over now page", () => {
+describe("the Hand over page", () => {
   const SITE = "https://team.example.com";
-  const session = { whoIs: async (cookie: string) => (cookie.includes("ana-session") ? { email: "ana@example.com" } : null) };
+  const session = anaSignedIn;
+  const tickets = [
+    { id: "t1", identifier: "T-1", title: "Fix <login>", description: "Users see a 500", draft: null },
+    { id: "t2", identifier: "T-2", title: "Speed up search", description: "", draft: { source: "agent" as const, what: "Cache results", doneWhen: "under 200 ms", files: "src/search" } },
+  ];
+  const status = (over: Record<string, unknown> = {}) =>
+    plugin({
+      handoverStatus: async (email) => ({
+        ok: true,
+        email,
+        timezone: "UTC",
+        handoverStartHour: 22,
+        maxTasks: 2,
+        helpMePlan: false,
+        limits: { defaultMinutes: 120, maxMinutes: 480, defaultBudgetCents: 300, maxBudgetCents: 300 },
+        tickets,
+        queued: [],
+        handovers: [],
+        ...over,
+      }),
+    });
+  const form = (fields: Record<string, string | string[]>) => {
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries(fields)) for (const x of Array.isArray(v) ? v : [v]) p.append(k, x);
+    return p.toString();
+  };
+  const submit = (base: string, body: string, origin = SITE) =>
+    fetch(`${base}/handover`, { method: "POST", body, headers: { cookie: "s=ana-session", origin, "content-type": "application/x-www-form-urlencoded" } });
 
-  it("is only for the person signed in to Paperclip", async () => {
-    const api = plugin();
+  it("is only for the person signed in to Paperclip, and shows their own tickets with a note to write on each", async () => {
+    const api = status();
     const base = await start(api, { session, signInUrl: SITE });
     const anon = await fetch(`${base}/handover`);
     expect(anon.status).toBe(401);
     expect(await anon.text()).toContain("sign in to Paperclip");
     const page = await (await fetch(`${base}/handover`, { headers: { cookie: "s=ana-session" } })).text();
     expect(page).toContain("Signed in as <strong>ana@example.com</strong>");
-    expect(page).toContain("Hand over now</button>");
+    expect(page).toContain("T-1 Fix &lt;login&gt;");
+    expect(page).toContain('name="done:t1"');
+    expect(page).toContain('name="files:t1"');
+    expect(page).toContain('name="min:t1" inputmode="numeric" maxlength="4" value="120"');
+    expect(page).toContain("Suggested by your agent");
+    expect(page).toContain(">Cache results</textarea>");
+    expect(page).toContain('value="now">Hand over now</button>');
+    expect(page).toContain('value="scheduled">Hand over at my scheduled time (22:00 (UTC))</button>');
+    expect(page).toContain("Your tap is the approval: there is no separate plan to approve.");
+    expect(page).not.toContain("Ask my agent for suggestions"); // Help me plan is off by default
+    expect(page).not.toMatch(/anyone signed in/i);
     expect(api.calls).toEqual([]);
   });
 
-  it("starts the signed-in owner's handover, and only from this site's own page", async () => {
-    const api = plugin();
+  it("hands over exactly the ticked tickets with their notes, and only from this site's own page", async () => {
+    const api = status();
     const base = await start(api, { session, signInUrl: SITE });
-    const elsewhere = await fetch(`${base}/handover`, { method: "POST", headers: { cookie: "s=ana-session", origin: "https://evil.example" } });
-    expect(elsewhere.status).toBe(403);
+    const body = form({ action: "now", pick: "t1", "what:t1": "Fix the 500", "done:t1": "login works", "files:t1": "src/login/", "min:t1": "30", "cents:t1": "100", "what:t2": "not ticked" });
+    expect((await submit(base, body, "https://evil.example")).status).toBe(403);
     expect(api.calls).toEqual([]);
-    const res = await fetch(`${base}/handover`, { method: "POST", headers: { cookie: "s=ana-session", origin: SITE } });
+    const res = await submit(base, body);
     expect(res.status).toBe(200);
-    expect(await res.text()).toContain("Started.");
-    expect(api.calls).toEqual(["start:ana@example.com"]);
+    expect(await res.text()).toContain("Handed over 1 task(s).");
+    expect(api.calls).toEqual([
+      `start:ana@example.com:now:${JSON.stringify([{ issueId: "t1", what: "Fix the 500", doneWhen: "login works", files: "src/login/", maxMinutes: "30", budgetCents: "100" }])}`,
+    ]);
+  });
+
+  it("a refusal keeps what the owner typed and lists the teammate's files", async () => {
+    const api = status();
+    api.startHandover = async () => ({ ok: false, message: "Nothing was handed over: a ticket reaches into a teammate's files.", overlaps: ['"Fix login": `src/api` is in bo@example.com\'s area.'] });
+    const base = await start(api, { session, signInUrl: SITE });
+    const res = await submit(base, form({ action: "scheduled", pick: "t1", "what:t1": "My <careful> words", "done:t1": "d", "files:t1": "src/api/" }));
+    expect(res.status).toBe(409);
+    const html = await res.text();
+    expect(html).toContain("Nothing was handed over");
+    expect(html).toContain("bo@example.com&#39;s area");
+    expect(html).toContain(">My &lt;careful&gt; words</textarea>");
+    expect(html).toMatch(/value="t1" checked/);
+  });
+
+  it("nothing ticked: nothing is sent", async () => {
+    const api = status();
+    const base = await start(api, { session, signInUrl: SITE });
+    const res = await submit(base, form({ action: "now", "what:t1": "x" }));
+    expect(res.status).toBe(400);
+    expect(await res.text()).toContain("Tick at least one ticket.");
+    expect(api.calls).toEqual([]);
+  });
+
+  it("shows what waits for the schedule, with a button to take it back; Help me plan only when it is on", async () => {
+    const api = status({ queued: [{ taskId: "t9", title: "Docs", doneWhen: "docs build" }], helpMePlan: true });
+    const base = await start(api, { session, signInUrl: SITE });
+    const page = await (await fetch(`${base}/handover`, { headers: { cookie: "s=ana-session" } })).text();
+    expect(page).toContain("Waiting for your scheduled handover");
+    expect(page).toContain("Docs (done when: docs build)");
+    expect(page).toContain("Ask my agent for suggestions");
+    expect(await (await submit(base, form({ action: "withdraw" }))).text()).toContain("Took back 1 task(s).");
+    expect((await submit(base, form({ action: "suggest" }))).status).toBe(409);
+    expect(api.calls).toEqual(["withdraw:ana@example.com", "suggest:ana@example.com"]);
   });
 });
 
