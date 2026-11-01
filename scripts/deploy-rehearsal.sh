@@ -225,8 +225,10 @@ TICK_JOB=$(board "$PC/api/plugins/$PLUGIN_ID/jobs" | json 'd.find(j=>j.jobKey===
 ho_status() { board -X POST "$PC/api/plugins/$PLUGIN_ID/data/handover-status" -d "{\"companyId\":\"$CID\",\"params\":{}}" | json "(d.data.find(r=>r.owner==='owner@example.com')||{}).status"; }
 for _ in $(seq 1 30); do board -o /dev/null -X POST "$PC/api/plugins/$PLUGIN_ID/jobs/$TICK_JOB/trigger" -d '{}'; sleep 2; [ "$(ho_status)" = "finished" ] && break; done
 check "when its ticket is done, the handover finishes" "$(ho_status)" "finished"
-for _ in $(seq 1 30); do [ "$(curl -s "$MP_API/messages" | json 'd.total')" = "1" ] && break; sleep 1; done
-HB_TEXT=$(curl -s "$MP_API/message/$(curl -s "$MP_API/messages" | json 'd.messages[0].ID')" | json 'd.Text' | tr -d '\r')
+# The email service looks for new mail every 60 seconds on a server (POLL_SECONDS), so allow up to 90.
+hb_id() { curl -s "$MP_API/messages" | json "(d.messages.find(m=>m.Subject.startsWith('Your handover of'))||{}).ID"; }
+for _ in $(seq 1 90); do [ -n "$(hb_id)" ] && break; sleep 1; done
+HB_TEXT=$(curl -s "$MP_API/message/$(hb_id)" | json 'd.Text' | tr -d '\r')
 check "the handback email (real SMTP) shows the owner's locked note and says only they can use the links" "$(echo "$HB_TEXT" | grep -c '^  Done when (your words; Aurora does not check this, you do): greeting.txt says hello$')/$(echo "$HB_TEXT" | grep -c 'Only you can use these links')" "1/1"
 curl -s -o /dev/null -X DELETE "$MP_API/messages"
 
