@@ -6,7 +6,7 @@ import { HANDOFF_TOOL, PROPOSE_TOOL, RUN_CHECKS_TOOL } from "./tools.js";
 const manifest: PaperclipPluginManifestV1 = {
   id: PLUGIN_ID,
   apiVersion: 1,
-  version: "0.11.0",
+  version: "0.12.0",
   displayName: "Vision and Tom",
   description:
     "Aurora: each teammate hands their own agent exactly the tasks they chose, with a note per task (what, done when, limits), now or at their scheduled time. Agents use only their owner's keys, hand off via board tickets, and change nothing shared until the owner approves.",
