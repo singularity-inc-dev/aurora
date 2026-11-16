@@ -135,7 +135,28 @@ Ported, in `plugin/tests/handoverrunner.test.ts`, describe "claims a failed hand
 
 Also ported: PR #14's five run-flag tests (see the PR #12 section).
 
+### Live checks adapted (first full run: 448 passed, 9 failed)
+
+- `scripts/it/z_m6.sh` (PR #14's counts checks, 7 of the 9): they expected PR #14's m4 data (5 work orders, Ana as
+  `ana@example.com`, one teammate conflict pair, a budget-stopped ticket with one flag). Under PR #12 the same bed
+  has 7 work orders owned by the signed-in Paperclip user (only the owner can hand over), the hand-over into Bo's
+  files is refused instead of run (so v1e's only replay conflict is between Ana's own two tasks: no teammate pair),
+  and the budget-stopped ticket also carries a tool-error flag from PR #12's refused hand-off. The checks now say
+  so, the same way PR #12 had already adapted v1f. Commit `db4bbec`.
+- `scripts/it/m3.sh` SLOW section (2 of the 9): see below under "not reconciled".
+
 ## Not reconciled, say so plainly
+
+- **m3 with `SLOW=1`, "a step past its time limit is retried" and "retry releases the task to the agent again": fail,
+  and were not made to pass.** Cause, read from the ticket and the plugin data: in the test bed no agent really runs,
+  and Paperclip 2026.1012.0's own heartbeat recovery marks the idle ticket `blocked` about 2.5 minutes after it is
+  released ("Paperclip exhausted the bounded original-owner disposition repair"). The plugin then sees a stopped task
+  ("agent marked the task blocked") and ends the handover, so its 5-minute step time-out never gets to retry. PR #12
+  said this SLOW check was never run on its branch; PR #11 ran it (passing) on PR #7's code, where the slow task
+  came from the agent's proposal. The plugin's retry itself is covered by unit tests (`timeouts.test.ts`,
+  `handoverrunner.test.ts` "a stuck task is retried once within its time, then fails", and the ported run-flag
+  tests). Worth knowing for a real run: a real agent whose run truly hangs may also be blocked by Paperclip's
+  recovery before our step time-out, and would then be reported as blocked, not retried.
 
 - PR #12's progress notes and PR #11's notes still describe their migration as 011 and the plugin as 0.11.0. Left as written; this file is the record.
 - PR #12's hand-over page and PR #14's numbers page share `page()` in `email-service/src/pages.ts`; the merged CSS serves both. Not checked in a browser, only through the service tests.
