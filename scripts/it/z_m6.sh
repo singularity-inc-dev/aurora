@@ -20,16 +20,20 @@ Z6_N=$(z6_counts "$M4_CID")
 echo "$Z6_N" >"$LOG_DIR/z6-counts.json"
 check "z_m6: the migration ran and the counts route answers with whole numbers only" "$(echo "$Z6_N" | json 'Object.keys(d.team).sort().join(",")')/$(echo "$Z6_N" | json '[d.team,...d.people.flatMap(p=>[p.all,...p.kinds.map(k=>k.counts)])].every(c=>Object.values(c).every(Number.isInteger))')" "approved,budgetStops,checksFailed,failed,handedOver,notTested,ready,rejected,teammateOverlaps,timedOut,toolErrors,wouldBeConflicts/true"
 check "z_m6: no percentage, rate or average in the counts" "$(echo "$Z6_N" | grep -ciE 'yield|percent|rate|average|median' || true)" "0"
-check "z_m6: the people in the counts are the people with work" "$(echo "$Z6_N" | json 'd.people.map(p=>p.owner).join(",")')" "ana@example.com,bo@example.com"
-check "z_m6: handed over, approved and rejected agree with v1f's numbers (5 handed over, 1 accepted, 1 rejected)" "$(echo "$Z6_N" | json '[d.team.handedOver,d.team.approved,d.team.rejected,d.team.failed].join("/")')" "5/1/1/0"
-check "z_m6: per person: Ana handed over 4, Bo 1" "$(echo "$Z6_N" | json 'd.people.map(p=>p.owner.split("@")[0]+":"+p.all.handedOver).join(",")')" "ana:4,bo:1"
-check "z_m6: the replay's conflict (release notes vs Bo's changelog) is one would-be conflict, one teammate overlap, for each of the two people" "$(echo "$Z6_N" | json '[d.team.wouldBeConflicts,d.team.teammateOverlaps].join("/")+" "+d.people.map(p=>p.all.wouldBeConflicts+"/"+p.all.teammateOverlaps).join(" ")')" "1/1 1/1 1/1"
-check "z_m6: task kinds are listed under each person" "$(echo "$Z6_N" | json 'd.people.map(p=>p.owner.split("@")[0]+":"+p.kinds.map(k=>k.kind).join("+")).join(",")')" "ana:task,bo:task"
+# Under the owner's handover (PR #12) Ana is the signed-in Paperclip user ($M4_ANA), so the owners are sorted by that address.
+Z6_OWNERS=$(printf '%s\n' bo@example.com "$M4_ANA" | sort | paste -sd,)
+check "z_m6: the people in the counts are the people with work" "$(echo "$Z6_N" | json 'd.people.map(p=>p.owner).join(",")')" "$Z6_OWNERS"
+check "z_m6: handed over, approved and rejected agree with v1f's numbers (7 handed over, 1 accepted, 1 rejected)" "$(echo "$Z6_N" | json '[d.team.handedOver,d.team.approved,d.team.rejected,d.team.failed].join("/")')" "7/1/1/0"
+check "z_m6: per person: Ana handed over 6, Bo 1" "$(echo "$Z6_N" | json 'd.people.map(p=>p.owner.split("@")[0]+":"+p.all.handedOver).join(",")')" "$(printf '%s\n' bo@example.com:1 "$M4_ANA:6" | sort | sed 's/@[^:]*//' | paste -sd,)"
+# PR #12 refuses a hand-over into a teammate's files instead of running it, so v1e's only replay conflict is between
+# Ana's own two tasks (notes.txt): no teammate overlap and no would-be conflict for anyone.
+check "z_m6: the replay's conflict (Ana's release notes vs her upgrade notes) is not a teammate overlap: none for the team or either person" "$(echo "$Z6_N" | json '[d.team.wouldBeConflicts,d.team.teammateOverlaps].join("/")+" "+d.people.map(p=>p.all.wouldBeConflicts+"/"+p.all.teammateOverlaps).join(" ")')" "0/0 0/0 0/0"
+check "z_m6: task kinds are listed under each person" "$(echo "$Z6_N" | json 'd.people.map(p=>p.owner.split("@")[0]+":"+p.kinds.map(k=>k.kind).join("+")).join(",")')" "$(printf '%s\n' bo@example.com:task "$M4_ANA:task" | sort | sed 's/@[^:]*//' | paste -sd,)"
 
 echo "-- the command: counts on the screen, the event log as CSV"
 Z6_CSV="$LOG_DIR/z6-events.csv"; rm -f "$Z6_CSV"
 z6_cli "$M4_CID" --events "$Z6_CSV" >"$LOG_DIR/z6-screen.txt"
-check "z_m6: vt-numbers prints the counts, team first, with no percentage" "$(grep -c '^Team (everyone) ' "$LOG_DIR/z6-screen.txt")/$(grep -c '^ana@example.com ' "$LOG_DIR/z6-screen.txt")/$(grep -c '%' "$LOG_DIR/z6-screen.txt" || true)" "2/2/0"  # each line is in both tables
+check "z_m6: vt-numbers prints the counts, team first, with no percentage" "$(grep -c '^Team (everyone) ' "$LOG_DIR/z6-screen.txt")/$(grep -c "^$M4_ANA " "$LOG_DIR/z6-screen.txt")/$(grep -c '%' "$LOG_DIR/z6-screen.txt" || true)" "2/2/0"  # each line is in both tables
 check "z_m6: the event-log file has the event-log columns, then the run flags" "$(head -1 "$Z6_CSV" | tr -d '\r')" "task id,owner,agent,task kind,proposed at,approved at,started at,finished at,checks result,outcome,reject reason,handed off to,run flags,flag details"
 check "z_m6: the event-log file is readable by its owner only" "$(stat -c %a "$Z6_CSV")" "600"
 check "z_m6: one row per task, and the decided ones say how they ended" "$(tail -n +2 "$Z6_CSV" | grep -c .)/$(grep -c ',accepted,' "$Z6_CSV")/$(grep -c ',rejected,' "$Z6_CSV")" "$(echo "$Z6_N" | json 'd.people.reduce((s,p)=>s+p.all.handedOver,0)')/1/1"
@@ -38,7 +42,8 @@ check "z_m6: --events - puts only the CSV on standard output" "$(head -1 "$LOG_D
 
 echo "-- run flags"
 Z6_M3="$LOG_DIR/z6-m3.csv"; z6_cli "$M3_CID" --events "$Z6_M3" >/dev/null
-check "z_m6: the task the budget cap stopped carries a budget-stop flag (m3)" "$(grep "^$M3_T2," "$Z6_M3" | grep -c ',blocked,.*budget-stop,budget-stop: stopped: handover budget cap reached')" "1"
+# The same ticket also carries a tool-error flag: in m3 the agent tried to hand it off and was refused (PR #12).
+check "z_m6: the task the budget cap stopped carries a budget-stop flag (m3)" "$(grep "^$M3_T2," "$Z6_M3" | grep -c ',blocked,.*budget-stop.*budget-stop: stopped: handover budget cap reached')" "1"
 check "z_m6: a task that finished before the cap carries no flag (m3)" "$(grep "^$M3_T1," "$Z6_M3" | tr -d '\r' | awk -F, '{print $(NF-1)$NF}' | tr -d '"')" ""
 Z6_M2="$LOG_DIR/z6-m2.csv"; z6_cli "$M2_CID" --events "$Z6_M2" >/dev/null
 check "z_m6: a failed tool call on the agent's own ticket carries a tool-error flag (m2)" "$(grep "^$M2_ISS," "$Z6_M2" | grep -c 'tool-error')" "1"
