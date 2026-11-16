@@ -425,6 +425,32 @@ describe("the pre-handover check on the owner's own tasks", () => {
   });
 });
 
+describe("claims a failed hand-over left behind end on a later tick (B1, PR #10)", () => {
+  const holds = (t: Awaited<ReturnType<typeof setup>>, owner: string) =>
+    t.db.tables.task_events.filter((r) => r.owner === owner && r.claims && !r.claims_released_at && !r.outcome);
+
+  it("claims that no handover and no queued note lists (what a crash mid hand-over leaves) are released, and the files are free again", async () => {
+    const t = await setup();
+    t.db.tables.task_events.push({ task_id: "crashed", company_id: CO, owner: "ana@example.com", agent: "agent-ana", task_kind: "task", claims: JSON.stringify(["docs/"]) });
+    await t.tick(DAY);
+    expect(holds(t, "ana@example.com")).toEqual([]);
+    expect((await handOver(t.h.ctx, CO, settings, bo, request("now", [note("b1", { files: "docs/guide.md" })], bo), DAY)).ok).toBe(true);
+  });
+
+  it("claims of tasks a handover lists, and of notes queued for the next scheduled handover, are never swept", async () => {
+    const t = await setup();
+    expect((await handOver(t.h.ctx, CO, settings, ana, request("now", [note("a1", { files: "src/" })]), DAY)).ok).toBe(true);
+    expect((await handOver(t.h.ctx, CO, settings, bo, request("scheduled", [note("b1", { files: "docs/" })], bo), DAY)).ok).toBe(true);
+    await t.tick(new Date(DAY.getTime() + 5 * 60_000));
+    await t.tick(new Date(DAY.getTime() + 5 * 60_000), bo);
+    expect(holds(t, "ana@example.com")).toHaveLength(1);
+    expect(holds(t, "bo@example.com")).toHaveLength(1);
+    // The queued note still keeps a teammate out of its files.
+    const later = await handOver(t.h.ctx, CO, settings, ana, request("now", [note("a2", { files: "docs/guide.md" })]), new Date(DAY.getTime() + 9 * 3600_000));
+    expect(later).toMatchObject({ ok: false });
+  });
+});
+
 describe("run flags from the handover", () => {
   const flags = (db: Awaited<ReturnType<typeof setup>>["db"], taskId: string) => db.tables.run_flags.filter((f) => f.task_id === taskId).map((f) => `${f.kind}: ${f.detail}`);
 

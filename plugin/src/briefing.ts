@@ -10,6 +10,7 @@ import {
   insertAction,
   insertBriefing,
   newId,
+  reopenStopped,
   type Briefing,
   type BriefingConflict,
   type BriefingItem,
@@ -52,6 +53,8 @@ export interface Classified {
   reason: string | null;
   /** Only Ready tasks can be approved; every task can be rejected. */
   approvable: boolean;
+  /** Blocked or failed by the handover, but Ready now: that outcome must be cleared before it is offered (B4, B5). */
+  reopen?: boolean;
 }
 
 /**
@@ -63,8 +66,13 @@ export function classify(f: TaskFacts): Classified {
     f.checksResult === "not-tested" ? "NOT TESTED (no test command is set up; check it yourself before you approve)" : f.checksResult === "no-changes" ? "found no changes" : f.checksResult;
   const checks = f.checksResult ? `checks ${result}${f.checksHead ? ` on ${f.checksHead.slice(0, 7)}` : ""}` : "checks not run";
   const no = (category: Category, reason: string): Classified => ({ category, checks, reason, approvable: false });
-  if (f.outcome === "failed") return no("failed", "timed out after its retries");
-  if (f.outcome === "blocked") return no("blocked", "stopped by the handover");
+  if (f.outcome === "failed" || f.outcome === "blocked") {
+    // Not final (B4, B5): the plugin cannot stop a run, so work may land after the handover
+    // stopped it or its time-outs ran out. If it is Ready by the same rules, it may be approved.
+    const asIfOpen = classify({ ...f, outcome: null });
+    if (asIfOpen.approvable) return { ...asIfOpen, reopen: true };
+    return f.outcome === "failed" ? no("failed", "timed out after its retries") : no("blocked", "stopped by the handover");
+  }
   if (!f.startedAt) return no("blocked", "not started in this handover");
   if (f.issueStatus && !["done", "in_review"].includes(f.issueStatus)) return no("blocked", `agent left it ${f.issueStatus}`);
   if (!f.worktree || !f.branchHead) return no("blocked", "no worktree for this task");
@@ -182,8 +190,12 @@ export async function createBriefing(
       }
       continue;
     }
-    const c = classify(f);
-    const ready = readyBranch(f, person.email);
+    let c = classify(f);
+    if (c.reopen) {
+      if (await reopenStopped(ctx.db, taskId, f.outcome === "failed" ? "failed" : "blocked")) f.outcome = null;
+      else c = f.outcome === "failed" ? { ...c, category: "failed", reason: "timed out after its retries", approvable: false } : { ...c, category: "blocked", reason: "stopped by the handover", approvable: false };
+    }
+    const ready = c.approvable ? readyBranch(f, person.email) : null;
     if (ready) mine.push(ready);
     const action = (kind: LinkKind) => {
       const a = {

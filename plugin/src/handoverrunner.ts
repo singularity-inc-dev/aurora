@@ -1,6 +1,6 @@
 import type { PluginContext } from "@paperclipai/plugin-sdk";
 import { MAX_TASKS_PER_HANDOVER, parseSettings, type Person, type PluginSettings } from "./config.js";
-import { BUDGET_STOP_REASON, decideHandover, OPEN_STATUSES, windowOf, type HandoverDecision, type HandoverRun, type StepClose, type TaskLimitsSeen } from "./handover.js";
+import { BUDGET_STOP_REASON, decideHandover, OPEN_STATUSES, WINDOW_ENDED, windowOf, type HandoverDecision, type HandoverRun, type StepClose, type TaskLimitsSeen } from "./handover.js";
 import { handoverClock } from "./schedule.js";
 import { claimRun, getLatestDoneRun, getOpenRun, getRun, setTaskOutcome, spentSince, stampTasks, updateRun } from "./handoverstore.js";
 import { createBriefing } from "./briefing.js";
@@ -11,7 +11,7 @@ import { ensureTaskRow, getTaskRow } from "./eventlog.js";
 import { recordFlagSafely } from "./flagstore.js";
 import type { StoredFlagKind } from "./flags.js";
 import { HANDOVER_TASK_ORIGIN, PLAN_ORIGIN } from "./ids.js";
-import { openClaims, recordClaims, recordOverlap, releaseClaims } from "./claimstore.js";
+import { openClaims, recordClaims, recordOverlap, releaseClaims, releaseOrphanedClaims } from "./claimstore.js";
 import { preHandoverCheck, type Areas, type Overlap } from "./prehandover.js";
 import { readAreas } from "./repoareas.js";
 import { parseProposal, ProposalRefused } from "./proposal.js";
@@ -35,6 +35,7 @@ import {
   type NoteInput,
   type NoteSchedule,
 } from "./notes.js";
+import { retrying, withTimeout } from "./retry.js";
 
 export { ProposalRefused };
 
@@ -74,18 +75,42 @@ export async function tickAll(ctx: PluginContext, now: Date): Promise<void> {
   }
 }
 
-export async function tickCompany(ctx: PluginContext, companyId: string, settings: PluginSettings, now: Date): Promise<void> {
+/** Longest one person's tick is waited for; past it the tick loop moves on to the others. */
+export const PERSON_TICK_MS = 120_000;
+/** People whose earlier tick has not settled yet (company:email). They are skipped, so ticks never pile up. */
+const stillTicking = new Set<string>();
+
+export async function tickCompany(ctx: PluginContext, companyId: string, settings: PluginSettings, now: Date, limits: { personTickMs?: number } = {}): Promise<void> {
+  const limit = limits.personTickMs ?? PERSON_TICK_MS;
   // Approve and Reject clicks that a crash interrupted (spec gap 27).
-  await recoverInterruptedActions(ctx, settings, companyId, now).catch((err) =>
+  await bounded(`${companyId}:recover-links`, limit, () => recoverInterruptedActions(ctx, settings, companyId, now)).catch((err) =>
     ctx.logger.error("could not recover interrupted links", { companyId, error: err instanceof Error ? err.message : "unknown" }),
   );
   for (const person of settings.people) {
     try {
-      await tickPerson(ctx, companyId, settings, person, now);
+      await bounded(`${companyId}:${person.email}`, limit, () => tickPerson(ctx, companyId, settings, person, now));
     } catch (err) {
       ctx.logger.error("handover tick failed for one person", { companyId, owner: person.email, error: err instanceof Error ? err.message : "unknown" });
     }
   }
+}
+
+/**
+ * Wait for `work` at most `ms`. Work that runs over keeps going in the background
+ * (it cannot be cancelled; every step is safe to finish late), and the same key is
+ * skipped until it settles.
+ */
+async function bounded<T>(key: string, ms: number, work: () => Promise<T>): Promise<T | undefined> {
+  if (stillTicking.has(key)) throw new Error("its previous tick is still running");
+  stillTicking.add(key);
+  const running = work().finally(() => stillTicking.delete(key));
+  running.catch(() => undefined); // a late failure is logged by nobody else; never leave it unhandled
+  return withTimeout(running, ms, "tick");
+}
+
+/** A Paperclip call that is safe to repeat (read, set a status, pause): retried with backoff. */
+function again<T>(fn: () => Promise<T>): Promise<T> {
+  return retrying(fn, { attempts: 3, baseDelayMs: 500 });
 }
 
 function scheduleOf(settings: PluginSettings, person: Person, now: Date): HandoverClock {
@@ -288,6 +313,10 @@ export async function withdrawQueued(ctx: PluginContext, companyId: string, pers
 export async function tickPerson(ctx: PluginContext, companyId: string, settings: PluginSettings, person: Person, now: Date): Promise<HandoverDecision> {
   const clock = scheduleOf(settings, person, now);
   const decision = await decideAndApply(ctx, companyId, settings, person, clock, now);
+  // After the decision: a plan that expired just now frees what its crashed proposal claimed (B1).
+  // Claims a queued note holds for the next scheduled handover are not orphans (PR #12).
+  const freed = await releaseOrphanedClaims(ctx.db, companyId, person.email, await queuedTaskIds(ctx.db, companyId));
+  if (freed.length) ctx.logger.warn("released claims a failed hand-over left behind", { companyId, owner: person.email, tasks: freed.length });
   // Once a handover is done (possibly just now), build its handback email once.
   await maybeBrief(ctx, companyId, settings, person, clock, now);
   return decision;
@@ -355,6 +384,7 @@ async function maybeBrief(ctx: PluginContext, companyId: string, settings: Plugi
   const stillInItsWindow = run?.kind === "scheduled" && now >= windowOf(run, clock).start && now < windowOf(run, clock).end;
   if (run && run.taskIds.length > 0 && !stillInItsWindow) {
     if (!(await getBriefing(ctx.db, companyId, person.email, run.handoverKey))) {
+      if (await waitingForCutOffTask(ctx, companyId, settings, run, clock, now)) return;
       const carried = await earlierBriefingTaskIds(ctx.db, companyId, person.email, run.handoverKey);
       await createBriefing(ctx, person, settings.links, companyId, run.handoverKey, run, carried, now, settings.people);
       return;
@@ -371,17 +401,37 @@ async function maybeBrief(ctx: PluginContext, companyId: string, settings: Plugi
   await createBriefing(ctx, person, settings.links, companyId, lastDay, null, carried, now, settings.people);
 }
 
+/**
+ * The window ended while the agent was still on a task (B4). The handback waits
+ * for that task to reach done or in review, for at most one step time-out after
+ * the window, so work that lands just after the end can be approved normally.
+ */
+async function waitingForCutOffTask(ctx: PluginContext, companyId: string, settings: PluginSettings, run: HandoverRun, clock: HandoverClock, now: Date): Promise<boolean> {
+  if (run.status !== "finished" || run.stopReason !== WINDOW_ENDED) return false;
+  if (now.getTime() >= windowOf(run, clock).end.getTime() + settings.handover.stepTimeoutMinutes * 60_000) return false;
+  const taskId = run.taskIds[run.currentIndex];
+  if (!taskId || (await getTaskRow(ctx.db, taskId))?.outcome !== "blocked") return false;
+  const status = await taskStatus(ctx, companyId, taskId);
+  return !(status && ["done", "in_review", "cancelled"].includes(status));
+}
+
 async function taskStatus(ctx: PluginContext, companyId: string, taskId: string | undefined): Promise<string | null> {
   if (!taskId) return null;
-  return (await ctx.issues.get(taskId, companyId))?.status ?? null;
+  return (await again(() => ctx.issues.get(taskId, companyId)))?.status ?? null;
 }
 
 async function agentIsSafe(ctx: PluginContext, settings: PluginSettings, companyId: string, person: Person): Promise<boolean> {
-  return agentProblems(settings, person, await ctx.agents.get(person.agentId, companyId), companyId).length === 0;
+  return agentProblems(settings, person, await again(() => ctx.agents.get(person.agentId, companyId)), companyId).length === 0;
 }
 
+/** A note on a ticket. Best effort: never retried (it could appear twice) and never stops the step it reports. */
 async function comment(ctx: PluginContext, companyId: string, issueId: string | null, body: string): Promise<void> {
-  if (issueId) await ctx.issues.createComment(issueId, body, companyId);
+  if (!issueId) return;
+  try {
+    await ctx.issues.createComment(issueId, body, companyId);
+  } catch (err) {
+    ctx.logger.warn("could not add a comment", { companyId, issueId, error: err instanceof Error ? err.message : "unknown" });
+  }
 }
 
 /** Where the handover's own notices go: its plan ticket (old handovers) or its first task. */
@@ -419,8 +469,8 @@ async function apply(
     case "expire": {
       if (!run || !(await updateRun(ctx.db, run, { status: "expired", stopReason: d.reason }))) return;
       await releaseClaims(ctx.db, run.taskIds);
+      if (run.planIssueId) await again(() => ctx.issues.update(run.planIssueId!, { status: "done" }, companyId));
       await comment(ctx, companyId, noticeTicket(run), `No handover work: ${d.reason}.`);
-      if (run.planIssueId) await ctx.issues.update(run.planIssueId, { status: "done" }, companyId);
       return;
     }
 
@@ -429,10 +479,10 @@ async function apply(
       const taskId = run.taskIds[run.currentIndex];
       if (!taskId || !(await updateRun(ctx.db, run, { currentAttempt: d.attempt, stepStartedAt: now }))) return;
       await flag(ctx, companyId, taskId, "timeout", `no result after ${settings.handover.stepTimeoutMinutes} minutes; retrying (attempt ${d.attempt})`);
+      // Wake first: a comment that fails must never stop it. Paperclip wakes the assignee on backlog -> todo.
+      await again(() => ctx.issues.update(taskId, { status: "backlog" }, companyId));
+      await again(() => ctx.issues.update(taskId, { status: "todo" }, companyId));
       await comment(ctx, companyId, taskId, `Time limit of ${settings.handover.stepTimeoutMinutes} minutes passed. Retrying (attempt ${d.attempt}).`);
-      // Paperclip wakes the assignee when a ticket moves from backlog to todo.
-      await ctx.issues.update(taskId, { status: "backlog" }, companyId);
-      await ctx.issues.update(taskId, { status: "todo" }, companyId);
       return;
     }
 
@@ -473,8 +523,10 @@ async function advance(
       // Run flags: a task that ran out of retries timed out; one stopped by the cap is a budget stop.
       if (close.outcome === "failed") await flag(ctx, companyId, currentId, "timeout", close.reason);
       if (close.reason === BUDGET_STOP_REASON) await flag(ctx, companyId, currentId, "budget-stop", `stopped: ${BUDGET_STOP_REASON}`);
-      const status = (await ctx.issues.get(currentId, companyId))?.status;
-      if (status && !["done", "in_review", "cancelled"].includes(status)) await ctx.issues.update(currentId, { status: "blocked" }, companyId);
+      // A task the window cut off keeps its board status: the plugin cannot stop the run,
+      // and flipping it under the agent could make it drop work that is nearly done (B4).
+      const status = close.cutOff ? null : (await again(() => ctx.issues.get(currentId, companyId)))?.status;
+      if (status && !["done", "in_review", "cancelled"].includes(status)) await again(() => ctx.issues.update(currentId, { status: "blocked" }, companyId));
       await comment(ctx, companyId, currentId, `The handover stopped this task: ${close.reason ?? close.outcome}.`);
     }
   }
@@ -487,13 +539,13 @@ async function advance(
       return;
     }
     await stampTasks(ctx.db, [nextId], "started_at", now);
-    await ctx.issues.update(nextId, { status: "todo" }, companyId);
+    await again(() => ctx.issues.update(nextId, { status: "todo" }, companyId));
   } else if ("budgetStop" in then) {
     // Tasks that never got to start because of the cap carry the flag too, so the owner sees why.
     for (const laterId of run.taskIds.slice(run.currentIndex + 1)) await flag(ctx, companyId, laterId, "budget-stop", `not started: ${BUDGET_STOP_REASON}`);
     // Automatic tier: pause the agent so it cannot keep spending; resuming stays manual.
     try {
-      await ctx.agents.pause(person.agentId, companyId);
+      await again(() => ctx.agents.pause(person.agentId, companyId));
     } catch (err) {
       ctx.logger.warn("could not pause agent at budget cap", { companyId, owner: person.email, error: err instanceof Error ? err.message : "unknown" });
     }
