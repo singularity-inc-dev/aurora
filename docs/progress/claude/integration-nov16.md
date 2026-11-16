@@ -184,7 +184,7 @@ ran inside the hour:
 | Second (final), commit `db4bbec` + this log | **455 passed, 2 failed** (deployment rehearsal inside it: 136 passed, 0 failed) |
 | First, before the z_m6 adaptation | 448 passed, 9 failed (7 in z_m6, 2 in m3, see above) |
 
-Per section (final run): basic 41, m2 36, m3 36 passed + 2 failed, m4 47, m5 40 + rehearsal 136, otel 15, v1a 24,
+Per section (final run): basic 25, m2 36, m3 36 passed + 2 failed, m4 47, m5 40 + rehearsal 136, otel 15, v1a 24,
 v1b 13, v1c 12, v1d 10, v1e 12, v1f 13, v1g 16, z_m6 20.
 
 The 2 failures are m3's real 5-minute time-out check under `SLOW=1` ("a step past its time limit is retried",
