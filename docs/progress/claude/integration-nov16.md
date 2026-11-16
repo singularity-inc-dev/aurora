@@ -164,4 +164,33 @@ Also ported: PR #14's five run-flag tests (see the PR #12 section).
 
 ## Test results
 
-RESULTS_PLACEHOLDER
+All on this cloud test machine, 16 November 2026, Node 24.22.1 from `.vendor` (downloaded from nodejs.org and
+checked against the SHA-256 in `deploy/versions.env`), pnpm 10.28.0, Paperclip 2026.1012.0, after
+`scripts/it/lib/setup-test-users.sh`.
+
+Unit tests and typechecks, all clean:
+
+| Suite | Result | Was (per PR notes) |
+| --- | --- | --- |
+| plugin (`pnpm test`) | **580 passed**, 36 files | #12: 434, #10: 425, #11: 481, #14 (main): see PROGRESS.md |
+| email service (`pnpm test`) | **86 passed**, 7 files | #12: 57, #10: 59, #11: 53 |
+| collision audit (`python3 -I -m unittest`) | **24 passed** | #13: 24 |
+
+Live suite, `SLOW=1 scripts/integration-test.sh`, cold start (test data wiped), started 15:03 UTC so that m3 and m4
+ran inside the hour:
+
+| Run | Result |
+| --- | --- |
+| Second (final), commit `db4bbec` + this log | **455 passed, 2 failed** (deployment rehearsal inside it: 136 passed, 0 failed) |
+| First, before the z_m6 adaptation | 448 passed, 9 failed (7 in z_m6, 2 in m3, see above) |
+
+Per section (final run): basic 41, m2 36, m3 36 passed + 2 failed, m4 47, m5 40 + rehearsal 136, otel 15, v1a 24,
+v1b 13, v1c 12, v1d 10, v1e 12, v1f 13, v1g 16, z_m6 20.
+
+The 2 failures are m3's real 5-minute time-out check under `SLOW=1` ("a step past its time limit is retried",
+"retry releases the task to the agent again"), the same on both runs; cause and standing above. Without `SLOW=1`
+that check is skipped and the suite is 455 passed, 0 failed.
+
+Not tested here: a real Claude agent (as in every PR before this one), a real server with systemd, Jaeger or
+Langfuse themselves (PR #11's stand-in collector only), GitHub itself (the rehearsal's fake GitHub only), and the
+hand-over and numbers pages in a browser (service tests only).
