@@ -1,0 +1,261 @@
+{
+  "handoverDays": 3,
+  "perWeek": {
+    "sameDay": 5.56,
+    "threeDay": 12.16
+  },
+  "rate": 0.0,
+  "repo": "GreptimeTeam/greptimedb",
+  "weeks": [
+    {
+      "sameDay": 1,
+      "threeDay": 1,
+      "week": "2025-11-03"
+    },
+    {
+      "sameDay": 13,
+      "threeDay": 19,
+      "week": "2025-11-10"
+    },
+    {
+      "sameDay": 3,
+      "threeDay": 4,
+      "week": "2025-11-17"
+    },
+    {
+      "sameDay": 4,
+      "threeDay": 4,
+      "week": "2025-11-24"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 3,
+      "week": "2025-12-01"
+    },
+    {
+      "sameDay": 4,
+      "threeDay": 12,
+      "week": "2025-12-08"
+    },
+    {
+      "sameDay": 4,
+      "threeDay": 6,
+      "week": "2025-12-15"
+    },
+    {
+      "sameDay": 5,
+      "threeDay": 7,
+      "week": "2025-12-22"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 1,
+      "week": "2025-12-29"
+    },
+    {
+      "sameDay": 2,
+      "threeDay": 4,
+      "week": "2026-01-05"
+    },
+    {
+      "sameDay": 3,
+      "threeDay": 17,
+      "week": "2026-01-12"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 1,
+      "week": "2026-01-19"
+    },
+    {
+      "sameDay": 2,
+      "threeDay": 3,
+      "week": "2026-01-26"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 4,
+      "week": "2026-02-02"
+    },
+    {
+      "sameDay": 2,
+      "threeDay": 2,
+      "week": "2026-02-09"
+    },
+    {
+      "sameDay": 5,
+      "threeDay": 5,
+      "week": "2026-02-23"
+    },
+    {
+      "sameDay": 2,
+      "threeDay": 2,
+      "week": "2026-03-02"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 4,
+      "week": "2026-03-09"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 3,
+      "week": "2026-03-16"
+    },
+    {
+      "sameDay": 4,
+      "threeDay": 7,
+      "week": "2026-03-23"
+    },
+    {
+      "sameDay": 2,
+      "threeDay": 1,
+      "week": "2026-03-30"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 1,
+      "week": "2026-04-06"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 1,
+      "week": "2026-04-13"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 11,
+      "week": "2026-04-20"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 2,
+      "week": "2026-04-27"
+    },
+    {
+      "sameDay": 2,
+      "threeDay": 2,
+      "week": "2026-05-04"
+    },
+    {
+      "sameDay": 2,
+      "threeDay": 4,
+      "week": "2026-05-11"
+    },
+    {
+      "sameDay": 9,
+      "threeDay": 10,
+      "week": "2026-05-18"
+    },
+    {
+      "sameDay": 3,
+      "threeDay": 4,
+      "week": "2026-05-25"
+    },
+    {
+      "sameDay": 5,
+      "threeDay": 8,
+      "week": "2026-06-01"
+    },
+    {
+      "sameDay": 10,
+      "threeDay": 29,
+      "week": "2026-06-08"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 7,
+      "week": "2026-06-29"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 9,
+      "week": "2026-07-06"
+    },
+    {
+      "sameDay": 8,
+      "threeDay": 15,
+      "week": "2026-07-13"
+    },
+    {
+      "sameDay": 6,
+      "threeDay": 22,
+      "week": "2026-07-20"
+    },
+    {
+      "sameDay": 17,
+      "threeDay": 23,
+      "week": "2026-07-27"
+    },
+    {
+      "sameDay": 21,
+      "threeDay": 32,
+      "week": "2026-08-03"
+    },
+    {
+      "sameDay": 9,
+      "threeDay": 24,
+      "week": "2026-08-10"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 1,
+      "week": "2026-08-17"
+    },
+    {
+      "sameDay": 4,
+      "threeDay": 6,
+      "week": "2026-08-24"
+    },
+    {
+      "sameDay": 6,
+      "threeDay": 32,
+      "week": "2026-08-31"
+    },
+    {
+      "sameDay": 2,
+      "threeDay": 15,
+      "week": "2026-09-07"
+    },
+    {
+      "sameDay": 32,
+      "threeDay": 50,
+      "week": "2026-09-14"
+    },
+    {
+      "sameDay": 29,
+      "threeDay": 82,
+      "week": "2026-09-21"
+    },
+    {
+      "sameDay": 6,
+      "threeDay": 3,
+      "week": "2026-09-28"
+    },
+    {
+      "sameDay": 7,
+      "threeDay": 12,
+      "week": "2026-10-05"
+    },
+    {
+      "sameDay": 17,
+      "threeDay": 44,
+      "week": "2026-10-12"
+    },
+    {
+      "sameDay": 11,
+      "threeDay": 20,
+      "week": "2026-10-19"
+    },
+    {
+      "sameDay": 22,
+      "threeDay": 55,
+      "week": "2026-10-26"
+    }
+  ],
+  "windowDays": 365,
+  "wouldBeConflictsPerWeek": {
+    "sameDay": 0.0,
+    "threeDay": 0.0
+  }
+}

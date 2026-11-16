@@ -1,0 +1,13 @@
+{
+  "bin": "2-3",
+  "branch": "main",
+  "cloneSince": "2025-10-02",
+  "commitsInClone": 338,
+  "finished": "2026-11-01T18:03:01Z",
+  "git": "2.43.0",
+  "head": "6507d53c61900ec5b242a0c784bcf0c9085dcc56",
+  "name": "RushB-fr/freekiosk",
+  "python": "3.13.18",
+  "started": "2026-11-01T18:02:57Z",
+  "status": "ok"
+}

@@ -1,0 +1,13 @@
+{
+  "bin": "11-30",
+  "branch": "master",
+  "cloneSince": "2025-10-02",
+  "commitsInClone": 3162,
+  "finished": "2026-11-01T18:04:29Z",
+  "git": "2.43.0",
+  "head": "c360df03a9399cbe6b26138bd0289949c27eb732",
+  "name": "DefectDojo/django-DefectDojo",
+  "python": "3.13.18",
+  "started": "2026-11-01T18:04:07Z",
+  "status": "ok"
+}

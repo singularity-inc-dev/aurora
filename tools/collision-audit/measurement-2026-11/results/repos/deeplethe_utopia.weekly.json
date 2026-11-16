@@ -1,0 +1,56 @@
+{
+  "handoverDays": 3,
+  "perWeek": {
+    "sameDay": 4.47,
+    "threeDay": 7.27
+  },
+  "rate": 0.0,
+  "repo": "deeplethe/utopia",
+  "weeks": [
+    {
+      "sameDay": 32,
+      "threeDay": 44,
+      "week": "2026-08-31"
+    },
+    {
+      "sameDay": 27,
+      "threeDay": 63,
+      "week": "2026-09-07"
+    },
+    {
+      "sameDay": 18,
+      "threeDay": 24,
+      "week": "2026-09-14"
+    },
+    {
+      "sameDay": 69,
+      "threeDay": 124,
+      "week": "2026-09-21"
+    },
+    {
+      "sameDay": 34,
+      "threeDay": 37,
+      "week": "2026-09-28"
+    },
+    {
+      "sameDay": 12,
+      "threeDay": 32,
+      "week": "2026-10-05"
+    },
+    {
+      "sameDay": 20,
+      "threeDay": 55,
+      "week": "2026-10-12"
+    },
+    {
+      "sameDay": 21,
+      "threeDay": 0,
+      "week": "2026-10-19"
+    }
+  ],
+  "windowDays": 365,
+  "wouldBeConflictsPerWeek": {
+    "sameDay": 0.0,
+    "threeDay": 0.0
+  }
+}

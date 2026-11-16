@@ -1,0 +1,41 @@
+{
+  "handoverDays": 3,
+  "perWeek": {
+    "sameDay": 0.1,
+    "threeDay": 0.13
+  },
+  "rate": 0.0,
+  "repo": "ether/etherpad",
+  "weeks": [
+    {
+      "sameDay": 1,
+      "threeDay": 2,
+      "week": "2026-04-13"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 1,
+      "week": "2026-04-20"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 1,
+      "week": "2026-04-27"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 1,
+      "week": "2026-05-04"
+    },
+    {
+      "sameDay": 2,
+      "threeDay": 2,
+      "week": "2026-08-17"
+    }
+  ],
+  "windowDays": 365,
+  "wouldBeConflictsPerWeek": {
+    "sameDay": 0.0,
+    "threeDay": 0.0
+  }
+}

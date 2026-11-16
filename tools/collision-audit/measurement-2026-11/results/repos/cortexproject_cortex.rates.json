@@ -1,0 +1,70 @@
+{
+  "all": {
+    "conflicts": 0,
+    "interval95": [
+      0.0,
+      0.354
+    ],
+    "pairs": 7,
+    "rate": 0.0
+  },
+  "cleanReplays": 7,
+  "conflictFiles": [],
+  "independent": {
+    "conflicts": 0,
+    "interval95": [
+      0.0,
+      0.354
+    ],
+    "pairs": 7,
+    "rate": 0.0
+  },
+  "notReplayable": 8,
+  "overlapsPerWeek": 0.29,
+  "rateUsed": "independent",
+  "replayed": 15,
+  "repo": "cortexproject/cortex",
+  "topOverlapFiles": [
+    [
+      "pkg/ingester/ingester.go",
+      3
+    ],
+    [
+      "pkg/util/validation/validate.go",
+      1
+    ],
+    [
+      "pkg/util/validation/validate_test.go",
+      1
+    ],
+    [
+      "integration/backward_compatibility_test.go",
+      1
+    ],
+    [
+      "pkg/util/push/push.go",
+      1
+    ],
+    [
+      "pkg/util/push/push_test.go",
+      1
+    ],
+    [
+      "pkg/cortex/modules.go",
+      1
+    ],
+    [
+      "integration/querier_tenant_federation_test.go",
+      1
+    ],
+    [
+      "pkg/cortex/cortex.go",
+      1
+    ],
+    [
+      "pkg/distributor/distributor.go",
+      1
+    ]
+  ],
+  "wouldBeConflictsPerWeek": 0.0
+}

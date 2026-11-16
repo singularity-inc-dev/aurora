@@ -1,0 +1,70 @@
+{
+  "all": {
+    "conflicts": 0,
+    "interval95": [
+      0.0,
+      0.059
+    ],
+    "pairs": 61,
+    "rate": 0.0
+  },
+  "cleanReplays": 61,
+  "conflictFiles": [],
+  "independent": {
+    "conflicts": 0,
+    "interval95": [
+      0.0,
+      0.059
+    ],
+    "pairs": 61,
+    "rate": 0.0
+  },
+  "notReplayable": 89,
+  "overlapsPerWeek": 3.59,
+  "rateUsed": "independent",
+  "replayed": 150,
+  "repo": "PegaProx/project-pegaprox",
+  "topOverlapFiles": [
+    [
+      "web/index.html",
+      56
+    ],
+    [
+      "web/src/translations.js",
+      22
+    ],
+    [
+      "web/src/dashboard.js",
+      18
+    ],
+    [
+      "pegaprox/core/manager.py",
+      12
+    ],
+    [
+      "web/src/tables.js",
+      7
+    ],
+    [
+      "pegaprox/api/vms.py",
+      6
+    ],
+    [
+      "pegaprox/api/clusters.py",
+      5
+    ],
+    [
+      "web/src/contexts.js",
+      3
+    ],
+    [
+      "web/src/create_modals.js",
+      3
+    ],
+    [
+      "web/src/vm_modals.js",
+      3
+    ]
+  ],
+  "wouldBeConflictsPerWeek": 0.0
+}

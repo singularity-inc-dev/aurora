@@ -1,0 +1,1774 @@
+{
+ "candidates": [
+  {
+   "name": "chaitin/SafeLine",
+   "defaultBranch": "main",
+   "stars": 23134,
+   "description": "SafeLine is a self-hosted WAF(Web Application Firewall) / reverse proxy to protect your web apps from attacks and exploits.",
+   "sizeKB": 80160,
+   "commits": 26,
+   "nonBotCommits": 26,
+   "lastCommit": "2026-10-22",
+   "authors": 7,
+   "core": 1,
+   "topAuthors": [
+    [
+     "jialong.wang",
+     12
+    ],
+    [
+     "wenwen",
+     3
+    ],
+    [
+     "Jerry",
+     3
+    ],
+    [
+     "Stayer",
+     3
+    ],
+    [
+     "\u4e8e\u946b",
+     3
+    ],
+    [
+     "Londo",
+     1
+    ],
+    [
+     "Ankush Kunwar",
+     1
+    ]
+   ],
+   "accepted": false,
+   "reason": "fewer than 100 commits in the window"
+  },
+  {
+   "name": "shopware/shopware",
+   "defaultBranch": "trunk",
+   "stars": 3464,
+   "description": "Shopware 6 is an open commerce platform based on Symfony Framework and Vue and supported by a worldwide community and more than 3.100 community extensions",
+   "sizeKB": 557614,
+   "commits": 3416,
+   "nonBotCommits": 3313,
+   "lastCommit": "2026-10-30",
+   "authors": 218,
+   "core": 59,
+   "topAuthors": [
+    [
+     "Nicolas Fortier",
+     359
+    ],
+    [
+     "Jonas Elfering",
+     270
+    ],
+    [
+     "Max Stegmeyer",
+     121
+    ],
+    [
+     "Lars Kemper",
+     109
+    ],
+    [
+     "Michael Telgmann",
+     108
+    ],
+    [
+     "Vin Le",
+     104
+    ],
+    [
+     "Marcel Brode",
+     94
+    ],
+    [
+     "Bj\u00f6rn Meyer",
+     89
+    ],
+    [
+     "Aydin Hassan",
+     77
+    ],
+    [
+     "Florian Ruppel",
+     77
+    ],
+    [
+     "Marcus M\u00fcller",
+     74
+    ],
+    [
+     "Umut Dogan",
+     59
+    ]
+   ],
+   "bin": null,
+   "accepted": false,
+   "reason": "59 core people: outside 2-30 or exactly 4"
+  },
+  {
+   "name": "peach-mitao/peach",
+   "defaultBranch": "master",
+   "stars": 13905,
+   "description": "Peach: Local-first video metadata scraper and media manager.",
+   "sizeKB": 92889,
+   "commits": 3797,
+   "nonBotCommits": 3512,
+   "lastCommit": "2026-11-01",
+   "authors": 6,
+   "core": 1,
+   "topAuthors": [
+    [
+     "longmeidao",
+     3501
+    ],
+    [
+     "simon1561",
+     6
+    ],
+    [
+     "FriendlyPasser",
+     2
+    ],
+    [
+     "kcinzgg",
+     1
+    ],
+    [
+     "RGB-loop",
+     1
+    ],
+    [
+     "\u6cf7\u7f8e\u9053",
+     1
+    ]
+   ],
+   "bin": null,
+   "accepted": false,
+   "reason": "1 core people: outside 2-30 or exactly 4"
+  },
+  {
+   "name": "serenedb/serenedb",
+   "defaultBranch": "main",
+   "stars": 954,
+   "description": "The First Real-Time Search Analytics Database",
+   "sizeKB": 264073,
+   "commits": 833,
+   "nonBotCommits": 833,
+   "lastCommit": "2026-10-31",
+   "authors": 27,
+   "core": 11,
+   "topAuthors": [
+    [
+     "Valery Mironov",
+     170
+    ],
+    [
+     "Andrey Abramov",
+     156
+    ],
+    [
+     "pilik",
+     95
+    ],
+    [
+     "Mikhail Kornaukhov",
+     92
+    ],
+    [
+     "codeworse",
+     65
+    ],
+    [
+     "Andrei Lobov",
+     63
+    ],
+    [
+     "Valerii Mironov",
+     47
+    ],
+    [
+     "Pavel Ivanov",
+     30
+    ],
+    [
+     "Ilya Vlasko",
+     24
+    ],
+    [
+     "varvara vasiurina",
+     19
+    ],
+    [
+     "Alexander Malandin",
+     10
+    ],
+    [
+     "mbkkt",
+     8
+    ]
+   ],
+   "bin": "11-30",
+   "accepted": true,
+   "reason": "accepted into bin 11-30"
+  },
+  {
+   "name": "mercurjs/mercur",
+   "defaultBranch": "main",
+   "stars": 1876,
+   "description": "The complete open source platform to run your entire marketplace. Storefront, vendor panel, admin console, and integrations in one enterprise-grade platform you own.",
+   "sizeKB": 222834,
+   "commits": 1063,
+   "nonBotCommits": 1008,
+   "lastCommit": "2026-10-30",
+   "authors": 15,
+   "core": 3,
+   "topAuthors": [
+    [
+     "vholik",
+     527
+    ],
+    [
+     "Viktor Holik",
+     344
+    ],
+    [
+     "Jakub Sieradzki",
+     119
+    ],
+    [
+     "Michael Lip",
+     3
+    ],
+    [
+     "kjedras",
+     3
+    ],
+    [
+     "Ashish Bansal",
+     2
+    ],
+    [
+     "Grzegorz Tomaka",
+     2
+    ],
+    [
+     "Mohammad Mahdi Arshadi(Metolini)",
+     1
+    ],
+    [
+     "Mohammad Mahdi Arshadi",
+     1
+    ],
+    [
+     "skaffff",
+     1
+    ],
+    [
+     "adeaviladev01",
+     1
+    ],
+    [
+     "Robert Markovski",
+     1
+    ]
+   ],
+   "bin": "2-3",
+   "accepted": true,
+   "reason": "accepted into bin 2-3"
+  },
+  {
+   "name": "RushB-fr/freekiosk",
+   "defaultBranch": "main",
+   "stars": 712,
+   "description": "FreeKiosk - Open-Source Android Kiosk Mode & Tablet Lockdown App for Digital Signage, Dashboards, POS & Single-Purpose Devices. Free Alternative to Fully Kiosk",
+   "sizeKB": 4120,
+   "commits": 313,
+   "nonBotCommits": 312,
+   "lastCommit": "2026-10-26",
+   "authors": 20,
+   "core": 3,
+   "topAuthors": [
+    [
+     "valentingomy",
+     245
+    ],
+    [
+     "Jack_up",
+     26
+    ],
+    [
+     "Corentin Kerman",
+     12
+    ],
+    [
+     "MateuszSychXpl",
+     6
+    ],
+    [
+     "Max Boender",
+     4
+    ],
+    [
+     "Jefferson",
+     2
+    ],
+    [
+     "Yaakov Saxon",
+     2
+    ],
+    [
+     "Lars Peter Ils\u00f8 Larsen",
+     2
+    ],
+    [
+     "Patrik Messerli",
+     2
+    ],
+    [
+     "Alan Sposito",
+     1
+    ],
+    [
+     "St\u00e9phane Rosso",
+     1
+    ],
+    [
+     "lussignolipaolo",
+     1
+    ]
+   ],
+   "bin": "2-3",
+   "accepted": true,
+   "reason": "accepted into bin 2-3"
+  },
+  {
+   "name": "GreptimeTeam/greptimedb",
+   "defaultBranch": "main",
+   "stars": 6778,
+   "description": "The open-source observability database. One columnar engine for metrics, logs, and traces, on object storage.",
+   "sizeKB": 141005,
+   "commits": 1715,
+   "nonBotCommits": 1686,
+   "lastCommit": "2026-10-31",
+   "authors": 67,
+   "core": 15,
+   "topAuthors": [
+    [
+     "discord9",
+     257
+    ],
+    [
+     "Weny Xu",
+     245
+    ],
+    [
+     "Lei, HUANG",
+     146
+    ],
+    [
+     "dennis zhuang",
+     145
+    ],
+    [
+     "Yingwen",
+     144
+    ],
+    [
+     "jeremyhi",
+     128
+    ],
+    [
+     "Ning Sun",
+     115
+    ],
+    [
+     "shuiyisong",
+     112
+    ],
+    [
+     "LFC",
+     88
+    ],
+    [
+     "Ruihang Xia",
+     84
+    ],
+    [
+     "fys",
+     59
+    ],
+    [
+     "sun",
+     12
+    ]
+   ],
+   "bin": "11-30",
+   "accepted": true,
+   "reason": "accepted into bin 11-30"
+  },
+  {
+   "name": "cryptpad/cryptpad",
+   "defaultBranch": "main",
+   "stars": 8033,
+   "description": "Collaborative office suite, end-to-end encrypted and open-source.",
+   "sizeKB": 551839,
+   "commits": 768,
+   "nonBotCommits": 667,
+   "lastCommit": "2026-10-28",
+   "authors": 24,
+   "core": 8,
+   "topAuthors": [
+    [
+     "yflory",
+     164
+    ],
+    [
+     "DianaXWiki",
+     139
+    ],
+    [
+     "daria",
+     101
+    ],
+    [
+     "Fabrice Mouhartem",
+     71
+    ],
+    [
+     "Zuzanna Ludzik",
+     62
+    ],
+    [
+     "Zuzanna",
+     43
+    ],
+    [
+     "Wolfgang Ginolas",
+     37
+    ],
+    [
+     "David Benque",
+     27
+    ],
+    [
+     "Josep Alsina",
+     4
+    ],
+    [
+     "AAAMON",
+     3
+    ],
+    [
+     "achf01",
+     3
+    ],
+    [
+     "LiJu09",
+     1
+    ]
+   ],
+   "bin": "7-10",
+   "accepted": true,
+   "reason": "accepted into bin 7-10"
+  },
+  {
+   "name": "cortexproject/cortex",
+   "defaultBranch": "master",
+   "stars": 5877,
+   "description": "A horizontally scalable, highly available, multi-tenant, long term Prometheus.",
+   "sizeKB": 423873,
+   "commits": 456,
+   "nonBotCommits": 434,
+   "lastCommit": "2026-10-30",
+   "authors": 46,
+   "core": 7,
+   "topAuthors": [
+    [
+     "SungJin1212",
+     124
+    ],
+    [
+     "Friedrich Gonzalez",
+     71
+    ],
+    [
+     "Ben Ye",
+     55
+    ],
+    [
+     "Charlie Le",
+     41
+    ],
+    [
+     "Sandy Chen",
+     20
+    ],
+    [
+     "Paurush Garg",
+     16
+    ],
+    [
+     "Daniel Blando",
+     14
+    ],
+    [
+     "Shvejan",
+     9
+    ],
+    [
+     "Essam Eldaly",
+     9
+    ],
+    [
+     "Alex Le",
+     7
+    ],
+    [
+     "Archy",
+     7
+    ],
+    [
+     "Anna Tran",
+     6
+    ]
+   ],
+   "bin": "7-10",
+   "accepted": true,
+   "reason": "accepted into bin 7-10"
+  },
+  {
+   "name": "timeplus-io/proton",
+   "defaultBranch": "develop",
+   "stars": 2280,
+   "description": "The fastest unified streaming SQL Engine in a single C++ binary.        \u26a1 Millisecond latency. 100+ GB/s throughput. Continuously compute stateful context from streams, logs, metrics, events, and CDC.",
+   "sizeKB": 600303,
+   "commits": 263,
+   "nonBotCommits": 233,
+   "lastCommit": "2026-10-30",
+   "authors": 13,
+   "core": 5,
+   "topAuthors": [
+    [
+     "yun",
+     134
+    ],
+    [
+     "Lisen",
+     29
+    ],
+    [
+     "Aviral Jain",
+     17
+    ],
+    [
+     "Alan Yu",
+     16
+    ],
+    [
+     "Ken Chen",
+     15
+    ],
+    [
+     "Timotej Kralik",
+     6
+    ],
+    [
+     "SBALAVIGNESH123",
+     5
+    ],
+    [
+     "Gang Tao",
+     4
+    ],
+    [
+     "yokofly",
+     3
+    ],
+    [
+     "Sofiane Soufi",
+     1
+    ],
+    [
+     "S Bala Vignesh",
+     1
+    ],
+    [
+     "Wei",
+     1
+    ]
+   ],
+   "bin": "5-6",
+   "accepted": true,
+   "reason": "accepted into bin 5-6"
+  },
+  {
+   "name": "AtalayaLabs/OxiCloud",
+   "defaultBranch": "main",
+   "stars": 3670,
+   "description": "\u2601\ufe0f Ultra-fast, secure & lightweight self-hosted cloud storage \u2014 your files, photos, calendars & contacts, all in one place. Built in Rust.",
+   "sizeKB": 53540,
+   "commits": 2236,
+   "nonBotCommits": 2085,
+   "lastCommit": "2026-10-26",
+   "authors": 58,
+   "core": 12,
+   "topAuthors": [
+    [
+     "Edouard Vanbelle",
+     1499
+    ],
+    [
+     "Dionisio",
+     179
+    ],
+    [
+     "Diocrafts",
+     107
+    ],
+    [
+     "Jared Wolff",
+     33
+    ],
+    [
+     "M.Schmidt",
+     32
+    ],
+    [
+     "George Wu",
+     27
+    ],
+    [
+     "BillionClaw",
+     25
+    ],
+    [
+     "V\u00edt Str\u00e1dal",
+     24
+    ],
+    [
+     "Bradley Nelson",
+     22
+    ],
+    [
+     "Goudarz Jafari",
+     15
+    ],
+    [
+     "Dionisio Pozo",
+     13
+    ],
+    [
+     "zjean",
+     11
+    ]
+   ],
+   "bin": "11-30",
+   "accepted": true,
+   "reason": "accepted into bin 11-30"
+  },
+  {
+   "name": "fluentcms/FluentCMS",
+   "defaultBranch": "main",
+   "stars": 569,
+   "description": "ASP.NET Core Blazor Content Management System (CMS) ",
+   "sizeKB": 18505,
+   "commits": 2,
+   "nonBotCommits": 2,
+   "lastCommit": "2026-10-31",
+   "authors": 1,
+   "core": 0,
+   "topAuthors": [
+    [
+     "Amir Pournasserian",
+     2
+    ]
+   ],
+   "accepted": false,
+   "reason": "fewer than 100 commits in the window"
+  },
+  {
+   "name": "OpenNMS/opennms",
+   "defaultBranch": "develop",
+   "stars": 1180,
+   "description": "Enterprise-Grade Open-Source Network Management Platform",
+   "sizeKB": 864173,
+   "commits": 1389,
+   "nonBotCommits": 1379,
+   "lastCommit": "2026-10-30",
+   "authors": 25,
+   "core": 14,
+   "topAuthors": [
+    [
+     "Jose Anes",
+     256
+    ],
+    [
+     "Marshall Massengill",
+     237
+    ],
+    [
+     "Morteza E",
+     213
+    ],
+    [
+     "mershad-manesh",
+     130
+    ],
+    [
+     "Scott Theleman",
+     108
+    ],
+    [
+     "Chandra Gorantla",
+     106
+    ],
+    [
+     "Christian Pape",
+     106
+    ],
+    [
+     "Dino",
+     54
+    ],
+    [
+     "Shahbaz",
+     50
+    ],
+    [
+     "aurangzeb",
+     26
+    ],
+    [
+     "Ronny Trommer",
+     16
+    ],
+    [
+     "Mohammad-Junid",
+     16
+    ]
+   ],
+   "bin": "11-30",
+   "accepted": true,
+   "reason": "accepted into bin 11-30"
+  },
+  {
+   "name": "DefectDojo/django-DefectDojo",
+   "defaultBranch": "master",
+   "stars": 5174,
+   "description": "Open-Source Unified Vulnerability Management, DevSecOps & ASPM",
+   "sizeKB": 921563,
+   "commits": 2530,
+   "nonBotCommits": 1619,
+   "lastCommit": "2026-10-30",
+   "authors": 89,
+   "core": 17,
+   "topAuthors": [
+    [
+     "Cody Maffucci",
+     415
+    ],
+    [
+     "Greg Anderson",
+     278
+    ],
+    [
+     "Blake Owens",
+     165
+    ],
+    [
+     "valentijnscholten",
+     154
+    ],
+    [
+     "Paul Osinski",
+     124
+    ],
+    [
+     "Sam Vader",
+     98
+    ],
+    [
+     "manuelsommer",
+     62
+    ],
+    [
+     "kiblik",
+     34
+    ],
+    [
+     "Jino Tesauro",
+     30
+    ],
+    [
+     "Tracy Walker",
+     28
+    ],
+    [
+     "Valentijn Scholten",
+     26
+    ],
+    [
+     "dogboat",
+     23
+    ]
+   ],
+   "bin": "11-30",
+   "accepted": true,
+   "reason": "accepted into bin 11-30"
+  },
+  {
+   "name": "decaporg/decap-cms",
+   "defaultBranch": "main",
+   "stars": 19461,
+   "description": "A Git-based CMS for Static Site Generators",
+   "sizeKB": 110731,
+   "commits": 368,
+   "nonBotCommits": 317,
+   "lastCommit": "2026-10-28",
+   "authors": 46,
+   "core": 3,
+   "topAuthors": [
+    [
+     "Martin Jagodic",
+     214
+    ],
+    [
+     "Yan",
+     13
+    ],
+    [
+     "Anze Demsar",
+     13
+    ],
+    [
+     "saptarshi",
+     8
+    ],
+    [
+     "Chris Swithinbank",
+     8
+    ],
+    [
+     "Sem Postma",
+     4
+    ],
+    [
+     "JackSpiece",
+     4
+    ],
+    [
+     "Felix Gnass",
+     4
+    ],
+    [
+     "Sridhar Bala",
+     3
+    ],
+    [
+     "Eric Grill",
+     3
+    ],
+    [
+     "Jonas Beck",
+     3
+    ],
+    [
+     "mmaoteacher",
+     2
+    ]
+   ],
+   "bin": "2-3",
+   "accepted": true,
+   "reason": "accepted into bin 2-3"
+  },
+  {
+   "name": "ether/etherpad",
+   "defaultBranch": "develop",
+   "stars": 18614,
+   "description": "Etherpad: A modern really-real-time collaborative document editor.",
+   "sizeKB": 50999,
+   "commits": 1004,
+   "nonBotCommits": 412,
+   "lastCommit": "2026-10-30",
+   "authors": 22,
+   "core": 2,
+   "topAuthors": [
+    [
+     "John McLear",
+     336
+    ],
+    [
+     "SamTV12345",
+     50
+    ],
+    [
+     "Stefan M\u00fcller",
+     5
+    ],
+    [
+     "sqm",
+     3
+    ],
+    [
+     "Antoine Auger",
+     1
+    ],
+    [
+     "Bart-Core",
+     1
+    ],
+    [
+     "bobmullut",
+     1
+    ],
+    [
+     "\uc810[dot]",
+     1
+    ],
+    [
+     "toashu123",
+     1
+    ],
+    [
+     "Karl Fogel",
+     1
+    ],
+    [
+     "Kaan \u00c7elebi",
+     1
+    ],
+    [
+     "Anshita Middha",
+     1
+    ]
+   ],
+   "bin": "2-3",
+   "accepted": true,
+   "reason": "accepted into bin 2-3"
+  },
+  {
+   "name": "PegaProx/project-pegaprox",
+   "defaultBranch": "main",
+   "stars": 1706,
+   "description": "The ultimate datacenter management solution for Proxmox VE and XCP-NG. Unified multi-cluster control, intelligent load balancing, and seamless cross-cluster VM migrations \u2014 all in one beautiful interface.",
+   "sizeKB": 97441,
+   "commits": 1451,
+   "nonBotCommits": 1445,
+   "lastCommit": "2026-10-24",
+   "authors": 40,
+   "core": 10,
+   "topAuthors": [
+    [
+     "mkellermann97",
+     537
+    ],
+    [
+     "MrMasterbay",
+     360
+    ],
+    [
+     "Marcus Kellermann",
+     162
+    ],
+    [
+     "Laura Weber",
+     113
+    ],
+    [
+     "Nico Schmidt",
+     112
+    ],
+    [
+     "gyptazy",
+     27
+    ],
+    [
+     "omrzk",
+     12
+    ],
+    [
+     "hugobugomugo",
+     11
+    ],
+    [
+     "Lukas Alstrup",
+     11
+    ],
+    [
+     "Florian Paul Azim Hoberg",
+     10
+    ],
+    [
+     "si458",
+     9
+    ],
+    [
+     "mdobprv-lab",
+     8
+    ]
+   ],
+   "bin": "7-10",
+   "accepted": true,
+   "reason": "accepted into bin 7-10"
+  },
+  {
+   "name": "OpenByteInc/QuantDinger",
+   "defaultBranch": "main",
+   "stars": 13370,
+   "description": "Open-source AI Trading OS, agent trading, and vibe trading, with Jev System One integration. Research, build Python strategies, backtest, and paper/live trade across crypto, stocks, and forex. Launch your own multi-tenant trading SaaS with built-in user management, billing, payments, and settlement.",
+   "sizeKB": 90458,
+   "commits": 698,
+   "nonBotCommits": 688,
+   "lastCommit": "2026-10-31",
+   "authors": 31,
+   "core": 5,
+   "topAuthors": [
+    [
+     "TIANHE",
+     337
+    ],
+    [
+     "dinger",
+     160
+    ],
+    [
+     "Henry",
+     99
+    ],
+    [
+     "guopengfa",
+     23
+    ],
+    [
+     "hang666",
+     13
+    ],
+    [
+     "Quantdinger",
+     7
+    ],
+    [
+     "huuan26",
+     5
+    ],
+    [
+     "XSX-Milan",
+     4
+    ],
+    [
+     "GUO FENG",
+     3
+    ],
+    [
+     "leoca",
+     3
+    ],
+    [
+     "brokermr810",
+     3
+    ],
+    [
+     "Yeadon8888",
+     3
+    ]
+   ],
+   "bin": "5-6",
+   "accepted": true,
+   "reason": "accepted into bin 5-6"
+  },
+  {
+   "name": "deeplethe/utopia",
+   "defaultBranch": "main",
+   "stars": 8654,
+   "description": "World's first open-source enterprise world model.",
+   "sizeKB": 14097,
+   "commits": 871,
+   "nonBotCommits": 870,
+   "lastCommit": "2026-10-20",
+   "authors": 31,
+   "core": 6,
+   "topAuthors": [
+    [
+     "WaylandYang",
+     583
+    ],
+    [
+     "Maya Kid",
+     118
+    ],
+    [
+     "Daniel",
+     30
+    ],
+    [
+     "Royce",
+     27
+    ],
+    [
+     "Szabo Bogdan",
+     26
+    ],
+    [
+     "Rudy Mizrahi Celekli",
+     13
+    ],
+    [
+     "Nash Aschenbath",
+     7
+    ],
+    [
+     "Virtue039",
+     7
+    ],
+    [
+     "Ansonnm",
+     6
+    ],
+    [
+     "Quintin Botes",
+     5
+    ],
+    [
+     "Coderfu",
+     5
+    ],
+    [
+     "Qishang Zhong",
+     5
+    ]
+   ],
+   "bin": "5-6",
+   "accepted": true,
+   "reason": "accepted into bin 5-6"
+  },
+  {
+   "name": "niledatabase/niledatabase",
+   "defaultBranch": "main",
+   "stars": 1086,
+   "description": "PostgreSQL reengineered for multi-tenant apps",
+   "sizeKB": 394987,
+   "commits": 37,
+   "nonBotCommits": 20,
+   "lastCommit": "2026-10-26",
+   "authors": 5,
+   "core": 1,
+   "topAuthors": [
+    [
+     "Joseph Rea",
+     13
+    ],
+    [
+     "Gwen Shapira",
+     4
+    ],
+    [
+     "Chris Tate",
+     1
+    ],
+    [
+     "Mircea Cadariu",
+     1
+    ],
+    [
+     "jrea",
+     1
+    ]
+   ],
+   "accepted": false,
+   "reason": "fewer than 100 commits in the window"
+  },
+  {
+   "name": "grafana/beyla",
+   "defaultBranch": "main",
+   "stars": 2152,
+   "description": "eBPF-based autoinstrumentation of web applications and network metrics",
+   "sizeKB": 442039,
+   "commits": 764,
+   "nonBotCommits": 489,
+   "lastCommit": "2026-10-30",
+   "authors": 32,
+   "core": 8,
+   "topAuthors": [
+    [
+     "Nikola Grcevski",
+     133
+    ],
+    [
+     "Stephen Lang",
+     101
+    ],
+    [
+     "Mario Macias",
+     84
+    ],
+    [
+     "Rafael Roquetto",
+     42
+    ],
+    [
+     "Clayton Cornell",
+     32
+    ],
+    [
+     "Marc Tudur\u00ed",
+     24
+    ],
+    [
+     "Jack Berg",
+     17
+    ],
+    [
+     "Gregor Zeitlinger",
+     10
+    ],
+    [
+     "Eric Huang",
+     7
+    ],
+    [
+     "Jack Baldry",
+     6
+    ],
+    [
+     "Eve Meelan",
+     5
+    ],
+    [
+     "Vladislav Lapin",
+     3
+    ]
+   ],
+   "bin": "7-10",
+   "accepted": true,
+   "reason": "accepted into bin 7-10"
+  },
+  {
+   "name": "robusta-dev/robusta",
+   "defaultBranch": "master",
+   "stars": 3127,
+   "description": "Better Prometheus alerts for Kubernetes - smart grouping, AI enrichment, and automatic remediation",
+   "sizeKB": 123859,
+   "commits": 178,
+   "nonBotCommits": 177,
+   "lastCommit": "2026-10-25",
+   "authors": 20,
+   "core": 6,
+   "topAuthors": [
+    [
+     "Avi",
+     41
+    ],
+    [
+     "arik",
+     28
+    ],
+    [
+     "moshemorad",
+     28
+    ],
+    [
+     "Naomi Caren",
+     19
+    ],
+    [
+     "Roi Glinik",
+     19
+    ],
+    [
+     "Natan Yellin",
+     14
+    ],
+    [
+     "Tomer",
+     6
+    ],
+    [
+     "alonelish",
+     4
+    ],
+    [
+     "Ilia Lazebnik",
+     3
+    ],
+    [
+     "ezra-robusta",
+     3
+    ],
+    [
+     "metilaran1",
+     2
+    ],
+    [
+     "Adam Antal",
+     2
+    ]
+   ],
+   "bin": "5-6",
+   "accepted": true,
+   "reason": "accepted into bin 5-6"
+  },
+  {
+   "name": "thalesgroup-cert/Watcher",
+   "defaultBranch": "master",
+   "stars": 1438,
+   "description": "Watcher - Open Source AI-powered Cyber Threat Intelligence & Hunting Platform. Developed with Django & React JS.",
+   "sizeKB": 119956,
+   "commits": 48,
+   "nonBotCommits": 46,
+   "lastCommit": "2026-10-19",
+   "authors": 3,
+   "core": 2,
+   "topAuthors": [
+    [
+     "ygalnezri",
+     25
+    ],
+    [
+     "Ygal Nezri",
+     14
+    ],
+    [
+     "dmarechal13000",
+     7
+    ]
+   ],
+   "accepted": false,
+   "reason": "fewer than 100 commits in the window"
+  },
+  {
+   "name": "flexprice/flexprice",
+   "defaultBranch": "main",
+   "stars": 6875,
+   "description": "Usage-based pricing and billing for developers \ud83d\udd13 Cloud or self-hosted \u2699\ufe0f No-code UI \ud83d\udcb0 Realtime usage metering \ud83c\udf9f Credits & top-ups \ud83d\udd11 Control feature access",
+   "sizeKB": 242318,
+   "commits": 5947,
+   "nonBotCommits": 5916,
+   "lastCommit": "2026-10-30",
+   "authors": 40,
+   "core": 20,
+   "topAuthors": [
+    [
+     "omkar273",
+     1189
+    ],
+    [
+     "omkar sonawane",
+     850
+    ],
+    [
+     "Ankit Malik",
+     789
+    ],
+    [
+     "tsage",
+     604
+    ],
+    [
+     "Agrim Mittal",
+     521
+    ],
+    [
+     "Harshit Gupta",
+     423
+    ],
+    [
+     "hiteshshimpi55",
+     364
+    ],
+    [
+     "Ojas Agarwal",
+     276
+    ],
+    [
+     "pratham-ez",
+     239
+    ],
+    [
+     "aghijap",
+     145
+    ],
+    [
+     "Gursimar10",
+     136
+    ],
+    [
+     "nkmishra1997",
+     131
+    ]
+   ],
+   "bin": "11-30",
+   "accepted": false,
+   "reason": "bin 11-30 already full"
+  },
+  {
+   "name": "theopenco/llmgateway",
+   "defaultBranch": "main",
+   "stars": 1721,
+   "description": "Route, manage, and analyze your LLM requests across multiple providers with a unified API interface.",
+   "sizeKB": 687502,
+   "commits": 3642,
+   "nonBotCommits": 3484,
+   "lastCommit": "2026-11-01",
+   "authors": 31,
+   "core": 11,
+   "topAuthors": [
+    [
+     "Luca Steeb",
+     2394
+    ],
+    [
+     "Ismail Ghallou",
+     633
+    ],
+    [
+     "smakosh",
+     143
+    ],
+    [
+     "AYOUB BENDARSI",
+     61
+    ],
+    [
+     "Romel Lauron",
+     55
+    ],
+    [
+     "amelitoalcuitas",
+     45
+    ],
+    [
+     "MAULIK MANDALI",
+     40
+    ],
+    [
+     "Amine",
+     36
+    ],
+    [
+     "Li Tai Chen",
+     15
+    ],
+    [
+     "Paco Cartones",
+     14
+    ],
+    [
+     "bhuvankakkar",
+     12
+    ],
+    [
+     "Serhii Zghama",
+     7
+    ]
+   ],
+   "bin": "11-30",
+   "accepted": false,
+   "reason": "bin 11-30 already full"
+  },
+  {
+   "name": "homarr-labs/homarr",
+   "defaultBranch": "dev",
+   "stars": 5262,
+   "description": "A modern and easy to use dashboard. 80+ integrations. 20K+ icons built in. Authentication out of the box. No YAML, drag and drop configuration.",
+   "sizeKB": 319560,
+   "commits": 2061,
+   "nonBotCommits": 670,
+   "lastCommit": "2026-10-31",
+   "authors": 72,
+   "core": 7,
+   "topAuthors": [
+    [
+     "Thomas",
+     288
+    ],
+    [
+     "Meier Lukas",
+     108
+    ],
+    [
+     "Thomas Camlong",
+     82
+    ],
+    [
+     "ajnart",
+     47
+    ],
+    [
+     "Manuel",
+     24
+    ],
+    [
+     "Bergasha",
+     10
+    ],
+    [
+     "Afonso Jorge Ramos",
+     10
+    ],
+    [
+     "Matt Van Horn",
+     9
+    ],
+    [
+     "Riccardo",
+     6
+    ],
+    [
+     "Glare",
+     5
+    ],
+    [
+     "Junker der Provinz",
+     5
+    ],
+    [
+     "Nerdy Technician",
+     4
+    ]
+   ],
+   "bin": "7-10",
+   "accepted": true,
+   "reason": "accepted into bin 7-10"
+  },
+  {
+   "name": "highlight/highlight",
+   "defaultBranch": "main",
+   "stars": 9385,
+   "description": "highlight.io: The open source, full-stack monitoring platform. Error monitoring, session replay, logging, distributed tracing, and more.",
+   "sizeKB": 622969,
+   "commits": 23,
+   "nonBotCommits": 23,
+   "lastCommit": "2026-10-23",
+   "authors": 2,
+   "core": 1,
+   "topAuthors": [
+    [
+     "mayberryzane",
+     14
+    ],
+    [
+     "Vadim Korolik",
+     9
+    ]
+   ],
+   "accepted": false,
+   "reason": "fewer than 100 commits in the window"
+  },
+  {
+   "name": "evershopcommerce/evershop",
+   "defaultBranch": "dev",
+   "stars": 10538,
+   "description": "\ud83d\udecd\ufe0f Typescript E-commerce Platform",
+   "sizeKB": 51032,
+   "commits": 380,
+   "nonBotCommits": 379,
+   "lastCommit": "2026-10-31",
+   "authors": 5,
+   "core": 1,
+   "topAuthors": [
+    [
+     "The Nguyen",
+     374
+    ],
+    [
+     "starry-osean",
+     2
+    ],
+    [
+     "Sang.Tra",
+     1
+    ],
+    [
+     "Sigmabrogz",
+     1
+    ],
+    [
+     "Varun Mehta",
+     1
+    ]
+   ],
+   "bin": null,
+   "accepted": false,
+   "reason": "1 core people: outside 2-30 or exactly 4"
+  },
+  {
+   "name": "withstudiocms/studiocms",
+   "defaultBranch": "main",
+   "stars": 841,
+   "description": "Dedicated SSR (Server-side-rendered) Astro native Headless CMS, built from the ground up for the Astro community and by Astro community members",
+   "sizeKB": 977463,
+   "commits": 708,
+   "nonBotCommits": 249,
+   "lastCommit": "2026-10-22",
+   "authors": 7,
+   "core": 1,
+   "topAuthors": [
+    [
+     "Adam Matthiesen",
+     238
+    ],
+    [
+     "paul valladares",
+     3
+    ],
+    [
+     "Louis Escher",
+     3
+    ],
+    [
+     "Manuel Camargo",
+     2
+    ],
+    [
+     "John Memmott",
+     1
+    ],
+    [
+     "kunjabijukchhe",
+     1
+    ],
+    [
+     "Ali Ozinan",
+     1
+    ]
+   ],
+   "bin": null,
+   "accepted": false,
+   "reason": "1 core people: outside 2-30 or exactly 4"
+  },
+  {
+   "name": "influxdata/telegraf",
+   "defaultBranch": "master",
+   "stars": 17891,
+   "description": "Agent for collecting, processing, aggregating, and writing metrics, logs, and other arbitrary data.",
+   "sizeKB": 87951,
+   "commits": 1512,
+   "nonBotCommits": 724,
+   "lastCommit": "2026-10-30",
+   "authors": 109,
+   "core": 6,
+   "topAuthors": [
+    [
+     "Sven Rebhan",
+     255
+    ],
+    [
+     "skartikey",
+     216
+    ],
+    [
+     "SungJin1212",
+     25
+    ],
+    [
+     "Maya Strandboge",
+     15
+    ],
+    [
+     "Prayag Bhakar",
+     13
+    ],
+    [
+     "Thomas Casteleyn",
+     11
+    ],
+    [
+     "Zihao WAN",
+     9
+    ],
+    [
+     "Jason Stirnaman",
+     8
+    ],
+    [
+     "alespour",
+     7
+    ],
+    [
+     "Roshan Ramani",
+     6
+    ],
+    [
+     "Kenneth Tan",
+     6
+    ],
+    [
+     "atanas-vladimirov",
+     5
+    ]
+   ],
+   "bin": "5-6",
+   "accepted": true,
+   "reason": "accepted into bin 5-6"
+  },
+  {
+   "name": "Kentucky-ai/opentakeoff",
+   "defaultBranch": "main",
+   "stars": 734,
+   "description": "Open-source (AGPL-3.0) PDF takeoff for construction & flooring \u2014 the first engine an AI agent drives natively over MCP, not bolted on. Rooms measured on the wall faces, symbol sweeps, materials + quantities with full provenance, built for preconstruction. Runs entirely in your browser.",
+   "sizeKB": 70809,
+   "commits": 651,
+   "nonBotCommits": 635,
+   "lastCommit": "2026-10-28",
+   "authors": 14,
+   "core": 2,
+   "topAuthors": [
+    [
+     "Michael Edlin",
+     425
+    ],
+    [
+     "Kevin N. Murphy",
+     188
+    ],
+    [
+     "Odalo Eguabor",
+     4
+    ],
+    [
+     "Karthik Yeluripati",
+     4
+    ],
+    [
+     "Rudy Mizrahi Celekli",
+     3
+    ],
+    [
+     "Sabih Sarowar",
+     2
+    ],
+    [
+     "Polly Labs",
+     2
+    ],
+    [
+     "erikjohnstone",
+     1
+    ],
+    [
+     "Vibhanshu Mishra",
+     1
+    ],
+    [
+     "Emre K.",
+     1
+    ],
+    [
+     "Anupam Mediratta",
+     1
+    ],
+    [
+     "diegomoren-lgtm",
+     1
+    ]
+   ],
+   "bin": "2-3",
+   "accepted": true,
+   "reason": "accepted into bin 2-3"
+  }
+ ]
+}

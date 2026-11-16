@@ -1,0 +1,65 @@
+{
+  "activeFrom": "2026-08-27",
+  "activeWeeks": 9.428571428571429,
+  "bin": "5-6",
+  "busiestDay": "2026-09-27",
+  "busiestDayOverlaps": 29,
+  "busiestDayShare": 0.12446351931330472,
+  "cleanReplays": 62,
+  "commits": 871,
+  "conflictFiles": [],
+  "conflictsAll": 0,
+  "conflictsIndependent": 0,
+  "coreScreened": 6,
+  "independentPairs": 62,
+  "manifest": {
+    "bin": "5-6",
+    "branch": "main",
+    "cloneSince": "2025-10-02",
+    "commitsInClone": 927,
+    "finished": "2026-11-01T18:03:15Z",
+    "git": "2.43.0",
+    "head": "7ecf9915545a56ad485c16fc658ed6bdb41889b2",
+    "name": "deeplethe/utopia",
+    "python": "3.13.18",
+    "started": "2026-11-01T18:03:01Z",
+    "status": "ok"
+  },
+  "name": "deeplethe/utopia",
+  "notReplayable": 88,
+  "overlaps": 233,
+  "overlapsPerWeek": 4.468493150684931,
+  "overlapsPerWeekActive": 24.71212121212121,
+  "peopleTool": 6,
+  "rateBasis": "independent",
+  "replayed": 150,
+  "threeDayPerWeek": 7.27,
+  "threeDayPerWeekActive": 40.20530303030303,
+  "topFiles": [
+    [
+      "web/src/i18n/en.ts",
+      21
+    ],
+    [
+      "web/src/i18n/zh.ts",
+      21
+    ],
+    [
+      "crates/utopia-cli/src/main.rs",
+      16
+    ],
+    [
+      "web/src/api.ts",
+      11
+    ],
+    [
+      "crates/utopia-store/tests/store/main.rs",
+      11
+    ]
+  ],
+  "window": {
+    "days": 365,
+    "since": "2025-11-01T00:00:00+00:00",
+    "until": "2026-11-01T00:00:00+00:00"
+  }
+}

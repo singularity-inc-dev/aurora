@@ -1,0 +1,70 @@
+{
+  "all": {
+    "conflicts": 0,
+    "interval95": [
+      0.0,
+      0.793
+    ],
+    "pairs": 1,
+    "rate": 0.0
+  },
+  "cleanReplays": 1,
+  "conflictFiles": [],
+  "independent": {
+    "conflicts": 0,
+    "interval95": [
+      0.0,
+      0.793
+    ],
+    "pairs": 1,
+    "rate": 0.0
+  },
+  "notReplayable": 10,
+  "overlapsPerWeek": 0.21,
+  "rateUsed": "independent",
+  "replayed": 11,
+  "repo": "timeplus-io/proton",
+  "topOverlapFiles": [
+    [
+      "src/Interpreters/InterpreterSelectQuery_Stream.cpp",
+      1
+    ],
+    [
+      "src/Interpreters/Streaming/Aggregator/HybridAggregator/HybridAggregatorParams.h",
+      1
+    ],
+    [
+      "src/Interpreters/Streaming/HashJoin/ConcurrentHashJoin.cpp",
+      1
+    ],
+    [
+      "src/Interpreters/Streaming/HashJoin/ConcurrentHashJoin.h",
+      1
+    ],
+    [
+      "src/Interpreters/Streaming/HashJoin/HybridHashJoin/HybridHashJoin.cpp",
+      1
+    ],
+    [
+      "src/Interpreters/Streaming/HashJoin/HybridHashJoin/HybridHashJoin.h",
+      1
+    ],
+    [
+      "src/Interpreters/Streaming/HashJoin/HybridHashJoin/HybridHashJoin_Checkpoint.cpp",
+      1
+    ],
+    [
+      "src/IO/S3/Client.cpp",
+      1
+    ],
+    [
+      "src/Storages/MergeTree/IMergeTreeDataPart.cpp",
+      1
+    ],
+    [
+      "src/Storages/MergeTree/MergeTreeData.cpp",
+      1
+    ]
+  ],
+  "wouldBeConflictsPerWeek": 0.0
+}

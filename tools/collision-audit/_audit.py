@@ -91,6 +91,18 @@ def is_bot(email, name):
 
 
 def window(days, until=None):
+    """(start, end) of the audit window.
+
+    The end is "now" unless COLLISION_AUDIT_UNTIL=YYYY-MM-DD is set. Then the window ends at 00:00 UTC
+    on that date, the same for every step and every re-run (added for the 2026-11-01 measurement; with
+    the variable unset nothing changes).
+    """
+    if until is None:
+        fixed = os.environ.get("COLLISION_AUDIT_UNTIL")
+        if fixed:
+            if not re.match(r"^\d{4}-\d{2}-\d{2}$", fixed):
+                fail("COLLISION_AUDIT_UNTIL must be YYYY-MM-DD, got %r" % fixed)
+            until = datetime.datetime.strptime(fixed, "%Y-%m-%d").replace(tzinfo=datetime.timezone.utc)
     end = until or datetime.datetime.now(datetime.timezone.utc)
     return end - datetime.timedelta(days=days), end
 

@@ -1,0 +1,66 @@
+{
+  "handoverDays": 3,
+  "perWeek": {
+    "sameDay": 0.29,
+    "threeDay": 0.58
+  },
+  "rate": 0.333,
+  "repo": "RushB-fr/freekiosk",
+  "weeks": [
+    {
+      "sameDay": 4,
+      "threeDay": 9,
+      "week": "2026-02-16"
+    },
+    {
+      "sameDay": 5,
+      "threeDay": 5,
+      "week": "2026-03-02"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 1,
+      "week": "2026-04-13"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 2,
+      "week": "2026-04-20"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 3,
+      "week": "2026-05-25"
+    },
+    {
+      "sameDay": 2,
+      "threeDay": 0,
+      "week": "2026-06-01"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 6,
+      "week": "2026-06-15"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 1,
+      "week": "2026-06-22"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 2,
+      "week": "2026-07-27"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 1,
+      "week": "2026-10-12"
+    }
+  ],
+  "windowDays": 365,
+  "wouldBeConflictsPerWeek": {
+    "sameDay": 0.1,
+    "threeDay": 0.19
+  }
+}

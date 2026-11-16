@@ -1,0 +1,13 @@
+{
+  "bin": "2-3",
+  "branch": "main",
+  "cloneSince": "2025-10-02",
+  "commitsInClone": 1076,
+  "finished": "2026-11-01T18:03:40Z",
+  "git": "2.43.0",
+  "head": "b2153e02c989a185e6b6d90b0d83f8d8d434027e",
+  "name": "mercurjs/mercur",
+  "python": "3.13.18",
+  "started": "2026-11-01T18:02:53Z",
+  "status": "ok"
+}

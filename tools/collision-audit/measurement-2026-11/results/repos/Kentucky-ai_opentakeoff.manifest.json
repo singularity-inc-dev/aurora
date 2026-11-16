@@ -1,0 +1,13 @@
+{
+  "bin": "2-3",
+  "branch": "main",
+  "cloneSince": "2025-10-02",
+  "commitsInClone": 738,
+  "finished": "2026-11-01T18:03:04Z",
+  "git": "2.43.0",
+  "head": "c49de422e754d344ab95eac9c78cf62e8e8475d0",
+  "name": "Kentucky-ai/opentakeoff",
+  "python": "3.13.18",
+  "started": "2026-11-01T18:02:49Z",
+  "status": "ok"
+}

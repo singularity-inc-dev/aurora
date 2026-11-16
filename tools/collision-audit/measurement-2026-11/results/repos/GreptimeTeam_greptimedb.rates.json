@@ -1,0 +1,70 @@
+{
+  "all": {
+    "conflicts": 0,
+    "interval95": [
+      0.0,
+      0.038
+    ],
+    "pairs": 98,
+    "rate": 0.0
+  },
+  "cleanReplays": 98,
+  "conflictFiles": [],
+  "independent": {
+    "conflicts": 0,
+    "interval95": [
+      0.0,
+      0.038
+    ],
+    "pairs": 98,
+    "rate": 0.0
+  },
+  "notReplayable": 52,
+  "overlapsPerWeek": 5.56,
+  "rateUsed": "independent",
+  "replayed": 150,
+  "repo": "GreptimeTeam/greptimedb",
+  "topOverlapFiles": [
+    [
+      "tests-integration/tests/http.rs",
+      38
+    ],
+    [
+      "src/frontend/src/instance.rs",
+      8
+    ],
+    [
+      "src/mito2/src/read/scan_region.rs",
+      8
+    ],
+    [
+      "src/mito2/src/engine.rs",
+      7
+    ],
+    [
+      "src/operator/src/statement/ddl.rs",
+      7
+    ],
+    [
+      "src/cmd/tests/load_config_test.rs",
+      6
+    ],
+    [
+      "src/mito2/src/region/opener.rs",
+      6
+    ],
+    [
+      "src/mito2/src/request.rs",
+      6
+    ],
+    [
+      "src/operator/src/insert.rs",
+      6
+    ],
+    [
+      "src/mito2/src/region.rs",
+      5
+    ]
+  ],
+  "wouldBeConflictsPerWeek": 0.0
+}

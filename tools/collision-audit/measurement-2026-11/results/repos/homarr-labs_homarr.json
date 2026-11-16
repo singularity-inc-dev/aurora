@@ -1,0 +1,65 @@
+{
+  "activeFrom": "2025-11-01",
+  "activeWeeks": 52.142857142857146,
+  "bin": "7-10",
+  "busiestDay": "2026-07-10",
+  "busiestDayOverlaps": 63,
+  "busiestDayShare": 0.4012738853503185,
+  "cleanReplays": 44,
+  "commits": 2061,
+  "conflictFiles": [],
+  "conflictsAll": 0,
+  "conflictsIndependent": 0,
+  "coreScreened": 7,
+  "independentPairs": 42,
+  "manifest": {
+    "bin": "7-10",
+    "branch": "dev",
+    "cloneSince": "2025-10-02",
+    "commitsInClone": 2347,
+    "finished": "2026-11-01T18:04:07Z",
+    "git": "2.43.0",
+    "head": "41a143359b2c6a38662acd796ebb5668aac23e68",
+    "name": "homarr-labs/homarr",
+    "python": "3.13.18",
+    "started": "2026-11-01T18:03:48Z",
+    "status": "ok"
+  },
+  "name": "homarr-labs/homarr",
+  "notReplayable": 106,
+  "overlaps": 157,
+  "overlapsPerWeek": 3.010958904109589,
+  "overlapsPerWeekActive": 3.010958904109589,
+  "peopleTool": 6,
+  "rateBasis": "independent",
+  "replayed": 150,
+  "threeDayPerWeek": 3.47,
+  "threeDayPerWeekActive": 3.47,
+  "topFiles": [
+    [
+      "packages/definitions/src/docs/homarr-docs-sitemap.ts",
+      15
+    ],
+    [
+      "packages/definitions/src/integration.ts",
+      13
+    ],
+    [
+      "packages/definitions/src/widget.ts",
+      9
+    ],
+    [
+      "packages/widgets/src/index.tsx",
+      8
+    ],
+    [
+      "packages/api/src/router/widgets/index.ts",
+      8
+    ]
+  ],
+  "window": {
+    "days": 365,
+    "since": "2025-11-01T00:00:00+00:00",
+    "until": "2026-11-01T00:00:00+00:00"
+  }
+}

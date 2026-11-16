@@ -1,0 +1,136 @@
+{
+  "handoverDays": 3,
+  "perWeek": {
+    "sameDay": 6.81,
+    "threeDay": 14.88
+  },
+  "rate": 0.019,
+  "repo": "AtalayaLabs/OxiCloud",
+  "weeks": [
+    {
+      "sameDay": 5,
+      "threeDay": 18,
+      "week": "2026-02-02"
+    },
+    {
+      "sameDay": 2,
+      "threeDay": 3,
+      "week": "2026-02-09"
+    },
+    {
+      "sameDay": 15,
+      "threeDay": 47,
+      "week": "2026-02-16"
+    },
+    {
+      "sameDay": 8,
+      "threeDay": 52,
+      "week": "2026-02-23"
+    },
+    {
+      "sameDay": 170,
+      "threeDay": 313,
+      "week": "2026-03-02"
+    },
+    {
+      "sameDay": 7,
+      "threeDay": 1,
+      "week": "2026-03-09"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 1,
+      "week": "2026-03-16"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 3,
+      "week": "2026-03-30"
+    },
+    {
+      "sameDay": 10,
+      "threeDay": 29,
+      "week": "2026-04-06"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 0,
+      "week": "2026-04-13"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 1,
+      "week": "2026-04-27"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 6,
+      "week": "2026-06-01"
+    },
+    {
+      "sameDay": 11,
+      "threeDay": 40,
+      "week": "2026-06-08"
+    },
+    {
+      "sameDay": 59,
+      "threeDay": 124,
+      "week": "2026-06-15"
+    },
+    {
+      "sameDay": 16,
+      "threeDay": 13,
+      "week": "2026-06-22"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 3,
+      "week": "2026-06-29"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 3,
+      "week": "2026-07-06"
+    },
+    {
+      "sameDay": 29,
+      "threeDay": 57,
+      "week": "2026-07-13"
+    },
+    {
+      "sameDay": 2,
+      "threeDay": 19,
+      "week": "2026-07-20"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 2,
+      "week": "2026-08-31"
+    },
+    {
+      "sameDay": 9,
+      "threeDay": 30,
+      "week": "2026-09-14"
+    },
+    {
+      "sameDay": 4,
+      "threeDay": 6,
+      "week": "2026-09-21"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 1,
+      "week": "2026-09-28"
+    },
+    {
+      "sameDay": 2,
+      "threeDay": 4,
+      "week": "2026-10-19"
+    }
+  ],
+  "windowDays": 365,
+  "wouldBeConflictsPerWeek": {
+    "sameDay": 0.13,
+    "threeDay": 0.28
+  }
+}

@@ -1,0 +1,81 @@
+{
+  "handoverDays": 3,
+  "perWeek": {
+    "sameDay": 31.8,
+    "threeDay": 32.45
+  },
+  "rate": 0.2,
+  "repo": "mercurjs/mercur",
+  "weeks": [
+    {
+      "sameDay": 2,
+      "threeDay": 5,
+      "week": "2026-01-12"
+    },
+    {
+      "sameDay": 2,
+      "threeDay": 3,
+      "week": "2026-01-19"
+    },
+    {
+      "sameDay": 7,
+      "threeDay": 8,
+      "week": "2026-01-26"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 1,
+      "week": "2026-02-02"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 0,
+      "week": "2026-02-09"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 5,
+      "week": "2026-02-16"
+    },
+    {
+      "sameDay": 1597,
+      "threeDay": 1604,
+      "week": "2026-02-23"
+    },
+    {
+      "sameDay": 11,
+      "threeDay": 19,
+      "week": "2026-03-02"
+    },
+    {
+      "sameDay": 4,
+      "threeDay": 4,
+      "week": "2026-03-09"
+    },
+    {
+      "sameDay": 7,
+      "threeDay": 22,
+      "week": "2026-03-16"
+    },
+    {
+      "sameDay": 13,
+      "threeDay": 3,
+      "week": "2026-03-23"
+    },
+    {
+      "sameDay": 2,
+      "threeDay": 7,
+      "week": "2026-03-30"
+    },
+    {
+      "sameDay": 11,
+      "threeDay": 11,
+      "week": "2026-10-19"
+    }
+  ],
+  "windowDays": 365,
+  "wouldBeConflictsPerWeek": {
+    "sameDay": 6.36,
+    "threeDay": 6.49
+  }
+}
