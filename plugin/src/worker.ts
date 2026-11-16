@@ -1,16 +1,21 @@
 import { definePlugin, runWorker, type PluginContext, type ToolResult } from "@paperclipai/plugin-sdk";
-import { runChecksGate, formatReport } from "./checks.js";
-import { findPersonByAgent, parseSettings, type PluginSettings } from "./config.js";
+import { formatReport, gateWord, localRunner, refusingRunner, runChecksGate, type CommandRunner } from "./checks.js";
+import { sandboxRunner } from "./checksandbox.js";
+import { findPersonByAgent, findPersonByEmail, parseSettings, sandboxLogin, type Person, type PluginSettings } from "./config.js";
 import { ensureTaskRow, getTaskRow, recordChecks, recordHandoff } from "./eventlog.js";
+import { recordFlagSafely } from "./flagstore.js";
 import { handoffDescription, HandoffRefused, parseHandoffRequest, planHandoff } from "./handoff.js";
-import { auditAgentRoutes } from "./routes.js";
-import { HANDOFF_ORIGIN, NIGHT_TICK_JOB } from "./ids.js";
-import { listRuns } from "./nightstore.js";
-import { proposeTonight, ProposalRefused, tickAll } from "./nightrunner.js";
+import { agentProblems, auditSettingsIsolation } from "./isolation.js";
+import { HANDOFF_ORIGIN, HANDOVER_TICK_JOB } from "./ids.js";
+import { numbersCsv } from "./numbers.js";
+import { loadNumbers } from "./numberstore.js";
+import { loadCounts, loadEventLogCsv } from "./countstore.js";
+import { listRuns } from "./handoverstore.js";
+import { projectAreas, proposeHandover, ProposalRefused, startHandoverNow, tickAll } from "./handoverrunner.js";
 import { startTicker, type Ticker } from "./ticker.js";
 import { renderBriefing } from "./briefing.js";
 import { getAction, getBriefingById, listPendingBriefings, markBriefingSent } from "./briefstore.js";
-import { executeLink, previewLink, recordPublishResult, recordPullRequestUpdate } from "./links.js";
+import { executeLink, listStuckApprovals, previewLink, recordPublishResult, recordPullRequestUpdate, recoverApproval } from "./links.js";
 import { claimInvite, createInvite, finishInvite, previewInvite } from "./invites.js";
 import { listWaitingPullRequests } from "./briefstore.js";
 import { HANDOFF_TOOL, PROPOSE_TOOL, RUN_CHECKS_TOOL, TOOL_HANDOFF, TOOL_PROPOSE, TOOL_RUN_CHECKS } from "./tools.js";
@@ -39,9 +44,35 @@ async function loadSettings(ctx: PluginContext, companyId: string): Promise<Plug
   return parsed.settings;
 }
 
-async function requireSafeAgent(ctx: PluginContext, agentId: string, companyId: string, who: string): Promise<void> {
-  const problems = auditAgentRoutes(await ctx.agents.get(agentId, companyId), companyId);
+async function requireSafeAgent(ctx: PluginContext, settings: PluginSettings, person: Person, companyId: string, who: string): Promise<void> {
+  const problems = agentProblems(settings, person, await ctx.agents.get(person.agentId, companyId), companyId);
   if (problems.length > 0) throw new Refused(`${who} agent is not locked down: ${problems.join("; ")}`);
+}
+
+/** Where test and lint commands run: as the owner's agent user, or (isolation off, test beds only) here. */
+async function checksRunner(ctx: PluginContext, settings: PluginSettings, owner: Person, companyId: string, cwd: string): Promise<CommandRunner> {
+  if (!settings.checks.testCommand && !settings.checks.lintCommand) return refusingRunner;
+  const login = sandboxLogin(settings, owner);
+  if (login) return sandboxRunner(cwd, login, await ctx.secrets.resolve(login.privateKey, { companyId }));
+  return settings.isolation.required ? refusingRunner : localRunner(cwd);
+}
+
+/**
+ * Run flag "tool error": a plugin tool failed on a ticket. Only when the ticket is
+ * assigned to the calling agent, so one agent can never put a flag on a teammate's task.
+ * Never throws: the original error is what the agent must see.
+ */
+async function flagToolError(ctx: PluginContext, companyId: string, agentId: string, tool: string, issueId: unknown, err: unknown): Promise<void> {
+  if (typeof issueId !== "string" || !issueId) return;
+  try {
+    const issue = await ctx.issues.get(issueId, companyId);
+    if (!issue || issue.assigneeAgentId !== agentId) return;
+    // Only our own refusal texts are kept; anything unexpected is recorded by type only.
+    const known = err instanceof Refused || err instanceof HandoffRefused || err instanceof ProposalRefused;
+    await recordFlagSafely(ctx.db, companyId, issueId, "tool-error", `${tool}: ${known ? err.message : `unexpected error (${err instanceof Error ? err.name : "unknown"})`}`, (m) => ctx.logger.warn(m));
+  } catch {
+    // The flag is a courtesy to the owner; losing it must not hide the real error.
+  }
 }
 
 function refusal(err: unknown): ToolResult {
@@ -62,15 +93,15 @@ const plugin = definePlugin({
           email: p.email,
           agentId: p.agentId,
           timezone: p.timezone,
-          nightStartHour: p.nightStartHour,
-          maxTasksPerNight: p.maxTasksPerNight,
-          nightBudgetCapCents: p.nightBudgetCapCents,
+          handoverStartHour: p.handoverStartHour,
+          maxTasksPerHandover: p.maxTasksPerHandover,
+          handoverBudgetCapCents: p.handoverBudgetCapCents,
           keyNames: p.secrets.map((s) => ({ name: s.name, access: s.access })),
         })),
       };
     });
 
-    // Which bound agents still have a side door around the board.
+    // Which bound agents still have a side door around the board, or are not isolated.
     ctx.data.register("route-audit", async (params) => {
       const companyId = typeof params.companyId === "string" ? params.companyId : "";
       const parsed = parseSettings(await ctx.config.get(companyId));
@@ -79,10 +110,31 @@ const plugin = definePlugin({
         parsed.settings.people.map(async (p) => ({
           email: p.email,
           agentId: p.agentId,
-          problems: auditAgentRoutes(await ctx.agents.get(p.agentId, companyId), companyId),
+          problems: agentProblems(parsed.settings, p, await ctx.agents.get(p.agentId, companyId), companyId),
         })),
       );
-      return { ok: agents.every((a) => a.problems.length === 0), agents };
+      const settingsProblems = auditSettingsIsolation(parsed.settings);
+      return {
+        ok: settingsProblems.length === 0 && agents.every((a) => a.problems.length === 0),
+        isolationRequired: parsed.settings.isolation.required,
+        // Old night-only setting names still stored (they work; vt-setup rewrites them).
+        legacyNames: parsed.settings.legacyNames,
+        settingsProblems,
+        agents,
+      };
+    });
+
+    // For the admin (vt-check): what the committed CODEOWNERS means to Aurora, and GitHub teams it names (they match nobody).
+    ctx.data.register("codeowners", async (params) => {
+      const companyId = typeof params.companyId === "string" ? params.companyId : "";
+      const parsed = parseSettings(await ctx.config.get(companyId));
+      if (!parsed.ok) return { ok: false, errors: parsed.errors };
+      try {
+        const { areas, notes, teams } = await projectAreas(ctx, parsed.settings, companyId, null);
+        return { ok: true, source: areas?.source ?? null, teams: teams ?? [], notes };
+      } catch (err) {
+        return { ok: false, errors: [err instanceof Error ? err.message : "the repository could not be read"] };
+      }
     });
 
     // One event-log row, scoped to the caller's company.
@@ -94,13 +146,16 @@ const plugin = definePlugin({
       return row && row.company_id === companyId ? row : null;
     });
 
-    // Tonight's routines for a company: what each person's night is doing.
-    ctx.data.register("night-status", async (params) => {
+    // Each person's handovers (newest first): scheduled or "now", and where each one is.
+    ctx.data.register("handover-status", async (params) => {
       const companyId = typeof params.companyId === "string" ? params.companyId : "";
       if (!companyId) return [];
       return (await listRuns(ctx.db, companyId, 50)).map((r) => ({
         owner: r.owner,
-        nightDate: r.nightDate,
+        handoverKey: r.handoverKey,
+        kind: r.kind,
+        startsAt: r.startsAt,
+        endsAt: r.endsAt,
         status: r.status,
         planIssueId: r.planIssueId,
         taskIds: r.taskIds,
@@ -110,23 +165,25 @@ const plugin = definePlugin({
       }));
     });
 
-    // One tick drives every person's night routine (see night.ts for the rules).
+    // One tick drives every person's handovers (see handover.ts for the rules).
     // The scheduled job only kicks the ticker; see ticker.ts for why.
     pluginContext = ctx;
     ticker?.stop();
-    const nightTicker = startTicker(() => tickAll(ctx, new Date()));
-    ticker = nightTicker;
-    ctx.jobs.register(NIGHT_TICK_JOB, () => nightTicker.kick());
+    const handoverTicker = startTicker(() => tickAll(ctx, new Date()));
+    ticker = handoverTicker;
+    ctx.jobs.register(HANDOVER_TICK_JOB, () => handoverTicker.kick());
 
     ctx.tools.register(TOOL_PROPOSE, PROPOSE_TOOL, async (params, run) => {
       try {
         const settings = await loadSettings(ctx, run.companyId);
         const person = findPersonByAgent(settings, run.agentId);
         if (!person) throw new Refused("calling agent is not bound to any person");
-        await requireSafeAgent(ctx, run.agentId, run.companyId, "your");
-        const result = await proposeTonight(ctx, settings, person, run, params);
+        await requireSafeAgent(ctx, settings, person, run.companyId, "your");
+        const result = await proposeHandover(ctx, settings, person, run, params);
         return {
-          content: `Proposed ${result.taskIds.length} task(s). Waiting for ${person.email} to approve the plan.`,
+          content:
+            `Proposed ${result.taskIds.length} task(s). Waiting for ${person.email} to approve the plan.` +
+            result.moved.map((m) => `\n"${m.title}" reaches into ${m.keeper}'s files, so it went to their agent (${m.ticketId}) and is not yours to do in this handover.`).join(""),
           data: result,
         };
       } catch (err) {
@@ -141,8 +198,8 @@ const plugin = definePlugin({
         try {
           const settings = await loadSettings(ctx, run.companyId);
           const plan = planHandoff(settings, run.agentId, parseHandoffRequest(params));
-          await requireSafeAgent(ctx, plan.from.agentId, run.companyId, "your");
-          await requireSafeAgent(ctx, plan.to.agentId, run.companyId, "the teammate's");
+          await requireSafeAgent(ctx, settings, plan.from, run.companyId, "your");
+          await requireSafeAgent(ctx, settings, plan.to, run.companyId, "the teammate's");
           const actor = { actorAgentId: run.agentId, actorRunId: run.runId };
 
           let issueId: string;
@@ -164,7 +221,8 @@ const plugin = definePlugin({
             const issue = await ctx.issues.get(plan.issueId, run.companyId);
             if (!issue) throw new Refused("ticket not found");
             if (issue.assigneeAgentId !== plan.from.agentId) throw new Refused("you can only hand off tickets assigned to you");
-            await ctx.issues.update(plan.issueId, { assigneeAgentId: plan.to.agentId }, run.companyId, actor);
+            // Back to backlog, as a new hand-off starts: the teammate's agent waits for its own owner's approval.
+            await ctx.issues.update(plan.issueId, { assigneeAgentId: plan.to.agentId, status: "backlog" }, run.companyId, actor);
             const note = plan.note ? `\n\n${plan.note}` : "";
             await ctx.issues.createComment(
               plan.issueId,
@@ -186,6 +244,7 @@ const plugin = definePlugin({
             data: { issueId, identifier, assignedTo: plan.to.email, action: plan.kind },
           };
         } catch (err) {
+          await flagToolError(ctx, run.companyId, run.agentId, TOOL_HANDOFF, (params as { issueId?: unknown } | null)?.issueId, err);
           return refusal(err);
         }
       },
@@ -201,7 +260,7 @@ const plugin = definePlugin({
           const settings = await loadSettings(ctx, run.companyId);
           const owner = findPersonByAgent(settings, run.agentId);
           if (!owner) throw new Refused("calling agent is not bound to any person");
-          await requireSafeAgent(ctx, run.agentId, run.companyId, "your");
+          await requireSafeAgent(ctx, settings, owner, run.companyId, "your");
 
           const issue = await ctx.issues.get(issueId, run.companyId);
           if (!issue) throw new Refused("ticket not found");
@@ -212,7 +271,7 @@ const plugin = definePlugin({
           if (!ws || ws.providerType !== "git_worktree" || !cwd) throw new Refused("ticket workspace is not a git worktree");
           if (!ws.baseRef) throw new Refused("ticket worktree has no base branch to compare with");
 
-          const report = await runChecksGate(cwd, ws.baseRef, settings.checks);
+          const report = await runChecksGate(cwd, ws.baseRef, settings.checks, await checksRunner(ctx, settings, owner, run.companyId, cwd));
           const body = formatReport(report);
           const documentKey = checksDocumentKey();
           await ctx.issues.documents.upsert({
@@ -222,11 +281,11 @@ const plugin = definePlugin({
             format: "markdown",
             body,
             companyId: run.companyId,
-            changeSummary: report.passed ? "Checks passed" : "Checks failed",
+            changeSummary: `Checks ${gateWord(report.result)}`,
           });
           await ctx.issues.createComment(
             issueId,
-            `Checks gate ${report.passed ? "passed" : "FAILED"} on commit ${report.headSha ?? "unknown"}. See the document "${documentKey}".`,
+            `Checks gate ${gateWord(report.result)} on commit ${report.headSha ?? "unknown"}. See the document "${documentKey}".`,
             run.companyId,
             { authorAgentId: run.agentId },
           );
@@ -237,12 +296,13 @@ const plugin = definePlugin({
             agent: run.agentId,
             taskKind: "task",
           });
-          await recordChecks(ctx.db, issueId, report.passed ? "passed" : "failed", report.headSha);
+          await recordChecks(ctx.db, issueId, report.result, report.headSha);
           return {
-            content: `Checks ${report.passed ? "passed" : "failed"}: ${report.results.map((r) => `${r.name} ${r.status}`).join(", ")}.`,
-            data: { passed: report.passed, headSha: report.headSha, documentKey, results: report.results.map(({ output: _o, ...r }) => r) },
+            content: `Checks ${report.result === "passed" || report.result === "failed" ? report.result : gateWord(report.result)}: ${report.results.map((r) => `${r.name} ${r.status}`).join(", ")}.`,
+            data: { passed: report.passed, result: report.result, headSha: report.headSha, documentKey, results: report.results.map(({ output: _o, ...r }) => r) },
           };
         } catch (err) {
+          await flagToolError(ctx, run.companyId, run.agentId, TOOL_RUN_CHECKS, (params as { issueId?: unknown } | null)?.issueId, err);
           return refusal(err);
         }
       },
@@ -295,6 +355,11 @@ const plugin = definePlugin({
         return { status: 200, body: await executeLink(ctx, settings, input.companyId, token, body.reason, now) };
       case "link-publish-result":
         return { status: 200, body: await recordPublishResult(ctx, settings, input.companyId, token, body, now) };
+      case "links-stuck":
+        // Approvals interrupted between the tap and GitHub (gap 27); the email service finishes them.
+        return { status: 200, body: { approvals: await listStuckApprovals(ctx, settings, input.companyId, input.query?.olderThanMinutes, now) } };
+      case "link-recover":
+        return { status: 200, body: await recoverApproval(ctx, settings, input.companyId, body, now) };
       case "prs-waiting":
         return {
           status: 200,
@@ -305,6 +370,35 @@ const plugin = definePlugin({
         };
       case "pr-update":
         return { status: 200, body: await recordPullRequestUpdate(ctx, input.companyId, body) };
+      case "handover-start": {
+        // Hand over now. The email service calls this only for the owner signed in to Paperclip.
+        const person = typeof body.email === "string" ? findPersonByEmail(settings, body.email) : undefined;
+        if (!person) return { status: 404, body: { ok: false, message: "you are not on the team" } };
+        const started = await startHandoverNow(ctx, input.companyId, settings, person, now);
+        return { status: started.ok ? 201 : 409, body: started };
+      }
+      case "handover-status": {
+        const email = typeof input.query?.email === "string" ? input.query.email : "";
+        const person = findPersonByEmail(settings, email);
+        if (!person) return { status: 404, body: { ok: false, message: "you are not on the team" } };
+        const runs = (await listRuns(ctx.db, input.companyId, 50)).filter((r) => r.owner === person.email).slice(0, 5);
+        return {
+          status: 200,
+          body: { ok: true, email: person.email, timezone: person.timezone, handoverStartHour: person.handoverStartHour, handovers: runs.map((r) => ({ handoverKey: r.handoverKey, kind: r.kind, status: r.status, stopReason: r.stopReason })) },
+        };
+      }
+      case "numbers":
+        return { status: 200, body: await loadNumbers(ctx, input.companyId) };
+      case "numbers-csv":
+        // Paperclip 2026.1012.0 sends plugin route bodies as JSON (headers are not passed on),
+        // so the CSV text travels inside JSON; vt-numbers writes it to a file.
+        return { status: 200, body: { csv: numbersCsv(await loadNumbers(ctx, input.companyId)) } };
+      case "counts":
+        // Raw counts per person and per task kind (no percentages). The email service decides who may see the page.
+        return { status: 200, body: await loadCounts(ctx, input.companyId) };
+      case "events-csv":
+        // The event log, one row per task. Like numbers-csv, the CSV text travels inside JSON.
+        return { status: 200, body: { csv: await loadEventLogCsv(ctx, input.companyId) } };
       case "invite-create": {
         const created = await createInvite(ctx, settings, input.companyId, body, now);
         return { status: created.ok ? 201 : 409, body: created };

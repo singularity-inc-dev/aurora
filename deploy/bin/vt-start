@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Start again after vt-stop (also after a restart of the server), then check.
+#   sudo vt-start
+. "$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)/lib/common.sh"
+need_root
+load_conf
+if rehearsal; then
+  svc start paperclip.service
+else
+  systemctl enable --now paperclip.service
+fi
+wait_http "http://127.0.0.1:${PAPERCLIP_PORT:-3100}/api/health" 180 || die "Paperclip did not start (see: journalctl -u paperclip -n 50)"
+if rehearsal; then svc start vt-email.service; else systemctl enable --now vt-email.service vt-repo-sync.timer; fi
+wait_http "http://127.0.0.1:${EMAIL_PORT:-3299}/health" 60 || die "the email service did not start (see: journalctl -u vt-email -n 50)"
+say "Started. Checking:"
+bash "$KIT/bin/vt-check"

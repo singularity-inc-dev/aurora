@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { PluginDatabaseClient } from "@paperclipai/plugin-sdk";
+import type { RunFlag } from "./flags.js";
 import type { LinkKind } from "./tokens.js";
 
 type Db = Pick<PluginDatabaseClient, "namespace" | "execute" | "query">;
@@ -22,16 +23,36 @@ export interface BriefingItem {
   prUrl?: string | null;
   /** Listed in an earlier email and still undecided. */
   carried?: boolean;
+  /** Run flags on this task when the email was built (absent when there are none). */
+  flags?: RunFlag[];
 }
+
+/** A conflict the merge replay found, as one owner sees it (piece E). */
+export interface BriefingConflict {
+  taskId: string;
+  title: string;
+  identifier: string | null;
+  withOwner: string;
+  withTaskId: string;
+  withTitle: string;
+  withIdentifier: string | null;
+  files: string[];
+}
+
+/** Key prefix of a short email telling an owner about a conflict found in a teammate's handback. */
+export const CONFLICT_NOTICE_PREFIX = "conflict-";
 
 export interface Briefing {
   id: string;
   companyId: string;
   owner: string;
-  nightDate: string;
+  handoverKey: string;
   status: "pending" | "sent";
   items: BriefingItem[];
   notes: string[];
+  conflicts: BriefingConflict[];
+  /** Files this owner's ready work and other ready work both change, though git merges them cleanly. */
+  shared?: BriefingConflict[];
 }
 
 export interface LinkAction {
@@ -48,6 +69,8 @@ export interface LinkAction {
   expiresAt: Date;
   state: "new" | "processing" | "done" | "refused";
   result: string | null;
+  /** When the link was clicked (set when it starts processing). */
+  usedAt: Date | null;
 }
 
 const json = <T>(v: unknown, fallback: T): T => {
@@ -63,10 +86,12 @@ function toBriefing(r: Record<string, unknown>): Briefing {
     id: String(r.id),
     companyId: String(r.company_id),
     owner: String(r.owner),
-    nightDate: String(r.night_date),
+    handoverKey: String(r.handover_key),
     status: r.status === "sent" ? "sent" : "pending",
     items: json<BriefingItem[]>(r.items, []),
     notes: json<string[]>(r.notes, []),
+    conflicts: json<BriefingConflict[]>(r.conflicts ?? "[]", []),
+    shared: json<BriefingConflict[]>(r.shared_files ?? "[]", []),
   };
 }
 
@@ -85,13 +110,14 @@ function toAction(r: Record<string, unknown>): LinkAction {
     expiresAt: new Date(String(r.expires_at)),
     state: String(r.state) as LinkAction["state"],
     result: (r.result as string | null) ?? null,
+    usedAt: r.used_at ? new Date(r.used_at instanceof Date ? r.used_at.getTime() : String(r.used_at)) : null,
   };
 }
 
 export const newId = () => randomUUID();
 
-export async function getBriefing(db: Db, companyId: string, owner: string, nightDate: string): Promise<Briefing | null> {
-  const rows = await db.query(`SELECT * FROM ${t(db, "briefings")} WHERE company_id = $1 AND owner = $2 AND night_date = $3`, [companyId, owner, nightDate]);
+export async function getBriefing(db: Db, companyId: string, owner: string, handoverKey: string): Promise<Briefing | null> {
+  const rows = await db.query(`SELECT * FROM ${t(db, "briefings")} WHERE company_id = $1 AND owner = $2 AND handover_key = $3`, [companyId, owner, handoverKey]);
   return rows[0] ? toBriefing(rows[0]) : null;
 }
 
@@ -101,15 +127,15 @@ export async function getBriefingById(db: Db, companyId: string, id: string): Pr
 }
 
 export async function listPendingBriefings(db: Db, companyId: string): Promise<Briefing[]> {
-  const rows = await db.query(`SELECT * FROM ${t(db, "briefings")} WHERE company_id = $1 AND status = 'pending' ORDER BY night_date LIMIT 50`, [companyId]);
+  const rows = await db.query(`SELECT * FROM ${t(db, "briefings")} WHERE company_id = $1 AND status = 'pending' ORDER BY handover_key LIMIT 50`, [companyId]);
   return rows.map(toBriefing);
 }
 
-/** Insert the briefing; returns false if one already exists for this person and night. */
+/** Insert the briefing; returns false if one already exists for this person and handover. */
 export async function insertBriefing(db: Db, b: Omit<Briefing, "status">): Promise<boolean> {
   const { rowCount } = await db.execute(
-    `INSERT INTO ${t(db, "briefings")} (id, company_id, owner, night_date, items, notes) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (company_id, owner, night_date) DO NOTHING`,
-    [b.id, b.companyId, b.owner, b.nightDate, JSON.stringify(b.items), JSON.stringify(b.notes)],
+    `INSERT INTO ${t(db, "briefings")} (id, company_id, owner, handover_key, items, notes, conflicts, shared_files) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (company_id, owner, handover_key) DO NOTHING`,
+    [b.id, b.companyId, b.owner, b.handoverKey, JSON.stringify(b.items), JSON.stringify(b.notes), JSON.stringify(b.conflicts), JSON.stringify(b.shared ?? [])],
   );
   return rowCount === 1;
 }
@@ -122,7 +148,7 @@ export async function markBriefingSent(db: Db, companyId: string, id: string): P
   return rowCount === 1;
 }
 
-export async function insertAction(db: Db, a: Omit<LinkAction, "state" | "result">): Promise<void> {
+export async function insertAction(db: Db, a: Omit<LinkAction, "state" | "result" | "usedAt">): Promise<void> {
   await db.execute(
     `INSERT INTO ${t(db, "link_actions")} (id, company_id, owner, task_id, kind, briefing_id, workspace_cwd, branch, base_ref, expected_head, expires_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
     [a.id, a.companyId, a.owner, a.taskId, a.kind, a.briefingId, a.workspaceCwd, a.branch, a.baseRef, a.expectedHead, a.expiresAt.toISOString()],
@@ -141,6 +167,12 @@ export async function claimAction(db: Db, id: string): Promise<boolean> {
     [id],
   );
   return rowCount === 1;
+}
+
+/** Links whose click is still being processed (normally for seconds; longer means it was interrupted). */
+export async function listProcessingActions(db: Db, companyId: string): Promise<LinkAction[]> {
+  const rows = await db.query(`SELECT * FROM ${t(db, "link_actions")} WHERE company_id = $1 AND state = 'processing' LIMIT 100`, [companyId]);
+  return rows.map(toAction);
 }
 
 export async function finishAction(db: Db, id: string, state: "done" | "refused", result: string): Promise<void> {
@@ -241,14 +273,15 @@ export async function closePullRequest(db: Db, taskId: string, state: "merged" |
 }
 
 /** Task ids listed in this person's earlier briefings (newest first), for carrying undecided tasks over. */
-export async function earlierBriefingTaskIds(db: Db, companyId: string, owner: string, beforeNightDate: string): Promise<string[]> {
+export async function earlierBriefingTaskIds(db: Db, companyId: string, owner: string, currentKey: string): Promise<string[]> {
   const rows = await db.query(
-    `SELECT * FROM ${t(db, "briefings")} WHERE company_id = $1 AND owner = $2 ORDER BY night_date DESC LIMIT 30`,
+    `SELECT * FROM ${t(db, "briefings")} WHERE company_id = $1 AND owner = $2 ORDER BY handover_key DESC LIMIT 30`,
     [companyId, owner],
   );
   const ids: string[] = [];
   for (const r of rows) {
-    if (String(r.night_date) >= beforeNightDate) continue;
+    // Every other briefing is an earlier one (a handover's email is built once, after it).
+    if (String(r.handover_key) === currentKey) continue;
     for (const item of json<BriefingItem[]>(r.items, [])) if (!ids.includes(item.taskId)) ids.push(item.taskId);
   }
   return ids;

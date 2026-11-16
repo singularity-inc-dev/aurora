@@ -17,6 +17,8 @@ RestartSec=5
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 NoNewPrivileges=yes
+# Sees only its own user's processes (Paperclip puts run tokens on command lines).
+ProtectProc=invisible
 PrivateTmp=yes
 ProtectSystem=full
 

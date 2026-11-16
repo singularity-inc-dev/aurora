@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Bring the project's base branch up to date from GitHub (fast-forward only),
-# so tonight's tasks start from what was merged today. Runs as the paperclip user.
+# so the next handover's tasks start from what was merged. Runs as the paperclip user.
 #   vt-repo-sync <repo folder> [base branch]
 set -euo pipefail
 repo="${1:?usage: vt-repo-sync <repo> [branch]}"

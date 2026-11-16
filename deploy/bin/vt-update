@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+# Update a running server to another version of Vision and Tom, without a full reinstall.
+#   sudo vt-update            the newest version of the branch the server runs
+#   sudo vt-update NAME       a branch, a tag, or a commit (also to go back to an earlier version)
+#   sudo vt-update NAME --now even while a handover is running (agents may be stopped mid-task)
+# Steps: download, show what changes, refuse a running handover, back up, stop the
+# email service, install (install.sh: only what changed), restart what changed,
+# reload the plugin in Paperclip (settings and data are kept), start, check.
+# If a step fails it says how to go back: sudo vt-update <the old version>, and if
+# needed sudo vt-restore <the backup made first>.
+. "$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)/lib/common.sh"
+# All of it is one function: bash reads it whole before running, so replacing this
+# file with the new version's copy (step 4) cannot change what runs.
+main() {
+need_root
+load_conf
+TARGET="" NOW=0
+for a in "$@"; do case "$a" in --now) NOW=1 ;; -*) die "unknown option $a" ;; *) TARGET="$a" ;; esac; done
+G=(git -C "$APP" -c safe.directory="$APP")
+"${G[@]}" rev-parse --git-dir >/dev/null 2>&1 || die "$APP is not a git download (DEPLOY.md, step 6); nothing was changed"
+[ -z "$("${G[@]}" status --porcelain --untracked-files=no)" ] || die "files in $APP were changed by hand ($("${G[@]}" status --porcelain --untracked-files=no | head -3 | tr '\n' ' ')); nothing was changed"
+CID=$(sed -n 's/^VT_COMPANY_ID=//p' "$ETC/email-service.env" 2>/dev/null || true)
+[ -n "$CID" ] && [ -s "$SECRETS/paperclip-api-key" ] || die "run vt-setup first; nothing was changed"
+PC_URL="http://127.0.0.1:${PAPERCLIP_PORT:-3100}"
+pc() { "$NODE_BIN/node" "$KIT_NOW/bin/vt-update-plugin.mjs" "$PC_URL" "$SECRETS/paperclip-api-key" "$CID" "$@"; }
+KIT_NOW="$KIT"
+
+say "1/7 Download"
+OLD=$("${G[@]}" rev-parse HEAD)
+BRANCH=$("${G[@]}" symbolic-ref -q --short HEAD || true)
+[ -n "$TARGET" ] || TARGET="$BRANCH"
+[ -n "$TARGET" ] || die "the server runs a fixed version ($(echo "$OLD" | cut -c1-7)); name the branch, tag or commit: sudo vt-update main"
+# GitHub may ask for your user name and the vt-download token (DEPLOY.md, step 4).
+"${G[@]}" fetch -q --tags origin || die "could not download from GitHub; nothing was changed"
+if NEW=$("${G[@]}" rev-parse -q --verify "refs/remotes/origin/$TARGET^{commit}"); then KIND=branch
+elif NEW=$("${G[@]}" rev-parse -q --verify "$TARGET^{commit}"); then KIND=fixed
+else die "no branch, tag or commit called $TARGET; nothing was changed"; fi
+if [ "$NEW" = "$OLD" ]; then
+  echo "  Already at $TARGET ($(echo "$NEW" | cut -c1-7)). Nothing to do."
+  exit 0
+fi
+
+say "2/7 What changes"
+plugin_version() { "${G[@]}" show "$1:plugin/package.json" | "$NODE_BIN/node" -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>console.log(JSON.parse(s).version))'; }
+echo "  from $(echo "$OLD" | cut -c1-7) $("${G[@]}" log -1 --format=%s "$OLD" | cut -c1-70)"
+echo "  to   $(echo "$NEW" | cut -c1-7) $("${G[@]}" log -1 --format=%s "$NEW" | cut -c1-70)"
+"${G[@]}" merge-base --is-ancestor "$OLD" "$NEW" || echo "  (this is not a newer version of what runs now: going back, or another line of work)"
+OLD_PLUGIN=$(plugin_version "$OLD"); NEW_PLUGIN=$(plugin_version "$NEW")
+echo "  plugin $OLD_PLUGIN -> $NEW_PLUGIN"
+"${G[@]}" diff --unified=0 "$OLD" "$NEW" -- deploy/versions.env | sed -n 's/^\([-+]\)\([A-Z_]*VERSION\|POSTGRES_MAJOR\)=/  \1 \2=/p'
+if "${G[@]}" diff --quiet "$OLD" "$NEW" -- deploy/versions.env; then echo "  Node, Caddy and Paperclip versions: unchanged"; fi
+
+RUNNING=$(pc running || true)
+if [ -n "$RUNNING" ] && [ "$NOW" != "1" ]; then
+  echo "  A handover is running for:"; echo "$RUNNING" | sed 's/^/    /'
+  die "update after it finishes (or add --now to stop it mid-task); nothing was changed"
+fi
+
+say "3/7 Backup first"
+bash "$KIT_NOW/bin/vt-backup" || die "the backup failed; nothing was changed"
+BACKUP=$(ls -1t "$BACKUPS"/vt-backup-*.tar | head -1)
+echo "  $BACKUP"
+back() { die "$1. To go back: sudo vt-update $(echo "$OLD" | cut -c1-12)   (and if Paperclip's data looks wrong: sudo vt-restore $BACKUP)"; }
+
+# Fingerprints of what each service runs, to restart only what changed.
+fp() { cat "$@" 2>/dev/null | sha256sum | cut -d' ' -f1; }
+fp_paperclip() { fp "$OPT/node/bin/node" "$OPT/paperclip/pnpm-lock.yaml" "$OPT/paperclip/package.json" "$PCINSTANCE/config.json" "$SYSTEMD_DIR/paperclip.service"; }
+fp_caddy() { fp "$OPT/bin/caddy" "$ETC/Caddyfile" "$ETC/caddy.env" "$SYSTEMD_DIR/caddy.service"; }
+PC_BEFORE=$(fp_paperclip); CADDY_BEFORE=$(fp_caddy)
+
+say "4/7 The new version"
+svc stop vt-email.service || true
+# Paperclip watches the plugin's folder: stop the plugin before its files change.
+pc disable >/dev/null || back "Paperclip did not stop the plugin before the update"
+if [ "$KIND" = branch ]; then "${G[@]}" checkout -q -B "$TARGET" "$NEW"; else "${G[@]}" checkout -q --detach "$NEW"; fi
+# From here on the new version's own kit does the work.
+KIT_NOW="$APP/deploy"
+bash "$KIT_NOW/install.sh" >"$BACKUPS/vt-update-install.log" 2>&1 || { tail -5 "$BACKUPS/vt-update-install.log" | sed 's/^/  /'; back "install.sh stopped (log: $BACKUPS/vt-update-install.log)"; }
+echo "  installed (log: $BACKUPS/vt-update-install.log)"
+
+say "5/7 Restart what changed"
+if rehearsal; then reload_units() { :; }; else reload_units() { systemctl daemon-reload; }; fi
+reload_units
+if [ "$(fp_paperclip)" != "$PC_BEFORE" ]; then
+  svc restart paperclip.service
+  wait_http "$PC_URL/api/health" 180 || back "Paperclip did not start again (see: journalctl -u paperclip -n 50)"
+  echo "  Paperclip restarted"
+else echo "  Paperclip: unchanged, kept running"; fi
+if [ "$(fp_caddy)" != "$CADDY_BEFORE" ]; then svc restart caddy.service; echo "  Caddy restarted"; else echo "  Caddy: unchanged, kept running"; fi
+
+say "6/7 The plugin in Paperclip (settings and data are kept)"
+OUT=$(pc reload "$APP/plugin" "$NEW_PLUGIN" 2>&1) || back "the plugin did not come back: $OUT"
+echo "  $OUT"
+
+say "7/7 Start and check"
+svc start vt-email.service
+wait_http "http://127.0.0.1:${EMAIL_PORT:-3299}/health" 60 || back "the email service did not start (see: journalctl -u vt-email -n 50)"
+rehearsal || systemctl start vt-repo-sync.timer 2>/dev/null || true
+bash "$KIT_NOW/bin/vt-check" || back "vt-check found a problem after the update"
+say "Updated to $TARGET ($(echo "$NEW" | cut -c1-7)). Going back: sudo vt-update $(echo "$OLD" | cut -c1-12)"
+}
+main "$@"

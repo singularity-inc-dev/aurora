@@ -24,6 +24,8 @@ Restart=always
 RestartSec=5
 TimeoutStopSec=60
 NoNewPrivileges=yes
+# Sees only its own user's processes (Paperclip puts run tokens on command lines).
+ProtectProc=invisible
 PrivateTmp=yes
 ProtectSystem=full
 

@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# The collision audit (pilot playbook, week 0), run by a team on its own clone.
+#
+#   tools/collision-audit/collision-audit PATH-TO-CLONE [owner/name] [--days 90] [--max-pairs 60] [--out DIR] [--report [--show-paths]]
+#
+# Reads the clone's history; never changes it (replays write to a temporary object
+# folder) and sends nothing anywhere (no network code; git may not use any remote).
+# Needs git 2.38+ and Python 3.9+. Writes overlap.json, pairs.jsonl,
+# classified.jsonl, rates.json, weekly.json, summary.md (and with --report:
+# report.md and report.html, shareable with file paths hidden by default) into DIR.
+set -euo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+usage() { sed -n '4,11p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+[ $# -ge 1 ] || usage
+CLONE="$1"; shift
+NAME=""; DAYS=90; MAX=60; OUT=""; REPORT=0; SHOW_PATHS=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --days) DAYS="$2"; shift 2 ;;
+    --max-pairs) MAX="$2"; shift 2 ;;
+    --out) OUT="$2"; shift 2 ;;
+    --report) REPORT=1; shift ;;
+    --show-paths) SHOW_PATHS="--show-paths"; shift ;;
+    -h|--help) usage ;;
+    *) NAME="$1"; shift ;;
+  esac
+done
+[ -d "$CLONE" ] && git -C "$CLONE" rev-parse --git-dir >/dev/null 2>&1 || { echo "collision-audit: $CLONE is not a git clone"; exit 2; }
+case "$DAYS$MAX" in *[!0-9]*) echo "collision-audit: --days and --max-pairs take whole numbers"; exit 2 ;; esac
+CLONE="$(cd "$CLONE" && pwd)"
+[ -n "$NAME" ] || NAME="local/$(basename "$CLONE" | tr -c 'A-Za-z0-9._\n-' '_')"
+python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' || { echo "collision-audit: Python 3.9 or newer is needed"; exit 2; }
+OUT="${OUT:-collision-audit-$(echo "$NAME" | tr / _)-$(date +%Y%m%d)}"
+mkdir -p "$OUT/repos"
+OUT="$(cd "$OUT" && pwd)"
+ln -sfn "$CLONE" "$OUT/repos/$(echo "$NAME" | sed 's|/|__|')"
+export COLLISION_AUDIT_DAYS="$DAYS"
+cd "$OUT"
+python3 -I "$HERE/measure_overlap.py" repos overlap.json "$NAME"
+python3 -I "$HERE/replay_pairs_v2.py" repos pairs.jsonl "$MAX" "$NAME"
+python3 -I "$HERE/classify_overlap.py" repos pairs.jsonl classified.jsonl
+python3 -I "$HERE/conflict_rates.py" classified.jsonl pairs.jsonl overlap.json rates.json
+python3 -I "$HERE/weekly_estimate.py" repos weekly.json "$NAME" classified.jsonl
+python3 -I "$HERE/summary.py" . >/dev/null
+if [ "$REPORT" = "1" ]; then
+  python3 -I "$HERE/report.py" . $SHOW_PATHS >/dev/null
+  echo
+  echo "Shareable report: $OUT/report.md (and report.html)"
+fi
+echo
+echo "Summary for the team: $OUT/summary.md"

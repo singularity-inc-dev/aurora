@@ -5,21 +5,24 @@ import { pluginManifestV1Schema } from "@paperclipai/shared";
 import manifest from "../src/manifest.js";
 import plugin, { checksDocumentKey, HANDOFF_ORIGIN } from "../src/worker.js";
 import { TOOL_HANDOFF, TOOL_RUN_CHECKS } from "../src/tools.js";
-import { makeRepoWithWorktree, write } from "./helpers.js";
+import { installFakeSsh } from "./fakessh.js";
+import { isolatedAgentFields, isolatedPersonFields, makeRepoWithWorktree, sh, write } from "./helpers.js";
 
 const CO = "co-1";
 const person = (email: string, agentId: string) => ({
   email,
   agentId,
+  ...isolatedPersonFields(agentId),
   timezone: "Europe/London",
-  nightStartHour: 22,
-  nightBudgetCapCents: 500,
+  handoverStartHour: 22,
+  handoverBudgetCapCents: 500,
   secrets: [{ name: "github", secret: { type: "secret_ref", secretId: `sec-${agentId}` } }],
 });
 const config = { people: [person("ana@example.com", "agent-ana"), person("bo@example.com", "agent-bo")] };
 
 function agent(id: string, locked = true): Agent {
   return {
+    ...isolatedAgentFields(id),
     id,
     companyId: CO,
     name: id,
@@ -51,7 +54,7 @@ describe("people and route audit", () => {
     const h = await setup();
     const data = await h.getData<{ ok: boolean; people: Array<Record<string, unknown>> }>("people", { companyId: CO });
     expect(data.ok).toBe(true);
-    expect(data.people[0]).toMatchObject({ email: "ana@example.com", maxTasksPerNight: 3 });
+    expect(data.people[0]).toMatchObject({ email: "ana@example.com", maxTasksPerHandover: 3 });
     expect(JSON.stringify(data)).not.toContain("sec-agent-ana");
   });
 
@@ -91,13 +94,14 @@ describe("handoff_to_teammate", () => {
     const h = await setup();
     h.seed({
       issues: [
-        { id: "iss-ana", companyId: CO, title: "mine", assigneeAgentId: "agent-ana" } as unknown as Issue,
+        { id: "iss-ana", companyId: CO, title: "mine", assigneeAgentId: "agent-ana", status: "todo" } as unknown as Issue,
         { id: "iss-bo", companyId: CO, title: "theirs", assigneeAgentId: "agent-bo" } as unknown as Issue,
       ],
     });
     const ok = await h.executeTool<{ error?: string }>(TOOL_HANDOFF, { toEmail: "bo@example.com", issueId: "iss-ana" }, run("agent-ana"));
     expect(ok.error).toBeUndefined();
-    expect((await h.ctx.issues.get("iss-ana", CO))?.assigneeAgentId).toBe("agent-bo");
+    // A todo ticket would wake the teammate's agent at once; a hand-off waits in backlog for its owner's approval.
+    expect(await h.ctx.issues.get("iss-ana", CO)).toMatchObject({ assigneeAgentId: "agent-bo", status: "backlog" });
     const stolen = await h.executeTool<{ error?: string }>(TOOL_HANDOFF, { toEmail: "ana@example.com", issueId: "iss-ana" }, run("agent-bo"));
     expect(stolen.error).toBeUndefined();
     const notMine = await h.executeTool<{ error?: string }>(TOOL_HANDOFF, { toEmail: "bo@example.com", issueId: "iss-bo" }, run("agent-ana"));
@@ -128,10 +132,12 @@ describe("handoff_to_teammate", () => {
 });
 
 describe("run_checks", () => {
-  async function withWorkspace(providerType = "git_worktree") {
-    const h = await setup({ cfg: { ...config, checks: { testCommand: "true" } } });
+  async function withWorkspace(providerType = "git_worktree", cfg: Record<string, unknown> = { ...config, isolation: { required: false }, checks: { testCommand: "true" } }) {
+    const h = await setup({ cfg });
     const { worktree } = makeRepoWithWorktree();
     write(worktree, "src/a.ts", "export const a = 1;\n");
+    sh(worktree, "add", "-A");
+    sh(worktree, "commit", "-q", "-m", "agent's work");
     h.seed({
       executionWorkspaces: [
         { id: "ws-1", companyId: CO, projectId: "proj-1", projectWorkspaceId: null, path: worktree, cwd: worktree, repoUrl: null, baseRef: "main", branchName: "task", providerType, providerMetadata: null } as PluginExecutionWorkspaceMetadata,
@@ -141,13 +147,47 @@ describe("run_checks", () => {
     return h;
   }
 
-  it("runs in the ticket's worktree and attaches the report to the ticket", async () => {
+  it("with isolation required and no checks sandbox, refuses to run the commands here", async () => {
+    const h = await withWorkspace("git_worktree", { ...config, checks: { testCommand: "true" } });
+    const res = await h.executeTool<{ error?: string; data: { passed: boolean; results: Array<{ name: string; summary: string }> } }>(TOOL_RUN_CHECKS, { issueId: "iss-1" }, run("agent-ana"));
+    expect(res.data.passed).toBe(false);
+    expect(res.data.results.find((r) => r.name === "tests")?.summary).toContain("the checks sandbox is not configured");
+    const audit = await h.getData<{ ok: boolean; settingsProblems: string[] }>("route-audit", { companyId: CO });
+    expect(audit.ok).toBe(false);
+    expect(audit.settingsProblems[0]).toContain("checks sandbox is not");
+  });
+
+  it("runs the commands as the owner's agent user through the checks sandbox", async () => {
+    const fake = installFakeSsh();
+    try {
+      const people = config.people.map((p) => ({ ...p, agentUser: `vt-a-${p.agentId.slice(-3)}`, checksKey: { type: "secret_ref", secretId: `key-${p.agentId}` } }));
+      const h = await withWorkspace("git_worktree", { people, checks: { testCommand: "test -f src/a.ts", sandbox: { host: "127.0.0.1", port: 22, knownHosts: "127.0.0.1 ssh-ed25519 AAAAx" } } });
+      const res = await h.executeTool<{ error?: string; data: { passed: boolean } }>(TOOL_RUN_CHECKS, { issueId: "iss-1" }, run("agent-ana"));
+      expect(res.error).toBeUndefined();
+      expect(res.data.passed).toBe(true);
+      expect(fake.args()).toEqual(expect.arrayContaining(["-l", "vt-a-ana"]));
+    } finally {
+      fake.restore();
+    }
+  });
+
+  it("in a test bed (isolation off) runs in the ticket's worktree and attaches the report to the ticket", async () => {
     const h = await withWorkspace();
     const res = await h.executeTool<{ error?: string; data: { passed: boolean; documentKey: string } }>(TOOL_RUN_CHECKS, { issueId: "iss-1" }, run("agent-ana"));
     expect(res.error).toBeUndefined();
     expect(res.data.passed).toBe(true);
     const doc = await h.ctx.issues.documents.get("iss-1", res.data.documentKey, CO);
     expect(doc?.body).toContain("Checks gate: PASSED");
+  });
+
+  it("with no test command, records NOT TESTED (never passed) in the report and the event log", async () => {
+    const h = await withWorkspace("git_worktree", { ...config, isolation: { required: false }, checks: {} });
+    const res = await h.executeTool<{ error?: string; content: string; data: { passed: boolean; result: string; documentKey: string } }>(TOOL_RUN_CHECKS, { issueId: "iss-1" }, run("agent-ana"));
+    expect(res.data).toMatchObject({ passed: false, result: "not-tested" });
+    expect(res.content).toContain("NOT TESTED");
+    const doc = await h.ctx.issues.documents.get("iss-1", res.data.documentKey, CO);
+    expect(doc?.body).toContain("Checks gate: NOT TESTED");
+    expect(doc?.body).not.toContain("PASSED");
   });
 
   it("refuses tickets that belong to another agent", async () => {

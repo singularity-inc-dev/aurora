@@ -13,11 +13,11 @@
     "node": ">=24.11"
   },
   "dependencies": {
-    "nodemailer": "10.0.16"
+    "nodemailer": "10.1.7"
   },
   "devDependencies": {
     "@types/node": "24.10.1",
     "typescript": "5.9.3",
-    "vitest": "3.2.4"
+    "vitest": "4.1.12"
   }
 }

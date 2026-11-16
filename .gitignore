@@ -148,6 +148,11 @@ vite.config.ts.timestamp-*
 # Turbo Repo
 .turbo
 
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
 # Local Paperclip test bed (never commit)
 .paperclip-data/
 .vendor/

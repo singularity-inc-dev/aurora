@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # One-time setup after install.sh (safe to run again):
 #  - your Paperclip account, as instance admin, and your company
-#  - the plugin, its settings, and your own night agent
+#  - the plugin, its settings, and your own agent, running as a system user of its own
 #  - the project repository the agents work on (if you stored github-read-token)
 #  - starts the email service and the repository sync
 #   sudo /opt/vision-and-tom/app/deploy/bin/vt-setup
 . "$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)/lib/common.sh"
+. "$KIT/lib/agents.sh"
 need_root
 load_conf
 PC_URL="http://127.0.0.1:${PAPERCLIP_PORT:-3100}"
@@ -50,6 +51,11 @@ if [ ! -d "$REPO_DIR/.git" ] && [ -n "${GITHUB_REPO:-}" ]; then
   fi
 fi
 
+say "Your agent's own system user (it cannot read Paperclip's data or secrets)"
+agent_prepare "$OWNER_EMAIL"
+trap agent_cleanup EXIT
+echo "  $AGENT_USER"
+
 say "Paperclip: your account, company, plugin and settings"
 export OWNER_NAME OWNER_EMAIL OWNER_PASSWORD OWNER_TIMEZONE COMPANY_NAME BOOTSTRAP PUBLIC_URL PC_URL APP SECRETS REPO_DIR
 export GITHUB_REPO="${GITHUB_REPO:-}" VT_INVITE_DEFAULTS="${VT_INVITE_DEFAULTS:-}"
@@ -62,7 +68,8 @@ RESULT=$("$NODE_BIN/node" -e '
     pluginPath: e.APP + "/plugin", githubRepo: e.GITHUB_REPO || null, apiKeyFile: e.SECRETS + "/paperclip-api-key",
     projectRepoPath: require("fs").existsSync(e.REPO_DIR + "/.git") ? e.REPO_DIR : null,
     invites: e.VT_INVITE_DEFAULTS ? JSON.parse(e.VT_INVITE_DEFAULTS) : undefined,
-  }));' | "$NODE_BIN/node" "$KIT/bin/vt-setup.mjs")
+  }));' | AGENT_LOGIN="$AGENT_LOGIN" "$NODE_BIN/node" "$KIT/bin/vt-setup.mjs")
+agent_cleanup
 unset OWNER_PASSWORD OWNER_PASSWORD2
 COMPANY_ID=$(printf '%s' "$RESULT" | "$NODE_BIN/node" -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(0,"utf8")).companyId)')
 sed -i "s/^VT_COMPANY_ID=.*/VT_COMPANY_ID=$COMPANY_ID/" "$ETC/email-service.env"

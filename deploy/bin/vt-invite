@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Invite one person: makes a signed link that works once, emails it, and prints it.
+# Invite one person: makes their agent's own system user, then a signed link that
+# works once, emails it, and prints it. Only an admin (root on the server) can invite.
 #   sudo vt-invite ana@example.com Europe/London
 . "$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)/lib/common.sh"
+. "$KIT/lib/agents.sh"
 need_root
 [ -n "${1:-}" ] || die "usage: sudo vt-invite <email> [timezone, e.g. Europe/London]"
 # Read the email service's settings (one KEY=value per line, as systemd reads them).
@@ -11,4 +13,7 @@ done <"$ETC/email-service.env"
 [ -n "${VT_COMPANY_ID:-}" ] || die "run vt-setup first"
 export SMTP_PASS_FILE="$SECRETS/smtp-password" PAPERCLIP_API_KEY_FILE="$SECRETS/paperclip-api-key"
 unset GITHUB_TOKEN GITHUB_TOKEN_FILE
-cd "$APP/email-service" && exec "$NODE_BIN/node" src/invite.ts "$@"
+# The new agent's own system user and fresh keys; Paperclip gets the keys, then they are deleted here.
+agent_prepare "$1"
+trap agent_cleanup EXIT
+cd "$APP/email-service" && "$NODE_BIN/node" src/invite.ts "$@"

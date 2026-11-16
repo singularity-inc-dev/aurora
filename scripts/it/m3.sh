@@ -1,4 +1,6 @@
 # Milestone 3 live checks. Sourced by scripts/integration-test.sh (uses its helpers).
+# Agents here run as Paperclip's own user, so isolation is off ("isolation":{"required":false});
+# the isolation itself is proven in scripts/it/v1a.sh.
 # Evening proposal + one-tap approval, one night routine per person, night budget
 # cap, per-step time-outs and retries. SLOW=1 also waits out a real time-out.
 
@@ -27,7 +29,7 @@ m3_agent() {
 M3_A=$(m3_agent "Ana night agent"); M3_B=$(m3_agent "Bo night agent"); M3_C=$(m3_agent "Cy night agent")
 
 m3_config() { # nightStartHour for Ana, Bo, Cy
-  api POST "/api/plugins/$PLUGIN_ID/config" "{\"companyId\":\"$M3_CID\",\"configJson\":{\"night\":{\"projectId\":\"$M3_PID\",\"stepTimeoutMinutes\":5,\"maxRetries\":1},\"people\":[
+  api POST "/api/plugins/$PLUGIN_ID/config" "{\"companyId\":\"$M3_CID\",\"configJson\":{\"isolation\":{\"required\":false},\"night\":{\"projectId\":\"$M3_PID\",\"stepTimeoutMinutes\":5,\"maxRetries\":1},\"people\":[
     {\"email\":\"ana@example.com\",\"agentId\":\"$M3_A\",\"timezone\":\"$M3_TZ\",\"nightStartHour\":$1,\"nightBudgetCapCents\":300,\"maxTasksPerNight\":2},
     {\"email\":\"bo@example.com\",\"agentId\":\"$M3_B\",\"timezone\":\"$M3_TZ\",\"nightStartHour\":$2,\"nightBudgetCapCents\":300},
     {\"email\":\"cy@example.com\",\"agentId\":\"$M3_C\",\"timezone\":\"$M3_TZ\",\"nightStartHour\":$3,\"nightBudgetCapCents\":300}]}}"
@@ -36,7 +38,7 @@ m3_config $M3_EVENING $M3_EVENING $M3_EVENING
 check "M3: save settings (evening plan window for everyone)" "$API_STATUS" "200"
 
 api GET "/api/plugins/$PLUGIN_ID/jobs"
-M3_JOB=$(echo "$API_BODY" | json 'd.find(j=>j.jobKey==="night-tick").id')
+M3_JOB=$(echo "$API_BODY" | json 'd.find(j=>j.jobKey==="handover-tick").id')
 m3_tick() { # trigger the night job and wait for its run to finish
   api POST "/api/plugins/$PLUGIN_ID/jobs/$M3_JOB/trigger" '{}'
   local run; run=$(echo "$API_BODY" | json 'd.runId')
@@ -48,7 +50,7 @@ m3_tick() { # trigger the night job and wait for its run to finish
   done
 }
 m3_night() { # owner -> field of their newest night run
-  api POST "/api/plugins/$PLUGIN_ID/data/night-status" "{\"companyId\":\"$M3_CID\",\"params\":{}}"
+  api POST "/api/plugins/$PLUGIN_ID/data/handover-status" "{\"companyId\":\"$M3_CID\",\"params\":{}}"
   echo "$API_BODY" | json "(d.data.find(r=>r.owner==='$1')||{}).$2"
 }
 m3_event() { api POST "/api/plugins/$PLUGIN_ID/data/task-event" "{\"companyId\":\"$M3_CID\",\"params\":{\"taskId\":\"$1\"}}"; echo "$API_BODY" | json "d.data.$2"; }
@@ -63,7 +65,7 @@ m3_run_of() { # wait until the agent has a run, print its newest run id
   echo "$id"
 }
 m3_propose() { # agentId runId tasksJson
-  api POST /api/plugins/tools/execute "{\"tool\":\"$PLUGIN_KEY:propose_tonight\",\"parameters\":{\"tasks\":$3},\"runContext\":{\"agentId\":\"$1\",\"runId\":\"$2\",\"companyId\":\"$M3_CID\",\"projectId\":\"$M3_PID\"}}"
+  api POST /api/plugins/tools/execute "{\"tool\":\"$PLUGIN_KEY:propose_handover\",\"parameters\":{\"tasks\":$3},\"runContext\":{\"agentId\":\"$1\",\"runId\":\"$2\",\"companyId\":\"$M3_CID\",\"projectId\":\"$M3_PID\"}}"
 }
 
 echo "-- evening proposal"
@@ -74,13 +76,13 @@ M3_PLAN=$(m3_night ana@example.com planIssueId)
 check "plan ticket is assigned to Ana's agent" "$(m3_issue "$M3_PLAN" assigneeAgentId)" "$M3_A"
 m3_tick
 api GET "/api/companies/$M3_CID/issues"
-check "still one plan per person after another tick" "$(echo "$API_BODY" | json "(Array.isArray(d)?d:d.items).filter(i=>i.originKind==='plugin:$PLUGIN_KEY:evening-plan'&&i.assigneeAgentId==='$M3_A').length")" "1"
+check "still one plan per person after another tick" "$(echo "$API_BODY" | json "(Array.isArray(d)?d:d.items).filter(i=>i.originKind==='plugin:$PLUGIN_KEY:handover-plan'&&i.assigneeAgentId==='$M3_A').length")" "1"
 
 M3_RUN_A=$(m3_run_of "$M3_A")
 check "Paperclip woke Ana's agent for the plan ticket" "$([ -n "$M3_RUN_A" ] && echo yes || echo no)" "yes"
-m3_propose "$M3_A" "$M3_RUN_A" '[{"title":"a"},{"title":"b"},{"title":"c"}]'
+m3_propose "$M3_A" "$M3_RUN_A" '[{"title":"a","claims":["a.txt"]},{"title":"b","claims":["b.txt"]},{"title":"c","claims":["c.txt"]}]'
 check "proposing more than the person's limit is refused" "$(echo "$API_BODY" | json 'd.result.error')" "propose at most 2 tasks"
-m3_propose "$M3_A" "$M3_RUN_A" '[{"title":"Fix login","description":"Users see a 500"},{"title":"Write docs"}]'
+m3_propose "$M3_A" "$M3_RUN_A" '[{"title":"Fix login","description":"Users see a 500","claims":["src/login/"]},{"title":"Write docs","claims":["docs/"]}]'
 M3_T1=$(echo "$API_BODY" | json 'd.result.data.taskIds[0]'); M3_T2=$(echo "$API_BODY" | json 'd.result.data.taskIds[1]')
 check "agent proposes 2 tasks" "$([ -n "$M3_T1" ] && [ -n "$M3_T2" ] && echo yes || echo no)" "yes"
 check "proposed tasks wait in backlog" "$(m3_issue "$M3_T1" status)" "backlog"
@@ -107,7 +109,7 @@ check "plan is approved" "$(m3_night ana@example.com status)" "approved"
 check "nothing starts before the night" "$(m3_issue "$M3_T1" status)" "backlog"
 
 M3_RUN_B=$(m3_run_of "$M3_B")
-m3_propose "$M3_B" "$M3_RUN_B" '[{"title":"Risky refactor"}]'
+m3_propose "$M3_B" "$M3_RUN_B" '[{"title":"Risky refactor","claims":["src/core/"]}]'
 M3_TB=$(echo "$API_BODY" | json 'd.result.data.taskIds[0]')
 M3_PLAN_B=$(m3_night bo@example.com planIssueId)
 api GET "/api/issues/$M3_PLAN_B/interactions"
@@ -119,7 +121,7 @@ check "event log records the rejection and reason" "$(m3_event "$M3_TB" outcome)
 
 echo "-- night routine"
 M3_RUN_C=$(m3_run_of "$M3_C")
-m3_propose "$M3_C" "$M3_RUN_C" '[{"title":"Slow task"}]'
+m3_propose "$M3_C" "$M3_RUN_C" '[{"title":"Slow task","claims":["slow.txt"]}]'
 M3_TC=$(echo "$API_BODY" | json 'd.result.data.taskIds[0]')
 M3_PLAN_C=$(m3_night cy@example.com planIssueId)
 api GET "/api/issues/$M3_PLAN_C/interactions"

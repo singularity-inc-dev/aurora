@@ -1,5 +1,7 @@
 # aurora
-A platform where every person’s AI agent, and the sub-agents it manages, work together with other people’s agents on one shared project. Each agent handles the repetitive, long-running and logical work on its own, assists with the creative work, and keeps going while its owner is offline. Nothing ships until its owner approves.
+A team handover for software teams of 2 to 10 people, built as a plugin on the open-source Paperclip platform. Each person has their own agent. The owner writes a ticket for their agent and hands over, now or on a daily schedule; the agent turns it into a plan (it may also propose tasks of its own), and nothing runs until a person approves that plan. The work comes back in a handback email, and nothing merges until the owner taps Approve. Not yet run end to end with a real Claude agent.
+
+**Putting it on a real server for the first time:** follow [FIRST-REAL-RUN.md](FIRST-REAL-RUN.md) (it uses [DEPLOY.md](DEPLOY.md) for the server). Emergency stop on the server: `sudo vt-stop`.
 
 
 ## Run Paperclip with this plugin on your laptop
@@ -9,7 +11,7 @@ Every command below is copied from the source named in brackets. Nothing here wa
 
 - [ ] Check versions: Node 24.11+, pnpm 9.15+, git (`node -v`, `pnpm -v`, `git --version`) [Paperclip `doc/plugins/LOCAL_PLUGIN_DEVELOPMENT.md`, "Prerequisites"]
 - [ ] Start Paperclip: `npx paperclipai@latest onboard --yes`. The UI is at http://localhost:3100 [Paperclip's README, as you gave it to me; I did not re-read that file]
-- [ ] Clone this repo and use the working branch: `git clone https://github.com/singularity-inc-dev/aurora.git && cd aurora && git checkout claude/eloquent-hopper-9m2e04`
+- [ ] Clone this repo and use the working branch: `git clone https://github.com/singularity-inc-dev/aurora.git && cd aurora && git checkout main`
 - [ ] Build the plugin from its folder: `pnpm install`, then `pnpm dev` (watch build, leave it running) or `pnpm build` (one build) [`LOCAL_PLUGIN_DEVELOPMENT.md`, step 3, and "Troubleshooting"]
 - [ ] In a second terminal, install it from its absolute path: `npx -y paperclipai@2026.1012.0 plugin install /absolute/path/to/plugin` (add `--local` to be explicit) [`LOCAL_PLUGIN_DEVELOPMENT.md`, step 4]
 - [ ] Confirm it loaded: `npx -y paperclipai@2026.1012.0 plugin list`, then `... plugin inspect <plugin-key>` [`LOCAL_PLUGIN_DEVELOPMENT.md`, step 5]
@@ -33,7 +35,7 @@ Milestone 1 adds the plugin skeleton and its settings: one row per person (email
 ```bash
 git clone https://github.com/singularity-inc-dev/aurora.git
 cd aurora
-git checkout claude/eloquent-hopper-9m2e04
+git checkout main
 cd plugin
 pnpm install
 pnpm test
@@ -46,9 +48,9 @@ What the tests prove:
 
 - The settings reject two people sharing one agent, the same email twice, a bad timezone, an hour outside 0-23, and a negative budget.
 - Keys must be picked from Paperclip's secret store. Pasting a raw token is rejected, and the error message never repeats the token.
-- An agent can only get its own owner's keys. Another person's key with the same name is never returned.
-- Keys are read-only unless marked `read-write`.
-- The manifest passes Paperclip's own manifest validator and asks only for `secrets.read-ref`.
+- An agent may not be given another person's key: the route audit (and `vt-check`) refuses any agent, of any kind, whose settings point at a key listed under someone else.
+- Each key has a `read-only` / `read-write` label, but nothing enforces it: the token's own scope, set where it was issued, is the only limit. Give agents tokens that are read-only at the source.
+- The manifest passes Paperclip's own manifest validator. (At milestone 1 it asked only for `secrets.read-ref`; later milestones added the permissions listed in `plugin/src/manifest.ts`.)
 
 **B. In Paperclip (about 10 minutes)**
 
@@ -66,7 +68,7 @@ Milestone 2 adds three things:
 
 - **Board-only hand-offs:** an agent passes work to a teammate only through the `handoff_to_teammate` tool, which creates or reassigns a board ticket.
 - **One worktree and branch per task:** Paperclip gives each ticket its own copy of the code on a `vt/...` branch.
-- **The checks gate:** the `run_checks` tool runs tests, lint, a change-size limit and a key scan in the ticket's worktree, and attaches the report to the ticket.
+- **The checks gate:** the `run_checks` tool runs tests, lint, a change-size limit and a key scan on the ticket's latest commit, and attaches the report to the ticket. Only committed files are checked (a fresh copy of the commit, never the working folder), because a commit is what the owner approves. With no test command set up, the result is **NOT TESTED**, never "passed"; the handback email says so next to Approve.
 
 **A. Automatic tests**
 
@@ -82,7 +84,7 @@ Expected: all unit tests pass, then `Result: … passed, 0 failed` (50 checks at
 1. Turn on per-task worktrees. This is an experimental Paperclip setting: Instance settings → Experimental → "Isolated workspaces". Through the API: `PATCH /api/instance/settings/experimental {"enableIsolatedWorkspaces": true}`.
 2. In your project, set the execution workspace policy to isolated workspaces using git worktrees, with the project workspace pointing at your repo.
 3. For each person's agent, turn off "can create agents" and "can create skills". Then open the plugin's `route-audit` view: it should say `ok: true`. Until it does, the plugin refuses hand-offs and checks for that agent.
-4. In the plugin settings, fill in the "Checks gate" box: test command, lint command, and the maximum changed lines per task (default 400).
+4. In the plugin settings, fill in the "Checks gate" box: test command, lint command, and the maximum changed lines per task (default 400). Without a test command every task is reported as NOT TESTED.
 
 **C. Updating the plugin**
 
@@ -95,13 +97,17 @@ npx -y paperclipai@2026.1012.0 plugin install "$(pwd)/plugin"
 
 ## How to test milestone 3
 
-Milestone 3 adds the evening plan and the night routine:
+Milestone 3 added the plan and the routine. Its names were "evening plan" and "night"; they are now "plan" and "handover". This is exactly how a plan is approved today:
 
-- **Evening plan:** a set number of hours before each person's night (default 2), the plugin opens an "Evening plan" ticket for their agent. The agent proposes up to 3 tasks with `propose_tonight`, either new ones or backlog tickets it already has, such as hand-offs.
-- **One-tap approval:** the owner approves or rejects the plan with one tap on the plan ticket. Only humans can answer; agents are refused.
-- **Night routine:** one per person per night. At their night start it releases the approved tasks one at a time.
-  - **Time-outs and retries:** a task that runs past the time limit is retried, by default once, then marked failed.
-  - **Budget cap:** spending is counted from the start of the night; at the person's night budget cap the routine stops and the running task is blocked.
+1. **A plan opens.** Either a set number of hours before the person's scheduled handover hour (default 2), or at once when they tap **Hand over now** (`/vt/handover` on the server). The plugin opens a ticket "Plan for <email>'s handover ..." assigned to their agent. It lists the backlog tickets already assigned to that agent.
+2. **The agent proposes.** The agent, not the owner, chooses the tasks: up to the person's "Max tasks per handover" (1 to 3), each an existing backlog ticket or a new task it writes, each with the files it may change (its claims), using the `propose_handover` tool. The owner cannot pick the tickets on the page yet.
+3. **The pre-handover check.** A task that reaches into another owner's CODEOWNERS area, or into files another owner's open task claimed first, goes to that owner's agent instead. The plan lists those as at most three questions.
+4. **One tap.** The plan ticket shows **Approve the plan** and **Not this time**. Any person signed in to Paperclip can answer it, not only the owner (Paperclip's human-only rule); agents are refused. The handback email's links are sent only to the owner, but anyone who can read that email can use them.
+5. **Work.** After approval, a Hand over now starts its first task at once; a scheduled handover starts at the person's handover hour. Tasks run one at a time, each in its own worktree.
+   - **Time-outs and retries:** a task that runs past the time limit is retried, by default once, then marked failed.
+   - **Budget cap:** spending is counted from the start of the handover; at the person's budget cap the handover stops, the running task is blocked and the agent is paused.
+6. **No answer, or "Not this time".** A plan not approved before the handover ends (default 8 hours) expires and nothing runs. "Not this time" records the reason and runs nothing.
+7. **Handback.** Each finished task comes back in the owner's handback email with Approve (Ready tasks only) and Reject links that only that owner's email receives.
 
 **A. Automatic tests**
 
@@ -114,11 +120,11 @@ SLOW=1 scripts/integration-test.sh     # also waits out a real 5-minute time-out
 **B. Try it by hand in your own Paperclip**
 
 1. Do the milestone 2 setup first (isolated workspaces, project policy, locked agents).
-2. In the plugin settings, open the "Night routine" box and set "Project for night tasks" to your project's id.
-3. Set your own night start hour to 1 to 2 hours from now. Within 5 minutes an "Evening plan for you@…" ticket appears, assigned to your agent.
-4. When your agent has proposed, the plan ticket shows "Approve tonight's plan" and "Not tonight". Tap one.
-5. At your night start, the first task moves to "todo" and your agent starts on it in its own worktree.
-6. The plugin's `night-status` view shows each person's night: proposing, awaiting approval, approved, running, finished, budget stopped, rejected or expired.
+2. In the plugin settings, open the "Handovers" box and set the project id.
+3. Set your own handover start hour to 1 to 2 hours from now. Within 5 minutes a "Plan for you@…'s handover of …" ticket appears, assigned to your agent.
+4. When your agent has proposed, the plan ticket shows "Approve the plan" and "Not this time". Tap one.
+5. At your handover hour, the first task moves to "todo" and your agent starts on it in its own worktree.
+6. The plugin's `handover-status` view shows each handover: proposing, awaiting approval, approved, running, finished, budget stopped, rejected or expired.
 
 ## How to test milestone 4
 
@@ -191,6 +197,47 @@ The rehearsal runs the real `deploy/` scripts inside a folder instead of the rea
 The rehearsal needs Linux and root (it starts a private PostgreSQL 16 as the `postgres` user); it is meant for the cloud machine.
 
 **B. On a real server:** follow [DEPLOY.md](DEPLOY.md).
+
+## How to test thin version 1 (pieces A to G)
+
+What each piece is, and what was checked, is in [PROGRESS.md](PROGRESS.md). On your laptop (Mac or Linux) you need Node 24 and pnpm (`scripts/cloud-setup.sh` shows the versions), git 2.38+, Python 3.9+ and, for the email checks, Mailpit (on a Mac: `brew install mailpit`).
+
+**1. Unit tests (about a minute)**
+
+```bash
+(cd plugin && pnpm install && pnpm test)            # 367 passed
+(cd email-service && pnpm install && pnpm test)     # 39 passed
+python3 -I tools/collision-audit/tests/test_audit.py   # 9 tests, OK
+```
+
+**2. The collision audit on a real repository (G)**
+
+```bash
+git clone https://github.com/OWNER/NAME.git /tmp/team-repo
+tools/collision-audit/collision-audit /tmp/team-repo OWNER/NAME
+```
+
+Open the `summary.md` it names at the end. It reads the history only and sends nothing anywhere. A busy repository with several people gives the most interesting result.
+
+**3. Live checks against a real Paperclip on your laptop (C, D, E, F)**
+
+```bash
+IT_ONLY=v1e scripts/integration-test.sh   # Hand over now, claims, the merge replay; about 10 minutes
+IT_ONLY=v1f scripts/integration-test.sh   # the numbers and the CSV; about 10 minutes
+IT_ONLY=z_m6 scripts/integration-test.sh   # run flags, raw counts, event-log CSV; about 10 minutes
+```
+
+Each first runs the M4 checks it builds on (one handover for Ana and Bo, the handback emails, Approve and Reject), then:
+
+- **v1e:** Ana hands over now. Her agent claims only `notes.txt` but also changes `CHANGELOG.md`, which Bo's finished, undecided work changed too. Both get an email naming the conflict, and nothing is merged.
+- **v1f:** the numbers for that team: 5 work orders, 1 approved, 1 conflict, and the CSV file. Raw counts only, no percentages.
+- **z_m6:** the run flags (tool error, checks failed, not tested, timed out, budget stop, rejected), the raw counts per person and per task kind, and the event-log CSV, read from the data the earlier scripts left behind.
+
+Every check prints PASS or FAIL, with a total at the end.
+
+**4. Only on Linux as root (the cloud test machine)**
+
+`scripts/integration-test.sh` with no `IT_ONLY` runs everything. That includes v1a and v1b (agents as their own system users over SSH, and each owner's own Claude access, with stand-ins for real accounts), v1c, v1d (the pre-handover check with a real CODEOWNERS file) and the deployment rehearsal. These create system users and start an SSH server, so they are not for your laptop; their results are in PROGRESS.md.
 
 ## Cloud environment setup
 
