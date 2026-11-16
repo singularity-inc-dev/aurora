@@ -1,7 +1,7 @@
 /**
  * Action tiers (CLAUDE.md M4). Every action the system can take is listed once.
  * - automatic: the plugin does it on its own.
- * - needs-tap: only a signed link can do it (the task owner's morning-email
+ * - needs-tap: only a signed link can do it (the task owner's handback-email
  *   link, or the invited person's own invite link).
  * - never: nothing in this system may do it.
  */
@@ -12,7 +12,7 @@ export const ACTION_TIERS = {
   "block-task": "automatic",
   "retry-task": "automatic",
   "pause-agent-at-budget-cap": "automatic",
-  "send-morning-briefing": "automatic",
+  "send-handback-email": "automatic",
   "record-event": "automatic",
   "sync-pull-request-status": "automatic",
   "merge-task": "needs-tap",
@@ -21,6 +21,8 @@ export const ACTION_TIERS = {
   // (branch protection decides; a blocked merge waits for review).
   "publish-to-github": "needs-tap",
   "join-from-invite": "needs-tap",
+  // Hand over now: only the signed-in owner, on their own page.
+  "start-handover-now": "needs-tap",
   deploy: "never",
   "push-to-base-branch-directly": "never",
   "force-push": "never",

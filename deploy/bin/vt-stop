@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Stop everything at once: no agent works, no email goes out, no Approve, Reject or
+# invite link acts. It stays stopped after a restart of the server, until: sudo vt-start
+#   sudo vt-stop
+# Caddy keeps running (the web address answers "unavailable"); backups keep running.
+# Nothing is deleted.
+. "$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)/lib/common.sh"
+need_root
+load_conf
+# Each person's agent runs as its own system user (vt-a-...); the rehearsal uses test users.
+agent_users() { if rehearsal; then echo "${VT_REHEARSAL_AGENT_USERS:-}"; else getent passwd | awk -F: '$1 ~ /^vt-a-[0-9a-f]+$/ {print $1}'; fi; }
+if rehearsal; then
+  svc stop vt-email.service
+  svc stop paperclip.service
+else
+  systemctl disable --now vt-email.service vt-repo-sync.timer paperclip.service 2>/dev/null || true
+fi
+# Programs an agent started over SSH do not end with Paperclip: end them too.
+# A program that was just ended can linger a moment as a "zombie"; those are not counted.
+running() { ps -u "$1" -o stat= 2>/dev/null | grep -qv '^Z'; }
+for _ in $(seq 1 10); do
+  busy=0
+  for u in $(agent_users); do running "$u" && { pkill -KILL -u "$u" 2>/dev/null || true; busy=1; }; done
+  [ "$busy" = 0 ] && break
+  sleep 1
+done
+left=0
+curl -fs -m 2 -o /dev/null "http://127.0.0.1:${PAPERCLIP_PORT:-3100}/api/health" 2>/dev/null && { echo "  PROBLEM  Paperclip still answers"; left=1; }
+curl -fs -m 2 -o /dev/null "http://127.0.0.1:${EMAIL_PORT:-3299}/health" 2>/dev/null && { echo "  PROBLEM  the email service still answers"; left=1; }
+for u in $(agent_users); do running "$u" && { echo "  PROBLEM  $u still runs programs"; left=1; }; done
+[ "$left" = 0 ] || die "not everything stopped (see above); try again, or restart the server"
+say "Stopped: Paperclip, the agents and the email service. Links do nothing now. Start again: sudo vt-start"

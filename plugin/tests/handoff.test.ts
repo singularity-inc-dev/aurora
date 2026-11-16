@@ -3,7 +3,7 @@ import { parseSettings, type PluginSettings } from "../src/config.js";
 import { handoffDescription, HandoffRefused, parseHandoffRequest, planHandoff } from "../src/handoff.js";
 
 function settings(): PluginSettings {
-  const base = { timezone: "Europe/London", nightStartHour: 22, nightBudgetCapCents: 500 };
+  const base = { timezone: "Europe/London", handoverStartHour: 22, handoverBudgetCapCents: 500 };
   const r = parseSettings({
     people: [
       { ...base, email: "ana@example.com", agentId: "agent-ana" },

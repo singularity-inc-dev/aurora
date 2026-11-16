@@ -8,6 +8,7 @@ import {
   getAction,
   getPullRequest,
   insertWaitingPullRequest,
+  listProcessingActions,
   releaseDecision,
   setDecisionOutcome,
   type LinkAction,
@@ -31,6 +32,8 @@ export type LinkOutcome =
  * and squash-merge it. Only the email service holds the GitHub token.
  */
 export interface PublishRequest {
+  /** The approval being published (the email service keeps track of the ones in flight). */
+  actionId: string;
   repo: string;
   /** A checkout that has the task branch (the task's worktree). */
   worktree: string;
@@ -166,39 +169,50 @@ export async function executeLink(
       return { ok: false, status: "refused", message: "Not merged: the branch changed after the email was sent." };
     }
     assertTier("publish-to-github", "needs-tap");
-    return {
-      ok: true,
-      status: "publish",
-      message: "publish to GitHub",
-      publish: {
-        repo: settings.github.repo,
-        worktree: action.workspaceCwd,
-        branch: action.branch,
-        baseBranch: baseBranchName(action.baseRef),
-        expectedHead: action.expectedHead,
-        title: `${name}: ${issue?.title ?? "night task"}`,
-        body: `Approved by ${claims.o} from the Vision and Tom morning email.\n\nTask ${name}, branch ${action.branch} at ${action.expectedHead}.`,
-      },
-    };
+    return { ok: true, status: "publish", message: "publish to GitHub", publish: publishRequestFor(settings.github.repo, action, name, issue?.title ?? null) };
+  }
+  return mergeLocally(ctx, companyId, action, name, issue?.title ?? null, Boolean(issue));
+}
+
+/** What the email service must publish for an approved task (GitHub mode). */
+function publishRequestFor(repo: string, action: LinkAction, name: string, title: string | null): PublishRequest {
+  return {
+    actionId: action.id,
+    repo,
+    worktree: action.workspaceCwd ?? "",
+    branch: action.branch ?? "",
+    baseBranch: baseBranchName(action.baseRef ?? ""),
+    expectedHead: action.expectedHead ?? "",
+    title: `${name}: ${title ?? "handover task"}`,
+    body: `Approved by ${action.owner} from the Vision and Tom morning email.\n\nTask ${name}, branch ${action.branch} at ${action.expectedHead}.`,
+  };
+}
+
+/** Approve without GitHub: merge into the local base branch (safe to repeat: an already merged head counts as merged). */
+async function mergeLocally(ctx: PluginContext, companyId: string, action: LinkAction, name: string, title: string | null, hasIssue: boolean): Promise<LinkOutcome> {
+  if (!action.workspaceCwd || !action.branch || !action.baseRef || !action.expectedHead) {
+    await releaseDecision(ctx.db, action.taskId, action.id);
+    await finishAction(ctx.db, action.id, "refused", "nothing to merge");
+    return { ok: false, status: "refused", message: "There is nothing to merge for this task." };
   }
   const merge = await mergeApproved({
     cwd: action.workspaceCwd,
     branch: action.branch,
     baseRef: action.baseRef,
     expectedHead: action.expectedHead,
-    message: `Merge ${name}: ${issue?.title ?? ""} (approved by ${claims.o} via Vision and Tom)`,
+    message: `Merge ${name}: ${title ?? ""} (approved by ${action.owner} via Vision and Tom)`,
   });
   if (!merge.ok) {
-    await releaseDecision(ctx.db, claims.t, action.id);
+    await releaseDecision(ctx.db, action.taskId, action.id);
     await finishAction(ctx.db, action.id, "refused", merge.message);
     return { ok: false, status: "refused", message: `Not merged: ${merge.message}.` };
   }
-  await setDecisionOutcome(ctx.db, claims.t, "accepted", null);
-  if (issue) {
-    await ctx.issues.update(claims.t, { status: "done" }, companyId);
+  await setDecisionOutcome(ctx.db, action.taskId, "accepted", null);
+  if (hasIssue) {
+    await ctx.issues.update(action.taskId, { status: "done" }, companyId);
     await ctx.issues.createComment(
-      claims.t,
-      `Approved by ${claims.o} from the morning email. Merged ${action.branch} at ${action.expectedHead.slice(0, 7)} into ${action.baseRef} (${merge.mergeSha.slice(0, 7)}).`,
+      action.taskId,
+      `Approved by ${action.owner} from the morning email. Merged ${action.branch} at ${action.expectedHead.slice(0, 7)} into ${action.baseRef} (${merge.mergeSha.slice(0, 7)}).`,
       companyId,
     );
   }
@@ -227,38 +241,127 @@ export async function recordPublishResult(
   if (claims.k !== "approve" || action.state !== "processing" || ev?.decision_action_id !== action.id) {
     return { ok: false, status: "refused", message: "This approval is not in progress." };
   }
-  const issue = await ctx.issues.get(claims.t, companyId);
-  const name = issue?.identifier ?? claims.t;
+  return applyPublishResult(ctx, companyId, action, raw);
+}
+
+/** Record what GitHub did for an approval that is in progress (its task's decision belongs to it). */
+async function applyPublishResult(ctx: PluginContext, companyId: string, action: LinkAction, raw: Record<string, unknown>): Promise<LinkOutcome> {
+  const owner = action.owner;
+  const taskId = action.taskId;
+  const issue = await ctx.issues.get(taskId, companyId);
+  const name = issue?.identifier ?? taskId;
   const number = Number(raw.number);
   const url = typeof raw.url === "string" && /^https?:\/\//.test(raw.url) ? raw.url : null;
   const hasPr = Number.isInteger(number) && number > 0 && url !== null;
 
   if (raw.result === "merged" && hasPr) {
     const mergeSha = typeof raw.mergeSha === "string" && SHA_RE.test(raw.mergeSha) ? raw.mergeSha : null;
-    await insertWaitingPullRequest(ctx.db, { taskId: claims.t, companyId, owner: claims.o, actionId: action.id, number, url, headSha: action.expectedHead ?? "", reason: null });
-    await closePullRequest(ctx.db, claims.t, "merged", mergeSha);
-    await setDecisionOutcome(ctx.db, claims.t, "accepted", null);
+    await insertWaitingPullRequest(ctx.db, { taskId, companyId, owner, actionId: action.id, number, url, headSha: action.expectedHead ?? "", reason: null });
+    await closePullRequest(ctx.db, taskId, "merged", mergeSha);
+    await setDecisionOutcome(ctx.db, taskId, "accepted", null);
     if (issue) {
-      await ctx.issues.update(claims.t, { status: "done" }, companyId);
-      await ctx.issues.createComment(claims.t, `Approved by ${claims.o} from the morning email. Pull request #${number} was squash-merged on GitHub: ${url}`, companyId);
+      await ctx.issues.update(taskId, { status: "done" }, companyId);
+      await ctx.issues.createComment(taskId, `Approved by ${owner} from the morning email. Pull request #${number} was squash-merged on GitHub: ${url}`, companyId);
     }
     await finishAction(ctx.db, action.id, "done", `merged on GitHub: pull request #${number}`);
     return { ok: true, status: "merged", message: `${name} was merged on GitHub (pull request #${number}).` };
   }
   if (raw.result === "waiting" && hasPr) {
     const reason = typeof raw.reason === "string" && raw.reason.trim() ? raw.reason.replace(/\s+/g, " ").trim().slice(0, 200) : "branch protection requires a review";
-    await insertWaitingPullRequest(ctx.db, { taskId: claims.t, companyId, owner: claims.o, actionId: action.id, number, url, headSha: action.expectedHead ?? "", reason });
+    await insertWaitingPullRequest(ctx.db, { taskId, companyId, owner, actionId: action.id, number, url, headSha: action.expectedHead ?? "", reason });
     if (issue) {
-      await ctx.issues.update(claims.t, { status: "in_review" }, companyId);
-      await ctx.issues.createComment(claims.t, `Approved by ${claims.o}. Pull request #${number} is waiting for review on GitHub (${reason}): ${url}`, companyId);
+      await ctx.issues.update(taskId, { status: "in_review" }, companyId);
+      await ctx.issues.createComment(taskId, `Approved by ${owner}. Pull request #${number} is waiting for review on GitHub (${reason}): ${url}`, companyId);
     }
     await finishAction(ctx.db, action.id, "done", `waiting for review: pull request #${number}`);
     return { ok: true, status: "waiting", message: `${name}: pull request #${number} is waiting for review on GitHub (${reason}). ${url}` };
   }
   const message = typeof raw.message === "string" && raw.message.trim() ? raw.message.replace(/\s+/g, " ").trim().slice(0, 200) : "GitHub did not accept the change";
-  await releaseDecision(ctx.db, claims.t, action.id);
+  await releaseDecision(ctx.db, taskId, action.id);
   await finishAction(ctx.db, action.id, "refused", message);
   return { ok: false, status: "refused", message: `Not merged: ${message}.` };
+}
+
+/** A click normally takes seconds; one still in progress after this long was interrupted (a crash or restart). */
+export const STUCK_AFTER_MINUTES = 15;
+/** The email service may ask for a shorter wait (test beds), never shorter than this. */
+export const MIN_STUCK_MINUTES = 1;
+
+function stuckMinutes(raw: unknown): number {
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= MIN_STUCK_MINUTES ? Math.min(n, 24 * 60) : STUCK_AFTER_MINUTES;
+}
+
+const isStuck = (action: LinkAction, minutes: number, now: Date) => action.state === "processing" && (!action.usedAt || now.getTime() - action.usedAt.getTime() >= minutes * 60_000);
+
+/** An interrupted approval whose task's decision it still holds, with nothing decided yet. */
+async function heldUndecided(ctx: PluginContext, action: LinkAction): Promise<boolean> {
+  const ev = await getTaskRow(ctx.db, action.taskId);
+  return ev?.decision_action_id === action.id && (ev.outcome === null || ev.outcome === undefined);
+}
+
+export interface StuckApproval {
+  actionId: string;
+  taskId: string;
+  publish: PublishRequest;
+}
+
+/**
+ * GitHub mode: approvals that were interrupted between the tap and the email
+ * service reporting back. Only the email service can see GitHub, so it finishes
+ * them (recoverApproval); the owner's tap and the version check still apply.
+ */
+export async function listStuckApprovals(ctx: PluginContext, settings: PluginSettings, companyId: string, rawMinutes: unknown, now: Date): Promise<StuckApproval[]> {
+  if (!settings.github) return [];
+  const minutes = stuckMinutes(rawMinutes);
+  const out: StuckApproval[] = [];
+  for (const action of await listProcessingActions(ctx.db, companyId)) {
+    if (action.kind !== "approve" || !isStuck(action, minutes, now) || !(await heldUndecided(ctx, action))) continue;
+    if (!action.workspaceCwd || !action.branch || !action.baseRef || !action.expectedHead) continue;
+    const issue = await ctx.issues.get(action.taskId, companyId);
+    out.push({ actionId: action.id, taskId: action.taskId, publish: publishRequestFor(settings.github.repo, action, issue?.identifier ?? action.taskId, issue?.title ?? null) });
+  }
+  return out;
+}
+
+/** The email service finished (or gave up on) an interrupted approval it found with listStuckApprovals. */
+export async function recoverApproval(ctx: PluginContext, settings: PluginSettings, companyId: string, raw: Record<string, unknown>, now: Date): Promise<LinkOutcome> {
+  const action = typeof raw.actionId === "string" ? await getAction(ctx.db, raw.actionId) : null;
+  if (!settings.github || !action || action.companyId !== companyId || action.kind !== "approve" || !isStuck(action, stuckMinutes(raw.olderThanMinutes), now) || !(await heldUndecided(ctx, action))) {
+    return { ok: false, status: "refused", message: "This approval is not waiting to be recovered." };
+  }
+  return applyPublishResult(ctx, companyId, action, raw);
+}
+
+/**
+ * Run by the handover tick: finish or release clicks that were interrupted.
+ * - The task was already decided: only the link's record is finished.
+ * - The click never took the task's decision: the link is closed, the task is unchanged.
+ * - A Reject (its reason was lost) or a GitHub approval the email service could not finish
+ *   within a day: the task is released and comes back in the next email with fresh links.
+ * - An approval without GitHub: the merge is finished (the version check still applies).
+ * GitHub approvals are otherwise left to the email service (listStuckApprovals).
+ */
+export async function recoverInterruptedActions(ctx: PluginContext, settings: PluginSettings, companyId: string, now: Date): Promise<number> {
+  let recovered = 0;
+  for (const action of await listProcessingActions(ctx.db, companyId)) {
+    if (!isStuck(action, STUCK_AFTER_MINUTES, now)) continue;
+    const ev = await getTaskRow(ctx.db, action.taskId);
+    const outcome = (ev?.outcome as string | null | undefined) ?? null;
+    if (ev?.decision_action_id !== action.id) {
+      await finishAction(ctx.db, action.id, "refused", "interrupted before it changed anything");
+    } else if (outcome === "accepted" || outcome === "rejected") {
+      await finishAction(ctx.db, action.id, "done", `${outcome} (recorded after an interruption)`);
+    } else if (action.kind === "approve" && !settings.github) {
+      const issue = await ctx.issues.get(action.taskId, companyId);
+      await mergeLocally(ctx, companyId, action, issue?.identifier ?? action.taskId, issue?.title ?? null, Boolean(issue));
+    } else if (action.kind === "reject" || isStuck(action, 24 * 60, now)) {
+      await releaseDecision(ctx.db, action.taskId, action.id);
+      await finishAction(ctx.db, action.id, "refused", "interrupted; the task comes back in the next email");
+    } else continue;
+    recovered += 1;
+  }
+  return recovered;
 }
 
 /** A waiting pull request was merged or closed on GitHub (reported by the email service's sync). */

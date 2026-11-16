@@ -29,4 +29,7 @@ const config = {
   telemetry: { enabled: false },
   updates: { checkEnabled: false },
 };
-writeFileSync(file, JSON.stringify(config, null, 2), { mode: 0o600 });
+// Unchanged settings leave the file alone, so an update (vt-update) can tell when Paperclip needs a restart.
+const { $meta: _oldMeta, ...oldRest } = old;
+const { $meta: _newMeta, ...newRest } = config;
+if (JSON.stringify(oldRest) !== JSON.stringify(newRest)) writeFileSync(file, JSON.stringify(config, null, 2), { mode: 0o600 });
