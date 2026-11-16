@@ -93,7 +93,7 @@ People (≥3c) = distinct non-bot authors with ≥3 commits in the window (2026-
 
 **Replaced on 31 October** (DEVIATIONS.md, A9 and Top 10 #1). The earlier wording here quoted the five-repo batch above (three of its clones were truncated) and a 33% rate from a 20-team replay that cannot be reproduced (see below). Use only the corrected, measured run:
 
-> "We built a read-only collision audit. In a corrected run on 7 public repositories (56 days, September to October 2026, 8 to 47 regular contributors each), same-day edits to the same file happened 0.4 to 36 times a week. 1 of 104 clean replays of those overlaps conflicted in git. This measures people, not agents; the pilot will measure agents."
+> "We built a read-only collision audit. In a corrected run on 7 public repositories (56 days, September to October 2026, 8 to 47 regular contributors each), same-day edits to the same file happened 0.4 to 36 times a week. Replaying those overlaps found 1 conflict in more than 100 clean replays. This measures people, not agents; the pilot will measure agents."
 
 Do not cite 33% (or "1.5 to 4 conflicts a week"). If it must be mentioned, call it "an earlier, unreproduced estimate".
 
