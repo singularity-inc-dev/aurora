@@ -294,6 +294,66 @@ class AuditTest(unittest.TestCase):
             self.assertIn("truncated", output)
             self.assertIn("shallow-since", output)
 
+    def _run(self, clone, out, env=None, days=None):
+        cmd = [os.path.join(TOOL, "collision-audit"), clone, "acme/app", "--out", out]
+        if days:
+            cmd += ["--days", str(days)]
+        p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=dict(os.environ, **(env or {})))
+        return p.returncode, p.stdout.decode()
+
+    def test_refuses_a_real_depth_truncated_clone(self):
+        """git clone --depth 3 cuts the history inside the window: refused, not counted."""
+        src = os.path.join(self.tmp, "depth-src")
+        shutil.copytree(self.clone, src)
+        dest = os.path.join(self.tmp, "depth3")
+        subprocess.run(["git", "clone", "-q", "--depth", "3", "file://" + src, dest], check=True,
+                       env=dict(os.environ, GIT_CONFIG_GLOBAL=os.devnull))
+        code, output = self._run(dest, os.path.join(self.tmp, "out-depth"))
+        self.assertNotEqual(code, 0, output)
+        self.assertIn("truncated", output)
+
+    def test_accepts_shallow_since_clone_that_starts_before_the_window(self):
+        """--shallow-since with a buffer before the window start keeps a commit before it: accepted."""
+        src = os.path.join(self.tmp, "since-src")
+        os.mkdir(src)
+        r = Repo(src)
+        for days, name in ((100, "old"), (45, "buffer"), (10, "recent")):
+            r.commit(ANA, r.now - days * DAY, name, {"f.py": [name]})
+        dest = os.path.join(self.tmp, "since60")
+        since = time.strftime("%Y-%m-%d", time.gmtime(time.time() - 60 * DAY))
+        subprocess.run(["git", "clone", "-q", "--shallow-since=" + since, "file://" + src, dest], check=True,
+                       env=dict(os.environ, GIT_CONFIG_GLOBAL=os.devnull))
+        self.assertEqual(subprocess.run(["git", "-C", dest, "rev-parse", "--is-shallow-repository"], stdout=subprocess.PIPE).stdout.strip(), b"true")
+        self.assertEqual(subprocess.run(["git", "-C", dest, "rev-list", "--count", "HEAD"], stdout=subprocess.PIPE).stdout.strip(), b"2")
+        # Window of 30 days: the 45-day-old commit lies before it, so the clone covers it.
+        code, output = self._run(dest, os.path.join(self.tmp, "out-since"), days=30)
+        self.assertEqual(code, 0, output)
+        # A 50-day window starts at -50 days, but the clone's oldest commit is at -45 days (inside that
+        # window) and nothing older was kept: that is a truncated clone and must be refused.
+        code, output = self._run(dest, os.path.join(self.tmp, "out-since2"), days=50)
+        self.assertNotEqual(code, 0, output)
+        self.assertIn("truncated", output)
+
+    def test_fixed_end_date_moves_the_window(self):
+        """COLLISION_AUDIT_UNTIL fixes the end of the window: the same answer on every run and step."""
+        until = time.strftime("%Y-%m-%d", time.gmtime(time.time() - 20 * DAY))
+        out = os.path.join(self.tmp, "out-until")
+        code, output = self._run(self.clone, out, env={"COLLISION_AUDIT_UNTIL": until})
+        self.assertEqual(code, 0, output)
+        overlap = json.load(open(os.path.join(out, "overlap.json")))
+        weekly = json.load(open(os.path.join(out, "weekly.json")))
+        self.assertTrue(overlap["window"]["until"].startswith(until + "T00:00:00"), overlap["window"])
+        # The two commits made 100 days ago (Ana and Bo, same file, same day) are now inside the window;
+        # the overlap ten days ago is now outside it.
+        self.assertEqual(len(overlap["overlaps"]), 1)
+        self.assertEqual(overlap["overlaps"][0]["a"]["author"] + overlap["overlaps"][0]["b"]["author"], "ana@example.combo@example.com")
+        self.assertEqual(sum(w["sameDay"] for w in weekly["weeks"]), 1)
+
+    def test_bad_end_date_is_refused(self):
+        code, output = self._run(self.clone, os.path.join(self.tmp, "out-bad"), env={"COLLISION_AUDIT_UNTIL": "yesterday"})
+        self.assertNotEqual(code, 0)
+        self.assertIn("COLLISION_AUDIT_UNTIL", output)
+
     def test_full_clone_not_refused(self):
         """A full clone (no .git/shallow) is never refused on depth grounds."""
         p = subprocess.run(

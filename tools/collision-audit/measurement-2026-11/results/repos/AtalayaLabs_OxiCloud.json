@@ -1,0 +1,71 @@
+{
+  "activeFrom": "2026-02-02",
+  "activeWeeks": 38.857142857142854,
+  "bin": "11-30",
+  "busiestDay": "2026-03-05",
+  "busiestDayOverlaps": 82,
+  "busiestDayShare": 0.23098591549295774,
+  "cleanReplays": 53,
+  "commits": 2236,
+  "conflictFiles": [
+    [
+      "src/infrastructure/auth_factory.rs",
+      1
+    ]
+  ],
+  "conflictsAll": 1,
+  "conflictsIndependent": 1,
+  "coreScreened": 12,
+  "independentPairs": 52,
+  "manifest": {
+    "bin": "11-30",
+    "branch": "main",
+    "cloneSince": "full clone",
+    "commitsInClone": 2818,
+    "finished": "2026-11-01T18:07:16Z",
+    "git": "2.43.0",
+    "head": "36c5d43ae7cc7c54f2c5c08bdf1066bb44b52e07",
+    "name": "AtalayaLabs/OxiCloud",
+    "note": "full clone: the shallow-since clone was refused by the truncated-clone guard",
+    "python": "3.13.18",
+    "started": "2026-11-01T18:07:05Z",
+    "status": "ok"
+  },
+  "name": "AtalayaLabs/OxiCloud",
+  "notReplayable": 97,
+  "overlaps": 355,
+  "overlapsPerWeek": 6.808219178082191,
+  "overlapsPerWeekActive": 9.136029411764707,
+  "peopleTool": 13,
+  "rateBasis": "independent",
+  "replayed": 150,
+  "threeDayPerWeek": 14.88,
+  "threeDayPerWeekActive": 19.967647058823534,
+  "topFiles": [
+    [
+      "src/common/di.rs",
+      14
+    ],
+    [
+      "src/interfaces/api/handlers/webdav_handler.rs",
+      13
+    ],
+    [
+      "src/interfaces/api/handlers/file_handler.rs",
+      12
+    ],
+    [
+      "src/infrastructure/repositories/pg/file_blob_read_repository.rs",
+      10
+    ],
+    [
+      "src/interfaces/api/handlers/auth_handler.rs",
+      10
+    ]
+  ],
+  "window": {
+    "days": 365,
+    "since": "2025-11-01T00:00:00+00:00",
+    "until": "2026-11-01T00:00:00+00:00"
+  }
+}

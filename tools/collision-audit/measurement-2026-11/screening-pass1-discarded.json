@@ -1,0 +1,2314 @@
+{
+ "candidates": [
+  {
+   "name": "chaitin/SafeLine",
+   "defaultBranch": "main",
+   "stars": 23134,
+   "description": "SafeLine is a self-hosted WAF(Web Application Firewall) / reverse proxy to protect your web apps from attacks and exploits.",
+   "sizeKB": 80160,
+   "commits": 26,
+   "nonBotCommits": 26,
+   "lastCommit": "2026-10-22",
+   "authors": 7,
+   "core": 1,
+   "topAuthors": [
+    [
+     "jialong.wang",
+     12
+    ],
+    [
+     "wenwen",
+     3
+    ],
+    [
+     "Jerry",
+     3
+    ],
+    [
+     "Stayer",
+     3
+    ],
+    [
+     "\u4e8e\u946b",
+     3
+    ],
+    [
+     "Londo",
+     1
+    ],
+    [
+     "Ankush Kunwar",
+     1
+    ]
+   ],
+   "accepted": false,
+   "reason": "fewer than 100 commits in the window"
+  },
+  {
+   "name": "shopware/shopware",
+   "defaultBranch": "trunk",
+   "stars": 3464,
+   "description": "Shopware 6 is an open commerce platform based on Symfony Framework and Vue and supported by a worldwide community and more than 3.100 community extensions",
+   "sizeKB": 557614,
+   "commits": 3416,
+   "nonBotCommits": 3317,
+   "lastCommit": "2026-10-30",
+   "authors": 232,
+   "core": 58,
+   "topAuthors": [
+    [
+     "Nicolas Fortier",
+     359
+    ],
+    [
+     "Jonas Elfering",
+     270
+    ],
+    [
+     "Lars Kemper",
+     109
+    ],
+    [
+     "Michael Telgmann",
+     108
+    ],
+    [
+     "Max Stegmeyer",
+     105
+    ],
+    [
+     "Vin Le",
+     104
+    ],
+    [
+     "Marcel Brode",
+     94
+    ],
+    [
+     "Bj\u00f6rn Meyer",
+     89
+    ],
+    [
+     "Aydin Hassan",
+     77
+    ],
+    [
+     "Florian Ruppel",
+     75
+    ],
+    [
+     "Marcus M\u00fcller",
+     74
+    ],
+    [
+     "Shyim",
+     65
+    ]
+   ],
+   "bin": null,
+   "accepted": false,
+   "reason": "58 core people: outside 2-30 or exactly 4"
+  },
+  {
+   "name": "surajverma/homehub",
+   "defaultBranch": "main",
+   "stars": 1250,
+   "description": "A private, lightweight, no-login, self-hosted family utility for your home and it comes with no config PWA.",
+   "sizeKB": 18562,
+   "commits": 32,
+   "nonBotCommits": 30,
+   "lastCommit": "2026-10-31",
+   "authors": 3,
+   "core": 1,
+   "topAuthors": [
+    [
+     "Suraj Verma",
+     28
+    ],
+    [
+     "qwist1233-cpu",
+     1
+    ],
+    [
+     "ump45nose",
+     1
+    ]
+   ],
+   "accepted": false,
+   "reason": "fewer than 100 commits in the window"
+  },
+  {
+   "name": "kalcaddle/KodExplorer",
+   "defaultBranch": "master",
+   "stars": 6398,
+   "description": "A web based file manager,web IDE / browser based code editor",
+   "sizeKB": 57880,
+   "commits": 4,
+   "nonBotCommits": 4,
+   "lastCommit": "2026-10-09",
+   "authors": 1,
+   "core": 0,
+   "topAuthors": [
+    [
+     "warlee",
+     4
+    ]
+   ],
+   "accepted": false,
+   "reason": "fewer than 100 commits in the window"
+  },
+  {
+   "name": "owu/wsl-dashboard",
+   "defaultBranch": "main",
+   "stars": 4061,
+   "description": "A GUI manager for WSL featuring a modern UI \u2014 a lightweight, low\u2011memory, high\u2011performance dashboard to manage WSL instances.  Install, list, start, stop, unregister, and configure your WSL distros\u200b from one place.",
+   "sizeKB": 29273,
+   "commits": 36,
+   "nonBotCommits": 36,
+   "lastCommit": "2026-10-10",
+   "authors": 1,
+   "core": 1,
+   "topAuthors": [
+    [
+     "owu",
+     36
+    ]
+   ],
+   "accepted": false,
+   "reason": "fewer than 100 commits in the window"
+  },
+  {
+   "name": "peach-mitao/peach",
+   "defaultBranch": "master",
+   "stars": 13902,
+   "description": "Peach: Local-first video metadata scraper and media manager.",
+   "sizeKB": 92889,
+   "commits": 3797,
+   "nonBotCommits": 3791,
+   "lastCommit": "2026-11-01",
+   "authors": 10,
+   "core": 3,
+   "topAuthors": [
+    [
+     "longmeidao",
+     3501
+    ],
+    [
+     "Peach local maintenance",
+     263
+    ],
+    [
+     "Codex",
+     13
+    ],
+    [
+     "simon1561",
+     6
+    ],
+    [
+     "peach-patcher",
+     2
+    ],
+    [
+     "FriendlyPasser",
+     2
+    ],
+    [
+     "kcinzgg",
+     1
+    ],
+    [
+     "RGB-loop",
+     1
+    ],
+    [
+     "Codex",
+     1
+    ],
+    [
+     "\u6cf7\u7f8e\u9053",
+     1
+    ]
+   ],
+   "bin": "2-3",
+   "accepted": true,
+   "reason": "accepted into bin 2-3"
+  },
+  {
+   "name": "timothepoznanski/poznote",
+   "defaultBranch": "main",
+   "stars": 977,
+   "description": "Powerful note-taking without the hassle.",
+   "sizeKB": 139245,
+   "commits": 3255,
+   "nonBotCommits": 3249,
+   "lastCommit": "2026-10-31",
+   "authors": 16,
+   "core": 1,
+   "topAuthors": [
+    [
+     "timothepoznanski",
+     3219
+    ],
+    [
+     "Grep Ankh",
+     5
+    ],
+    [
+     "Andreas Lenhardt",
+     4
+    ],
+    [
+     "Alec Pinson",
+     4
+    ],
+    [
+     "coraldx5",
+     3
+    ],
+    [
+     "Ramon Bresc\u00f3",
+     2
+    ],
+    [
+     "GOODJINC",
+     2
+    ],
+    [
+     "Aaron Ky-Riesenbach",
+     2
+    ],
+    [
+     "tonysantacruz",
+     1
+    ],
+    [
+     "Anupam Mediratta",
+     1
+    ],
+    [
+     "Maicon Berlofa",
+     1
+    ],
+    [
+     "KozakLordOfMatrix",
+     1
+    ]
+   ],
+   "bin": null,
+   "accepted": false,
+   "reason": "1 core people: outside 2-30 or exactly 4"
+  },
+  {
+   "name": "Shudesu/line-harness-oss",
+   "defaultBranch": "main",
+   "stars": 613,
+   "description": "L Harness \u2014 self-hosted LINE Official Account CRM: step messaging, broadcasts, forms and reservations, with MCP and TypeScript SDK. By Shudesu (\u91ce\u7530\u4fee\u4e00).",
+   "sizeKB": 11044,
+   "commits": 288,
+   "nonBotCommits": 248,
+   "lastCommit": "2026-10-27",
+   "authors": 17,
+   "core": 3,
+   "topAuthors": [
+    [
+     "Shudesu",
+     147
+    ],
+    [
+     "aiagentmini-bit",
+     65
+    ],
+    [
+     "aiagentmini-bit",
+     14
+    ],
+    [
+     "Kazuki Yokoyama",
+     3
+    ],
+    [
+     "hyper10-n",
+     2
+    ],
+    [
+     "Kan Ninomiya",
+     2
+    ],
+    [
+     "Shudesu",
+     2
+    ],
+    [
+     "Nakano as a Service",
+     2
+    ],
+    [
+     "\u6797 \u99ff\u752b (Shunsuke Hayashi)",
+     2
+    ],
+    [
+     "daikisoga",
+     2
+    ],
+    [
+     "Nobu",
+     1
+    ],
+    [
+     "sum1-wt",
+     1
+    ]
+   ],
+   "bin": "2-3",
+   "accepted": true,
+   "reason": "accepted into bin 2-3"
+  },
+  {
+   "name": "BlessedRebuS/Krawl",
+   "defaultBranch": "main",
+   "stars": 826,
+   "description": "Krawl is a customizable, lightweight, cloud-native web deception server and anti-crawler that creates fake web applications with low-hanging vulnerabilities using realistic, randomly generated decoy data and AI-generated HTML templates.",
+   "sizeKB": 15211,
+   "commits": 886,
+   "nonBotCommits": 862,
+   "lastCommit": "2026-10-31",
+   "authors": 18,
+   "core": 7,
+   "topAuthors": [
+    [
+     "Lorenzo Venerandi",
+     599
+    ],
+    [
+     "BlessedRebuS",
+     65
+    ],
+    [
+     "carnivuth",
+     56
+    ],
+    [
+     "Patrick Di Fazio",
+     52
+    ],
+    [
+     "Patrick Di Fazio",
+     23
+    ],
+    [
+     "Phillip Tarrant",
+     19
+    ],
+    [
+     "Lorenzo Venerandi",
+     10
+    ],
+    [
+     "Matthias-vdE",
+     9
+    ],
+    [
+     "federicolepera",
+     8
+    ],
+    [
+     "Leonardo Bambini",
+     6
+    ],
+    [
+     "Patrick Di Fazio",
+     4
+    ],
+    [
+     "Luca3700",
+     4
+    ]
+   ],
+   "bin": "7-10",
+   "accepted": true,
+   "reason": "accepted into bin 7-10"
+  },
+  {
+   "name": "elie222/rakazo",
+   "defaultBranch": "main",
+   "stars": 6524,
+   "description": "Open-source Grok Bot alternative. Choose your own model and sandbox.",
+   "sizeKB": 128675,
+   "commits": 2446,
+   "nonBotCommits": 2446,
+   "lastCommit": "2026-10-31",
+   "authors": 172,
+   "core": 21,
+   "topAuthors": [
+    [
+     "Eliezer Steinbock",
+     1283
+    ],
+    [
+     "Cursor Agent",
+     169
+    ],
+    [
+     "ald3b",
+     115
+    ],
+    [
+     "Zhang Ning",
+     94
+    ],
+    [
+     "RJ",
+     65
+    ],
+    [
+     "yxr-2025",
+     62
+    ],
+    [
+     "zicochaos",
+     44
+    ],
+    [
+     "Fatih Karahan",
+     34
+    ],
+    [
+     "Smelter Labs",
+     31
+    ],
+    [
+     "David Robertson",
+     29
+    ],
+    [
+     "luinbytes",
+     25
+    ],
+    [
+     "Brice Le Blevennec",
+     23
+    ]
+   ],
+   "bin": "11-30",
+   "accepted": true,
+   "reason": "accepted into bin 11-30"
+  },
+  {
+   "name": "serenedb/serenedb",
+   "defaultBranch": "main",
+   "stars": 954,
+   "description": "The First Real-Time Search Analytics Database",
+   "sizeKB": 264073,
+   "commits": 833,
+   "nonBotCommits": 833,
+   "lastCommit": "2026-10-31",
+   "authors": 23,
+   "core": 9,
+   "topAuthors": [
+    [
+     "Valery Mironov",
+     183
+    ],
+    [
+     "gnusi",
+     160
+    ],
+    [
+     "pilik",
+     118
+    ],
+    [
+     "Mikhail Kornaukhov",
+     92
+    ],
+    [
+     "codeworse",
+     65
+    ],
+    [
+     "Andrei Lobov",
+     63
+    ],
+    [
+     "Pavel Ivanov",
+     60
+    ],
+    [
+     "iljaname",
+     27
+    ],
+    [
+     "Alexander Malandin",
+     10
+    ],
+    [
+     "mbkkt",
+     8
+    ],
+    [
+     "Shaimerdanov  Almaz",
+     7
+    ],
+    [
+     "aksel2904",
+     6
+    ]
+   ],
+   "bin": "7-10",
+   "accepted": true,
+   "reason": "accepted into bin 7-10"
+  },
+  {
+   "name": "foru17/neko-master",
+   "defaultBranch": "main",
+   "stars": 4227,
+   "description": "A modern and elegant dashboard for network traffic visualization and analysis.",
+   "sizeKB": 22843,
+   "commits": 208,
+   "nonBotCommits": 208,
+   "lastCommit": "2026-10-10",
+   "authors": 7,
+   "core": 1,
+   "topAuthors": [
+    [
+     "luolei",
+     202
+    ],
+    [
+     "GodD6366",
+     1
+    ],
+    [
+     "heroixinu",
+     1
+    ],
+    [
+     "Hobson",
+     1
+    ],
+    [
+     "zml",
+     1
+    ],
+    [
+     "zj1123581321",
+     1
+    ],
+    [
+     "cesar",
+     1
+    ]
+   ],
+   "bin": null,
+   "accepted": false,
+   "reason": "1 core people: outside 2-30 or exactly 4"
+  },
+  {
+   "name": "mercurjs/mercur",
+   "defaultBranch": "main",
+   "stars": 1876,
+   "description": "The complete open source platform to run your entire marketplace. Storefront, vendor panel, admin console, and integrations in one enterprise-grade platform you own.",
+   "sizeKB": 222834,
+   "commits": 1063,
+   "nonBotCommits": 1008,
+   "lastCommit": "2026-10-30",
+   "authors": 15,
+   "core": 4,
+   "topAuthors": [
+    [
+     "vholik",
+     527
+    ],
+    [
+     "Viktor Holik",
+     344
+    ],
+    [
+     "Jakub Sieradzki",
+     63
+    ],
+    [
+     "Jakub Sieradzki",
+     56
+    ],
+    [
+     "Michael Lip",
+     3
+    ],
+    [
+     "kjedras",
+     3
+    ],
+    [
+     "Mohammad Mahdi Arshadi",
+     2
+    ],
+    [
+     "Ashish Bansal",
+     2
+    ],
+    [
+     "Grzegorz Tomaka",
+     2
+    ],
+    [
+     "skaffff",
+     1
+    ],
+    [
+     "adeaviladev01",
+     1
+    ],
+    [
+     "Robert Markovski",
+     1
+    ]
+   ],
+   "bin": null,
+   "accepted": false,
+   "reason": "4 core people: outside 2-30 or exactly 4"
+  },
+  {
+   "name": "chenxiachan/thoughtdag",
+   "defaultBranch": "main",
+   "stars": 726,
+   "description": "Your thinking deserves a map: an infinite canvas where LLM conversations grow into an editable thought graph. Wires are the context.",
+   "sizeKB": 194829,
+   "commits": 825,
+   "nonBotCommits": 824,
+   "lastCommit": "2026-10-28",
+   "authors": 12,
+   "core": 2,
+   "topAuthors": [
+    [
+     "Xia Chen",
+     768
+    ],
+    [
+     "Xia Chen",
+     35
+    ],
+    [
+     "hexu321",
+     6
+    ],
+    [
+     "nanami",
+     4
+    ],
+    [
+     "hexu321",
+     3
+    ],
+    [
+     "wy",
+     2
+    ],
+    [
+     "Heizaillica469",
+     1
+    ],
+    [
+     "Suhyung Jang",
+     1
+    ],
+    [
+     "Eric Li",
+     1
+    ],
+    [
+     "LHN",
+     1
+    ],
+    [
+     "yizhe yang",
+     1
+    ],
+    [
+     "Kehan Liu",
+     1
+    ]
+   ],
+   "bin": "2-3",
+   "accepted": true,
+   "reason": "accepted into bin 2-3"
+  },
+  {
+   "name": "mhss1/MyBrain",
+   "defaultBranch": "master",
+   "stars": 2228,
+   "description": "All-in-one productivity app and AI assistant with Tasks, Notes, Calendar, Diary and Bookmarks.",
+   "sizeKB": 9030,
+   "commits": 139,
+   "nonBotCommits": 139,
+   "lastCommit": "2026-10-03",
+   "authors": 4,
+   "core": 2,
+   "topAuthors": [
+    [
+     "Mohamed Shaaban",
+     126
+    ],
+    [
+     "Mohamed Shaaban",
+     11
+    ],
+    [
+     "fueledbypancitcanton",
+     1
+    ],
+    [
+     "John-Swindell",
+     1
+    ]
+   ],
+   "bin": "2-3",
+   "accepted": true,
+   "reason": "accepted into bin 2-3"
+  },
+  {
+   "name": "PurpleDoubleD/locally-uncensored",
+   "defaultBranch": "master",
+   "stars": 3124,
+   "description": "The all-in-one local AI studio for your desktop: chat, image and video generation and a coding agent in one free, open source app. Windows and Linux. No Docker, no terminal, no cloud required.",
+   "sizeKB": 65650,
+   "commits": 2773,
+   "nonBotCommits": 2773,
+   "lastCommit": "2026-10-28",
+   "authors": 10,
+   "core": 6,
+   "topAuthors": [
+    [
+     "purple",
+     1943
+    ],
+    [
+     "David",
+     367
+    ],
+    [
+     "PurpleDoubleD",
+     284
+    ],
+    [
+     "David",
+     88
+    ],
+    [
+     "Claude",
+     57
+    ],
+    [
+     "PurpleDoubleD",
+     21
+    ],
+    [
+     "Kizerfluid",
+     8
+    ],
+    [
+     "dorengstearns",
+     3
+    ],
+    [
+     "Pratham Agarwal",
+     1
+    ],
+    [
+     "PurpleDoubleD",
+     1
+    ]
+   ],
+   "bin": "5-6",
+   "accepted": true,
+   "reason": "accepted into bin 5-6"
+  },
+  {
+   "name": "DayuanJiang/PecoFence",
+   "defaultBranch": "main",
+   "stars": 717,
+   "description": "A free, open-source Stardock Fences alternative for Windows 11. Glass fences, live folders, tabs, Peek. Rust, ten languages, portable.",
+   "sizeKB": 38675,
+   "commits": 505,
+   "nonBotCommits": 505,
+   "lastCommit": "2026-11-01",
+   "authors": 11,
+   "core": 2,
+   "topAuthors": [
+    [
+     "DayuanJiang",
+     470
+    ],
+    [
+     "DayuanJiang",
+     14
+    ],
+    [
+     "xan2622",
+     8
+    ],
+    [
+     "Jhon Nguyen",
+     4
+    ],
+    [
+     "Max Kostovetski",
+     3
+    ],
+    [
+     "dayuan.jiang",
+     1
+    ],
+    [
+     "Thiago F. Martins",
+     1
+    ],
+    [
+     "akmal",
+     1
+    ],
+    [
+     "MichelePezza",
+     1
+    ],
+    [
+     "Emile Su",
+     1
+    ],
+    [
+     "WeiHeng_Xue",
+     1
+    ]
+   ],
+   "bin": "2-3",
+   "accepted": true,
+   "reason": "accepted into bin 2-3"
+  },
+  {
+   "name": "RushB-fr/freekiosk",
+   "defaultBranch": "main",
+   "stars": 712,
+   "description": "FreeKiosk - Open-Source Android Kiosk Mode & Tablet Lockdown App for Digital Signage, Dashboards, POS & Single-Purpose Devices. Free Alternative to Fully Kiosk",
+   "sizeKB": 4120,
+   "commits": 313,
+   "nonBotCommits": 313,
+   "lastCommit": "2026-10-26",
+   "authors": 21,
+   "core": 3,
+   "topAuthors": [
+    [
+     "valentingomy",
+     245
+    ],
+    [
+     "Jack_up",
+     26
+    ],
+    [
+     "Corentin Kerman",
+     12
+    ],
+    [
+     "MateuszSychXpl",
+     6
+    ],
+    [
+     "Max Boender",
+     4
+    ],
+    [
+     "Jefferson",
+     2
+    ],
+    [
+     "Yaakov Saxon",
+     2
+    ],
+    [
+     "Lars Peter Ils\u00f8 Larsen",
+     2
+    ],
+    [
+     "Patrik Messerli",
+     2
+    ],
+    [
+     "Alan Sposito",
+     1
+    ],
+    [
+     "daniel-rolo-robotics",
+     1
+    ],
+    [
+     "St\u00e9phane Rosso",
+     1
+    ]
+   ],
+   "bin": "2-3",
+   "accepted": false,
+   "reason": "bin 2-3 already full"
+  },
+  {
+   "name": "GreptimeTeam/greptimedb",
+   "defaultBranch": "main",
+   "stars": 6778,
+   "description": "The open-source observability database. One columnar engine for metrics, logs, and traces, on object storage.",
+   "sizeKB": 141005,
+   "commits": 1715,
+   "nonBotCommits": 1689,
+   "lastCommit": "2026-10-31",
+   "authors": 70,
+   "core": 16,
+   "topAuthors": [
+    [
+     "Weny Xu",
+     245
+    ],
+    [
+     "discord9",
+     188
+    ],
+    [
+     "Lei, HUANG",
+     146
+    ],
+    [
+     "dennis zhuang",
+     145
+    ],
+    [
+     "Yingwen",
+     144
+    ],
+    [
+     "jeremyhi",
+     128
+    ],
+    [
+     "Ning Sun",
+     115
+    ],
+    [
+     "shuiyisong",
+     112
+    ],
+    [
+     "LFC",
+     88
+    ],
+    [
+     "Ruihang Xia",
+     84
+    ],
+    [
+     "discord9",
+     69
+    ],
+    [
+     "fys",
+     59
+    ]
+   ],
+   "bin": "11-30",
+   "accepted": true,
+   "reason": "accepted into bin 11-30"
+  },
+  {
+   "name": "cryptpad/cryptpad",
+   "defaultBranch": "main",
+   "stars": 8033,
+   "description": "Collaborative office suite, end-to-end encrypted and open-source.",
+   "sizeKB": 551839,
+   "commits": 768,
+   "nonBotCommits": 768,
+   "lastCommit": "2026-10-28",
+   "authors": 26,
+   "core": 9,
+   "topAuthors": [
+    [
+     "yflory",
+     164
+    ],
+    [
+     "DianaXWiki",
+     139
+    ],
+    [
+     "Weblate",
+     101
+    ],
+    [
+     "daria",
+     101
+    ],
+    [
+     "Fabrice Mouhartem",
+     71
+    ],
+    [
+     "Zuzanna Ludzik",
+     62
+    ],
+    [
+     "Zuzanna",
+     42
+    ],
+    [
+     "Wolfgang Ginolas",
+     37
+    ],
+    [
+     "David Benque",
+     27
+    ],
+    [
+     "Josep Alsina",
+     4
+    ],
+    [
+     "AAAMON",
+     3
+    ],
+    [
+     "achf01",
+     3
+    ]
+   ],
+   "bin": "7-10",
+   "accepted": true,
+   "reason": "accepted into bin 7-10"
+  },
+  {
+   "name": "cortexproject/cortex",
+   "defaultBranch": "master",
+   "stars": 5877,
+   "description": "A horizontally scalable, highly available, multi-tenant, long term Prometheus.",
+   "sizeKB": 423873,
+   "commits": 456,
+   "nonBotCommits": 438,
+   "lastCommit": "2026-10-30",
+   "authors": 46,
+   "core": 7,
+   "topAuthors": [
+    [
+     "SungJin1212",
+     124
+    ],
+    [
+     "Friedrich Gonzalez",
+     71
+    ],
+    [
+     "Ben Ye",
+     56
+    ],
+    [
+     "Charlie Le",
+     41
+    ],
+    [
+     "Sandy Chen",
+     22
+    ],
+    [
+     "Paurush Garg",
+     16
+    ],
+    [
+     "Daniel Blando",
+     14
+    ],
+    [
+     "Shvejan",
+     9
+    ],
+    [
+     "Essam Eldaly",
+     9
+    ],
+    [
+     "Alex Le",
+     7
+    ],
+    [
+     "Archy",
+     7
+    ],
+    [
+     "Anna Tran",
+     6
+    ]
+   ],
+   "bin": "7-10",
+   "accepted": true,
+   "reason": "accepted into bin 7-10"
+  },
+  {
+   "name": "timeplus-io/proton",
+   "defaultBranch": "develop",
+   "stars": 2280,
+   "description": "The fastest unified streaming SQL Engine in a single C++ binary.        \u26a1 Millisecond latency. 100+ GB/s throughput. Continuously compute stateful context from streams, logs, metrics, events, and CDC.",
+   "sizeKB": 600303,
+   "commits": 263,
+   "nonBotCommits": 260,
+   "lastCommit": "2026-10-30",
+   "authors": 15,
+   "core": 6,
+   "topAuthors": [
+    [
+     "yun",
+     137
+    ],
+    [
+     "proton-robot",
+     27
+    ],
+    [
+     "Lisen",
+     27
+    ],
+    [
+     "Aviral Jain",
+     17
+    ],
+    [
+     "Alan Yu",
+     16
+    ],
+    [
+     "Ken Chen",
+     15
+    ],
+    [
+     "Timotej Kralik",
+     6
+    ],
+    [
+     "Gang Tao",
+     4
+    ],
+    [
+     "SBALAVIGNESH123",
+     3
+    ],
+    [
+     "Lisen",
+     2
+    ],
+    [
+     "SBALAVIGNESH123",
+     2
+    ],
+    [
+     "Sofiane Soufi",
+     1
+    ]
+   ],
+   "bin": "5-6",
+   "accepted": true,
+   "reason": "accepted into bin 5-6"
+  },
+  {
+   "name": "AtalayaLabs/OxiCloud",
+   "defaultBranch": "main",
+   "stars": 3670,
+   "description": "\u2601\ufe0f Ultra-fast, secure & lightweight self-hosted cloud storage \u2014 your files, photos, calendars & contacts, all in one place. Built in Rust.",
+   "sizeKB": 53540,
+   "commits": 2236,
+   "nonBotCommits": 2233,
+   "lastCommit": "2026-10-26",
+   "authors": 68,
+   "core": 13,
+   "topAuthors": [
+    [
+     "Edouard Vanbelle",
+     1497
+    ],
+    [
+     "Dionisio",
+     179
+    ],
+    [
+     "Claude",
+     148
+    ],
+    [
+     "Diocrafts",
+     64
+    ],
+    [
+     "DioCrafts",
+     43
+    ],
+    [
+     "Jared Wolff",
+     33
+    ],
+    [
+     "M.Schmidt",
+     32
+    ],
+    [
+     "George Wu",
+     27
+    ],
+    [
+     "V\u00edt Str\u00e1dal",
+     24
+    ],
+    [
+     "Bradley Nelson",
+     22
+    ],
+    [
+     "Goudarz Jafari",
+     15
+    ],
+    [
+     "Dionisio Pozo",
+     13
+    ]
+   ],
+   "bin": "11-30",
+   "accepted": true,
+   "reason": "accepted into bin 11-30"
+  },
+  {
+   "name": "fluentcms/FluentCMS",
+   "defaultBranch": "main",
+   "stars": 569,
+   "description": "ASP.NET Core Blazor Content Management System (CMS) ",
+   "sizeKB": 18505,
+   "commits": 2,
+   "nonBotCommits": 2,
+   "lastCommit": "2026-10-31",
+   "authors": 1,
+   "core": 0,
+   "topAuthors": [
+    [
+     "Amir Pournasserian",
+     2
+    ]
+   ],
+   "accepted": false,
+   "reason": "fewer than 100 commits in the window"
+  },
+  {
+   "name": "psviderski/uncloud",
+   "defaultBranch": "main",
+   "stars": 5589,
+   "description": "A lightweight tool for deploying and managing containerised applications across a network of Docker hosts. Bridging the gap between Docker and Kubernetes \u2728",
+   "sizeKB": 9400,
+   "commits": 503,
+   "nonBotCommits": 503,
+   "lastCommit": "2026-10-29",
+   "authors": 20,
+   "core": 4,
+   "topAuthors": [
+    [
+     "Pasha Sviderski",
+     401
+    ],
+    [
+     "Miek Gieben",
+     39
+    ],
+    [
+     "Anton Ovchinnikov",
+     24
+    ],
+    [
+     "Justin Bradford",
+     16
+    ],
+    [
+     "Nick",
+     3
+    ],
+    [
+     "Aaron Echols",
+     2
+    ],
+    [
+     "Jiralite",
+     2
+    ],
+    [
+     "Gabriel",
+     2
+    ],
+    [
+     "Andrey Viktorov",
+     2
+    ],
+    [
+     "Luis Lavena",
+     2
+    ],
+    [
+     "Vaibhav Yadav",
+     1
+    ],
+    [
+     "Felix Hummel",
+     1
+    ]
+   ],
+   "bin": null,
+   "accepted": false,
+   "reason": "4 core people: outside 2-30 or exactly 4"
+  },
+  {
+   "name": "OpenNMS/opennms",
+   "defaultBranch": "develop",
+   "stars": 1180,
+   "description": "Enterprise-Grade Open-Source Network Management Platform",
+   "sizeKB": 864173,
+   "commits": 1389,
+   "nonBotCommits": 1379,
+   "lastCommit": "2026-10-30",
+   "authors": 25,
+   "core": 13,
+   "topAuthors": [
+    [
+     "mershad-manesh",
+     343
+    ],
+    [
+     "Jose Anes",
+     269
+    ],
+    [
+     "Marshall Massengill",
+     237
+    ],
+    [
+     "Chandra Gorantla",
+     106
+    ],
+    [
+     "Scott Theleman",
+     106
+    ],
+    [
+     "Christian Pape",
+     106
+    ],
+    [
+     "Dino",
+     54
+    ],
+    [
+     "Shahbaz",
+     50
+    ],
+    [
+     "aurangzeb",
+     26
+    ],
+    [
+     "Ronny Trommer",
+     16
+    ],
+    [
+     "Mohammad-Junid",
+     16
+    ],
+    [
+     "Atlassian Bamboo",
+     13
+    ]
+   ],
+   "bin": "11-30",
+   "accepted": true,
+   "reason": "accepted into bin 11-30"
+  },
+  {
+   "name": "codexu/note-gen",
+   "defaultBranch": "dev",
+   "stars": 12964,
+   "description": "Capture first. Organize later. A local-first Markdown app that turns scattered records into clear notes with AI.",
+   "sizeKB": 19500,
+   "commits": 835,
+   "nonBotCommits": 835,
+   "lastCommit": "2026-10-30",
+   "authors": 16,
+   "core": 1,
+   "topAuthors": [
+    [
+     "codexu",
+     808
+    ],
+    [
+     "Nigel Tan",
+     6
+    ],
+    [
+     "LevisBale0824",
+     3
+    ],
+    [
+     "MagisPH",
+     3
+    ],
+    [
+     "Jeremy MountainJohnson",
+     2
+    ],
+    [
+     "Dionyz0z",
+     2
+    ],
+    [
+     "leisure462",
+     2
+    ],
+    [
+     "carfeii",
+     1
+    ],
+    [
+     "guomengjia618-dot",
+     1
+    ],
+    [
+     "\u7ee7\u7eed\u6c89\u6dc0",
+     1
+    ],
+    [
+     "Zeming.Liu",
+     1
+    ],
+    [
+     "wangyh",
+     1
+    ]
+   ],
+   "bin": null,
+   "accepted": false,
+   "reason": "1 core people: outside 2-30 or exactly 4"
+  },
+  {
+   "name": "DefectDojo/django-DefectDojo",
+   "defaultBranch": "master",
+   "stars": 5174,
+   "description": "Open-Source Unified Vulnerability Management, DevSecOps & ASPM",
+   "sizeKB": 921563,
+   "commits": 2530,
+   "nonBotCommits": 1619,
+   "lastCommit": "2026-10-30",
+   "authors": 93,
+   "core": 17,
+   "topAuthors": [
+    [
+     "Cody Maffucci",
+     415
+    ],
+    [
+     "Greg Anderson",
+     278
+    ],
+    [
+     "valentijnscholten",
+     180
+    ],
+    [
+     "Blake Owens",
+     165
+    ],
+    [
+     "Paul Osinski",
+     93
+    ],
+    [
+     "Sam Vader",
+     93
+    ],
+    [
+     "manuelsommer",
+     62
+    ],
+    [
+     "kiblik",
+     34
+    ],
+    [
+     "Jino Tesauro",
+     29
+    ],
+    [
+     "Paul Osinski",
+     26
+    ],
+    [
+     "dogboat",
+     23
+    ],
+    [
+     "Tracy Walker",
+     17
+    ]
+   ],
+   "bin": "11-30",
+   "accepted": true,
+   "reason": "accepted into bin 11-30"
+  },
+  {
+   "name": "decaporg/decap-cms",
+   "defaultBranch": "main",
+   "stars": 19461,
+   "description": "A Git-based CMS for Static Site Generators",
+   "sizeKB": 110731,
+   "commits": 368,
+   "nonBotCommits": 317,
+   "lastCommit": "2026-10-28",
+   "authors": 50,
+   "core": 3,
+   "topAuthors": [
+    [
+     "Martin Jagodic",
+     214
+    ],
+    [
+     "Yan",
+     13
+    ],
+    [
+     "Anze Demsar",
+     12
+    ],
+    [
+     "saptarshi",
+     8
+    ],
+    [
+     "Chris Swithinbank",
+     8
+    ],
+    [
+     "Sem Postma",
+     4
+    ],
+    [
+     "Felix Gnass",
+     4
+    ],
+    [
+     "Sridhar Bala",
+     3
+    ],
+    [
+     "JackSpiece",
+     3
+    ],
+    [
+     "Eric Grill",
+     3
+    ],
+    [
+     "mmaoteacher",
+     2
+    ],
+    [
+     "Mart Hesselink",
+     2
+    ]
+   ],
+   "bin": "2-3",
+   "accepted": false,
+   "reason": "bin 2-3 already full"
+  },
+  {
+   "name": "jpillora/cloud-torrent",
+   "defaultBranch": "main",
+   "stars": 6247,
+   "description": "\u2601\ufe0f\u00a0Cloud Torrent: a self-hosted remote torrent client",
+   "sizeKB": 12629,
+   "commits": 112,
+   "nonBotCommits": 112,
+   "lastCommit": "2026-10-26",
+   "authors": 1,
+   "core": 1,
+   "topAuthors": [
+    [
+     "Jaime Pillora",
+     112
+    ]
+   ],
+   "bin": null,
+   "accepted": false,
+   "reason": "1 core people: outside 2-30 or exactly 4"
+  },
+  {
+   "name": "ether/etherpad",
+   "defaultBranch": "develop",
+   "stars": 18614,
+   "description": "Etherpad: A modern really-real-time collaborative document editor.",
+   "sizeKB": 50999,
+   "commits": 1004,
+   "nonBotCommits": 412,
+   "lastCommit": "2026-10-30",
+   "authors": 23,
+   "core": 2,
+   "topAuthors": [
+    [
+     "John McLear",
+     336
+    ],
+    [
+     "SamTV12345",
+     43
+    ],
+    [
+     "SamTV12345",
+     7
+    ],
+    [
+     "Stefan M\u00fcller",
+     5
+    ],
+    [
+     "sqm",
+     3
+    ],
+    [
+     "Antoine Auger",
+     1
+    ],
+    [
+     "Bart-Core",
+     1
+    ],
+    [
+     "bobmullut",
+     1
+    ],
+    [
+     "\uc810[dot]",
+     1
+    ],
+    [
+     "toashu123",
+     1
+    ],
+    [
+     "Karl Fogel",
+     1
+    ],
+    [
+     "Kaan \u00c7elebi",
+     1
+    ]
+   ],
+   "bin": "2-3",
+   "accepted": false,
+   "reason": "bin 2-3 already full"
+  },
+  {
+   "name": "PegaProx/project-pegaprox",
+   "defaultBranch": "main",
+   "stars": 1706,
+   "description": "The ultimate datacenter management solution for Proxmox VE and XCP-NG. Unified multi-cluster control, intelligent load balancing, and seamless cross-cluster VM migrations \u2014 all in one beautiful interface.",
+   "sizeKB": 97441,
+   "commits": 1451,
+   "nonBotCommits": 1445,
+   "lastCommit": "2026-10-24",
+   "authors": 38,
+   "core": 12,
+   "topAuthors": [
+    [
+     "mkellermann97",
+     714
+    ],
+    [
+     "Nico Schmidt",
+     366
+    ],
+    [
+     "Laura Weber",
+     113
+    ],
+    [
+     "Nico Schmidt",
+     90
+    ],
+    [
+     "gyptazy",
+     20
+    ],
+    [
+     "hugo",
+     15
+    ],
+    [
+     "Simon Smith",
+     13
+    ],
+    [
+     "omrzk",
+     12
+    ],
+    [
+     "Lukas Alstrup",
+     11
+    ],
+    [
+     "Florian Paul Azim Hoberg",
+     10
+    ],
+    [
+     "mdobprv-lab",
+     10
+    ],
+    [
+     "yairmiz",
+     10
+    ]
+   ],
+   "bin": "11-30",
+   "accepted": false,
+   "reason": "bin 11-30 already full"
+  },
+  {
+   "name": "sayanarijit/xplr",
+   "defaultBranch": "main",
+   "stars": 4849,
+   "description": "A hackable, minimal, fast TUI file explorer",
+   "sizeKB": 10897,
+   "commits": 55,
+   "nonBotCommits": 55,
+   "lastCommit": "2026-10-26",
+   "authors": 8,
+   "core": 2,
+   "topAuthors": [
+    [
+     "Arijit Basu",
+     26
+    ],
+    [
+     "Arijit Basu",
+     12
+    ],
+    [
+     "mikoloism",
+     8
+    ],
+    [
+     "Mustafa Senoglu",
+     5
+    ],
+    [
+     "Andreas Hartmann",
+     1
+    ],
+    [
+     "latent-9",
+     1
+    ],
+    [
+     "Copilot",
+     1
+    ],
+    [
+     "LordMZTE",
+     1
+    ]
+   ],
+   "accepted": false,
+   "reason": "fewer than 100 commits in the window"
+  },
+  {
+   "name": "OpenByteInc/QuantDinger",
+   "defaultBranch": "main",
+   "stars": 13370,
+   "description": "Open-source AI Trading OS, agent trading, and vibe trading, with Jev System One integration. Research, build Python strategies, backtest, and paper/live trade across crypto, stocks, and forex. Launch your own multi-tenant trading SaaS with built-in user management, billing, payments, and settlement.",
+   "sizeKB": 90458,
+   "commits": 698,
+   "nonBotCommits": 692,
+   "lastCommit": "2026-10-31",
+   "authors": 32,
+   "core": 6,
+   "topAuthors": [
+    [
+     "TIANHE",
+     337
+    ],
+    [
+     "Dinger",
+     140
+    ],
+    [
+     "Jinyu Xu",
+     102
+    ],
+    [
+     "brokermr810",
+     28
+    ],
+    [
+     "guopengfa",
+     23
+    ],
+    [
+     "hang666",
+     13
+    ],
+    [
+     "huuan26",
+     7
+    ],
+    [
+     "XSX-Milan",
+     4
+    ],
+    [
+     "GUO FENG",
+     3
+    ],
+    [
+     "leoca",
+     3
+    ],
+    [
+     "Yeadon8888",
+     3
+    ],
+    [
+     "Sean Cunningham",
+     3
+    ]
+   ],
+   "bin": "5-6",
+   "accepted": true,
+   "reason": "accepted into bin 5-6"
+  },
+  {
+   "name": "oiov/vmail",
+   "defaultBranch": "main",
+   "stars": 1497,
+   "description": "\ud83d\udceb \u53ea\u9700\u4e00\u4e2a\u57df\u540d\u90e8\u7f72\u4e34\u65f6\u90ae\u7bb1\u5230 Cloudflare Worker\uff0c\u652f\u6301\u6536\u53d1\u90ae\u4ef6\uff0c\u4f7f\u7528 D1 \u4fdd\u5b58\u6570\u636e\uff0c\u652f\u6301\u591a\u57df\u540d\u540e\u7f00\uff0c\u5bc6\u7801\u627e\u56de\uff0c\u5f00\u653eAPI\u63a5\u53e3\u3002",
+   "sizeKB": 5227,
+   "commits": 59,
+   "nonBotCommits": 59,
+   "lastCommit": "2026-10-18",
+   "authors": 4,
+   "core": 1,
+   "topAuthors": [
+    [
+     "oiov",
+     50
+    ],
+    [
+     "pikachuim",
+     5
+    ],
+    [
+     "oiov",
+     3
+    ],
+    [
+     "AIAmber",
+     1
+    ]
+   ],
+   "accepted": false,
+   "reason": "fewer than 100 commits in the window"
+  },
+  {
+   "name": "XuehaiPan/nvitop",
+   "defaultBranch": "main",
+   "stars": 7236,
+   "description": "An interactive NVIDIA-GPU process viewer and beyond, the one-stop solution for GPU process management.",
+   "sizeKB": 1642,
+   "commits": 60,
+   "nonBotCommits": 49,
+   "lastCommit": "2026-11-01",
+   "authors": 3,
+   "core": 1,
+   "topAuthors": [
+    [
+     "Xuehai Pan",
+     47
+    ],
+    [
+     "Arina Wang",
+     1
+    ],
+    [
+     "Johnny",
+     1
+    ]
+   ],
+   "accepted": false,
+   "reason": "fewer than 100 commits in the window"
+  },
+  {
+   "name": "deeplethe/utopia",
+   "defaultBranch": "main",
+   "stars": 8654,
+   "description": "World's first open-source enterprise world model.",
+   "sizeKB": 14097,
+   "commits": 871,
+   "nonBotCommits": 870,
+   "lastCommit": "2026-10-20",
+   "authors": 34,
+   "core": 6,
+   "topAuthors": [
+    [
+     "WaylandYang",
+     582
+    ],
+    [
+     "mayakid",
+     122
+    ],
+    [
+     "Daniel",
+     29
+    ],
+    [
+     "Szabo Bogdan",
+     26
+    ],
+    [
+     "Royce",
+     25
+    ],
+    [
+     "Rudy Mizrahi Celekli",
+     13
+    ],
+    [
+     "Nash Aschenbath",
+     7
+    ],
+    [
+     "Virtue039",
+     7
+    ],
+    [
+     "Ansonnm",
+     6
+    ],
+    [
+     "Quintin Botes",
+     5
+    ],
+    [
+     "Coderfu",
+     5
+    ],
+    [
+     "Qishang Zhong",
+     5
+    ]
+   ],
+   "bin": "5-6",
+   "accepted": true,
+   "reason": "accepted into bin 5-6"
+  },
+  {
+   "name": "weibaohui/k8m",
+   "defaultBranch": "main",
+   "stars": 892,
+   "description": "\u4e00\u6b3e\u8f7b\u91cf\u7ea7\u3001\u8de8\u5e73\u53f0\u7684 Mini Kubernetes AI Dashboard\uff0c\u652f\u6301\u5927\u6a21\u578b+\u667a\u80fd\u4f53+MCP(\u652f\u6301\u8bbe\u7f6e\u64cd\u4f5c\u6743\u9650)\uff0c\u96c6\u6210\u591a\u96c6\u7fa4\u7ba1\u7406\u3001\u667a\u80fd\u5206\u6790\u3001\u5b9e\u65f6\u5f02\u5e38\u68c0\u6d4b\u7b49\u529f\u80fd\uff0c\u652f\u6301\u591a\u67b6\u6784\u5e76\u53ef\u5355\u6587\u4ef6\u90e8\u7f72\uff0c\u52a9\u529b\u9ad8\u6548\u96c6\u7fa4\u7ba1\u7406\u4e0e\u8fd0\u7ef4\u4f18\u5316\u3002",
+   "sizeKB": 34511,
+   "commits": 754,
+   "nonBotCommits": 739,
+   "lastCommit": "2026-10-03",
+   "authors": 4,
+   "core": 1,
+   "topAuthors": [
+    [
+     "weibaohui",
+     732
+    ],
+    [
+     "AI Agent",
+     5
+    ],
+    [
+     "ElishaKay",
+     1
+    ],
+    [
+     "triepod-ai",
+     1
+    ]
+   ],
+   "bin": null,
+   "accepted": false,
+   "reason": "1 core people: outside 2-30 or exactly 4"
+  },
+  {
+   "name": "niledatabase/niledatabase",
+   "defaultBranch": "main",
+   "stars": 1086,
+   "description": "PostgreSQL reengineered for multi-tenant apps",
+   "sizeKB": 394987,
+   "commits": 37,
+   "nonBotCommits": 20,
+   "lastCommit": "2026-10-26",
+   "authors": 5,
+   "core": 1,
+   "topAuthors": [
+    [
+     "Joseph Rea",
+     13
+    ],
+    [
+     "Gwen Shapira",
+     4
+    ],
+    [
+     "Chris Tate",
+     1
+    ],
+    [
+     "Mircea Cadariu",
+     1
+    ],
+    [
+     "jrea",
+     1
+    ]
+   ],
+   "accepted": false,
+   "reason": "fewer than 100 commits in the window"
+  },
+  {
+   "name": "snownico0722/PaperTodo",
+   "defaultBranch": "main",
+   "stars": 2643,
+   "description": "A minimalist Windows desktop sticky note tool. It puts a few quiet, usable, and unobtrusive sheets of paper on your desktop. Native WPF, with support for to-dos and Markdown.\u2014\u2014\u6781\u7b80 Windows \u684c\u9762\u4fbf\u7b7e\u5de5\u5177\u3002\u8ba9\u684c\u9762\u4e0a\u6709\u51e0\u5f20\u5b89\u9759\u3001\u53ef\u7528\u3001\u4e0d\u4f1a\u6253\u6270\u4eba\u7684\u7eb8\u3002WPF \u539f\u751f\uff0c\u652f\u6301\u5f85\u529e\u4e0e Markdown\u3002",
+   "sizeKB": 101288,
+   "commits": 1445,
+   "nonBotCommits": 1421,
+   "lastCommit": "2026-10-26",
+   "authors": 5,
+   "core": 4,
+   "topAuthors": [
+    [
+     "snownico0722",
+     1027
+    ],
+    [
+     "testsnow0722",
+     254
+    ],
+    [
+     "testsnow0722",
+     123
+    ],
+    [
+     "TT",
+     13
+    ],
+    [
+     "testsnow0722",
+     4
+    ]
+   ],
+   "bin": null,
+   "accepted": false,
+   "reason": "4 core people: outside 2-30 or exactly 4"
+  },
+  {
+   "name": "ArnasDon/wacrm",
+   "defaultBranch": "main",
+   "stars": 2646,
+   "description": "Self-hostable CRM template for WhatsApp \u2014 shared inbox, contacts, sales pipelines, broadcasts, and no-code automations. Fork it, brand it, host it.",
+   "sizeKB": 6732,
+   "commits": 489,
+   "nonBotCommits": 427,
+   "lastCommit": "2026-10-30",
+   "authors": 24,
+   "core": 2,
+   "topAuthors": [
+    [
+     "Arnas Donauskas",
+     361
+    ],
+    [
+     "Ivan Mercedes",
+     23
+    ],
+    [
+     "Nicolas Pastorello",
+     8
+    ],
+    [
+     "Fabian Andres Parra Sanchez",
+     4
+    ],
+    [
+     "Abhishek Sonwal",
+     4
+    ],
+    [
+     "Arnas Donauskas",
+     3
+    ],
+    [
+     "sathik.ali",
+     2
+    ],
+    [
+     "sammetamaheshbabu",
+     2
+    ],
+    [
+     "G\u00f6khan KAZANCI",
+     2
+    ],
+    [
+     "Mauricio Martinez",
+     2
+    ],
+    [
+     "AlexTPaul",
+     2
+    ],
+    [
+     "dhruv465",
+     2
+    ]
+   ],
+   "bin": "2-3",
+   "accepted": false,
+   "reason": "bin 2-3 already full"
+  },
+  {
+   "name": "grafana/beyla",
+   "defaultBranch": "main",
+   "stars": 2152,
+   "description": "eBPF-based autoinstrumentation of web applications and network metrics",
+   "sizeKB": 442039,
+   "commits": 764,
+   "nonBotCommits": 489,
+   "lastCommit": "2026-10-30",
+   "authors": 31,
+   "core": 9,
+   "topAuthors": [
+    [
+     "Nikola Grcevski",
+     102
+    ],
+    [
+     "Stephen Lang",
+     100
+    ],
+    [
+     "Mario Macias",
+     84
+    ],
+    [
+     "Rafael Roquetto",
+     42
+    ],
+    [
+     "Clayton Cornell",
+     32
+    ],
+    [
+     "Nikola Grcevski",
+     31
+    ],
+    [
+     "Marc Tudur\u00ed",
+     24
+    ],
+    [
+     "Jack Berg",
+     17
+    ],
+    [
+     "Gregor Zeitlinger",
+     10
+    ],
+    [
+     "titaneric",
+     8
+    ],
+    [
+     "Jack Baldry",
+     6
+    ],
+    [
+     "loglapa",
+     5
+    ]
+   ],
+   "bin": "7-10",
+   "accepted": true,
+   "reason": "accepted into bin 7-10"
+  },
+  {
+   "name": "robusta-dev/robusta",
+   "defaultBranch": "master",
+   "stars": 3127,
+   "description": "Better Prometheus alerts for Kubernetes - smart grouping, AI enrichment, and automatic remediation",
+   "sizeKB": 123859,
+   "commits": 178,
+   "nonBotCommits": 177,
+   "lastCommit": "2026-10-25",
+   "authors": 21,
+   "core": 6,
+   "topAuthors": [
+    [
+     "Avi",
+     41
+    ],
+    [
+     "arik",
+     28
+    ],
+    [
+     "moshemorad",
+     28
+    ],
+    [
+     "Naomi Caren",
+     19
+    ],
+    [
+     "Roi Glinik",
+     19
+    ],
+    [
+     "Natan Yellin",
+     14
+    ],
+    [
+     "Tomer",
+     6
+    ],
+    [
+     "alonelish",
+     4
+    ],
+    [
+     "Ilia Lazebnik",
+     3
+    ],
+    [
+     "ezra-robusta",
+     3
+    ],
+    [
+     "metilaran1",
+     2
+    ],
+    [
+     "Zois Pagoulatos",
+     1
+    ]
+   ],
+   "bin": "5-6",
+   "accepted": true,
+   "reason": "accepted into bin 5-6"
+  }
+ ]
+}

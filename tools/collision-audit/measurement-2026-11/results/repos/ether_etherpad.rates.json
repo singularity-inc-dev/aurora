@@ -1,0 +1,50 @@
+{
+  "all": {
+    "conflicts": 0,
+    "interval95": [
+      0.0,
+      0.793
+    ],
+    "pairs": 1,
+    "rate": 0.0
+  },
+  "cleanReplays": 1,
+  "conflictFiles": [],
+  "independent": {
+    "conflicts": 0,
+    "interval95": [
+      0.0,
+      0.793
+    ],
+    "pairs": 1,
+    "rate": 0.0
+  },
+  "notReplayable": 4,
+  "overlapsPerWeek": 0.1,
+  "rateUsed": "independent",
+  "replayed": 5,
+  "repo": "ether/etherpad",
+  "topOverlapFiles": [
+    [
+      "src/node/utils/Settings.ts",
+      1
+    ],
+    [
+      "src/playwright.config.ts",
+      1
+    ],
+    [
+      "src/tests/frontend-new/admin-spec/adminupdateplugins.spec.ts",
+      1
+    ],
+    [
+      "src/tests/backend/specs/holeProbe.ts",
+      1
+    ],
+    [
+      "src/tests/backend/specs/padCheckErrorContext.ts",
+      1
+    ]
+  ],
+  "wouldBeConflictsPerWeek": 0.0
+}

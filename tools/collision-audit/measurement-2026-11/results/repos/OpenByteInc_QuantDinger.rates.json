@@ -1,0 +1,75 @@
+{
+  "all": {
+    "conflicts": 1,
+    "interval95": [
+      0.012,
+      0.298
+    ],
+    "pairs": 15,
+    "rate": 0.067
+  },
+  "cleanReplays": 15,
+  "conflictFiles": [
+    [
+      "backend_api_python/app/utils/config_loader.py",
+      1
+    ]
+  ],
+  "independent": {
+    "conflicts": 1,
+    "interval95": [
+      0.012,
+      0.298
+    ],
+    "pairs": 15,
+    "rate": 0.067
+  },
+  "notReplayable": 15,
+  "overlapsPerWeek": 0.58,
+  "rateUsed": "independent",
+  "replayed": 30,
+  "repo": "OpenByteInc/QuantDinger",
+  "topOverlapFiles": [
+    [
+      "backend_api_python/app/data_sources/base.py",
+      3
+    ],
+    [
+      "quantdinger_vue/src/locales/lang/zh-CN.js",
+      2
+    ],
+    [
+      "backend_api_python/migrations/init.sql",
+      2
+    ],
+    [
+      "backend_api_python/app/services/backtest/metrics.py",
+      2
+    ],
+    [
+      "backend_api_python/tests/test_backtest_metrics.py",
+      2
+    ],
+    [
+      "quantdinger_vue/src/views/trading-assistant/index.vue",
+      1
+    ],
+    [
+      "backend_api_python/app/data_providers/adanos_sentiment.py",
+      1
+    ],
+    [
+      "backend_api_python/app/routes/settings.py",
+      1
+    ],
+    [
+      "backend_api_python/app/services/llm.py",
+      1
+    ],
+    [
+      "backend_api_python/app/utils/config_loader.py",
+      1
+    ]
+  ],
+  "wouldBeConflictsPerWeek": 0.04
+}

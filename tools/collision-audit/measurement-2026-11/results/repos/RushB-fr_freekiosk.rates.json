@@ -1,0 +1,75 @@
+{
+  "all": {
+    "conflicts": 3,
+    "interval95": [
+      0.121,
+      0.646
+    ],
+    "pairs": 9,
+    "rate": 0.333
+  },
+  "cleanReplays": 9,
+  "conflictFiles": [
+    [
+      "src/screens/KioskScreen.tsx",
+      1
+    ],
+    [
+      "src/screens/settings/SettingsScreenNew.tsx",
+      1
+    ],
+    [
+      "src/utils/storage.ts",
+      1
+    ]
+  ],
+  "independent": {
+    "conflicts": 3,
+    "interval95": [
+      0.121,
+      0.646
+    ],
+    "pairs": 9,
+    "rate": 0.333
+  },
+  "notReplayable": 6,
+  "overlapsPerWeek": 0.29,
+  "rateUsed": "independent",
+  "replayed": 15,
+  "repo": "RushB-fr/freekiosk",
+  "topOverlapFiles": [
+    [
+      "src/screens/KioskScreen.tsx",
+      5
+    ],
+    [
+      "src/utils/storage.ts",
+      2
+    ],
+    [
+      "src/components/WebViewComponent.tsx",
+      2
+    ],
+    [
+      "src/screens/settings/tabs/GeneralTab.tsx",
+      2
+    ],
+    [
+      "android/app/src/main/java/com/freekiosk/MainActivity.kt",
+      1
+    ],
+    [
+      "src/utils/BackupService.ts",
+      1
+    ],
+    [
+      "src/screens/settings/SettingsScreenNew.tsx",
+      1
+    ],
+    [
+      "src/components/ExternalAppOverlay.tsx",
+      1
+    ]
+  ],
+  "wouldBeConflictsPerWeek": 0.1
+}

@@ -16,7 +16,7 @@ function parseClaims(raw: unknown): string[] {
 }
 
 export async function recordClaims(db: Db, taskId: string, claims: string[]): Promise<void> {
-  await db.execute(`UPDATE ${events(db)} SET claims = $1, updated_at = now() WHERE task_id = $2`, [JSON.stringify(claims), taskId]);
+  await db.execute(`UPDATE ${events(db)} SET claims = $1, claims_released_at = NULL, updated_at = now() WHERE task_id = $2`, [JSON.stringify(claims), taskId]);
 }
 
 /** A task's claims end when the task is decided (an outcome) or its plan expired (released). */
@@ -24,6 +24,30 @@ export async function releaseClaims(db: Db, taskIds: string[]): Promise<void> {
   for (const taskId of taskIds) {
     await db.execute(`UPDATE ${events(db)} SET claims_released_at = now(), updated_at = now() WHERE task_id = $1`, [taskId]);
   }
+}
+
+/**
+ * Release claims nothing will ever release (B1): a proposal that failed or
+ * crashed after storing claims but before its handover listed the tasks.
+ * A claim stays while its task is listed in any handover, or while its owner
+ * has a handover still proposing (that proposal may be in flight). So a crashed
+ * proposal holds its files at most until its plan expires. Returns the task ids
+ * released.
+ */
+export async function releaseOrphanedClaims(db: Db, companyId: string, owner: string, keep: ReadonlySet<string> = new Set()): Promise<string[]> {
+  const rows = await db.query(`SELECT * FROM ${events(db)} WHERE company_id = $1 AND owner = $2 AND outcome IS NULL AND claims_released_at IS NULL`, [
+    companyId,
+    owner,
+  ]);
+  const holding = rows.filter((r) => parseClaims(r.claims).length > 0);
+  if (holding.length === 0) return [];
+  const runs = await db.query(`SELECT * FROM "${db.namespace}".handover_runs WHERE company_id = $1 AND owner = $2`, [companyId, owner]);
+  if (runs.some((r) => r.status === "proposing")) return [];
+  const listed = new Set(runs.flatMap((r) => parseClaims(r.task_ids)));
+  // `keep`: tasks whose claims are held on purpose without a run yet (the owner queued a note for their next scheduled handover).
+  const orphans = holding.map((r) => String(r.task_id)).filter((id) => !listed.has(id) && !keep.has(id));
+  await releaseClaims(db, orphans);
+  return orphans;
 }
 
 /** Every task in the company that still holds claims. Titles come from the board. */

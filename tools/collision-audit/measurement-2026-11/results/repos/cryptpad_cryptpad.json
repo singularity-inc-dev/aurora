@@ -1,0 +1,65 @@
+{
+  "activeFrom": "2025-11-01",
+  "activeWeeks": 52.142857142857146,
+  "bin": "7-10",
+  "busiestDay": "2025-11-19",
+  "busiestDayOverlaps": 2,
+  "busiestDayShare": 0.14285714285714285,
+  "cleanReplays": 6,
+  "commits": 768,
+  "conflictFiles": [],
+  "conflictsAll": 0,
+  "conflictsIndependent": 0,
+  "coreScreened": 8,
+  "independentPairs": 6,
+  "manifest": {
+    "bin": "7-10",
+    "branch": "main",
+    "cloneSince": "2025-10-02",
+    "commitsInClone": 1125,
+    "finished": "2026-11-01T18:03:48Z",
+    "git": "2.43.0",
+    "head": "a4209cca7db6dca4b9cefc5b34fa765e9ae3c6a8",
+    "name": "cryptpad/cryptpad",
+    "python": "3.13.18",
+    "started": "2026-11-01T18:03:42Z",
+    "status": "ok"
+  },
+  "name": "cryptpad/cryptpad",
+  "notReplayable": 8,
+  "overlaps": 14,
+  "overlapsPerWeek": 0.2684931506849315,
+  "overlapsPerWeekActive": 0.2684931506849315,
+  "peopleTool": 9,
+  "rateBasis": "independent",
+  "replayed": 14,
+  "threeDayPerWeek": 0.58,
+  "threeDayPerWeekActive": 0.58,
+  "topFiles": [
+    [
+      "www/common/onlyoffice/inner.js",
+      4
+    ],
+    [
+      "www/common/common-ui-elements.js",
+      2
+    ],
+    [
+      "www/form/inner.js",
+      2
+    ],
+    [
+      "www/common/drive-ui.js",
+      1
+    ],
+    [
+      "www/diagram/inner.js",
+      1
+    ]
+  ],
+  "window": {
+    "days": 365,
+    "since": "2025-11-01T00:00:00+00:00",
+    "until": "2026-11-01T00:00:00+00:00"
+  }
+}

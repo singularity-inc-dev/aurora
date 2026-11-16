@@ -28,7 +28,7 @@ When several people's agents build one product at once, they collide, mostly at 
 | Review load | Review time up 91% on teams that use AI heavily; agent pull requests drew 16.5 comments against 12.4 | [Faros AI](https://www.faros.ai/blog/ai-software-engineering); [Microsoft](https://devblogs.microsoft.com/dotnet/ten-months-with-cca-in-dotnet-runtime/) |
 | Agent work accepted | 67.9% against 87.1% for Microsoft's engineers | [Microsoft](https://devblogs.microsoft.com/dotnet/ten-months-with-cca-in-dotnet-runtime/) |
 | Human approvals | 97% of Claude Code's permission prompts approved; 14% of dangerous commands caught | [The New Stack](https://thenewstack.io/claude-code-auto-mode/) |
-| An earlier replay of 20 teams' git history (**unreproduced estimate**) | Same-day changes to the same file conflicted 33% of the time in teams of 2 to 10; teams of 7 to 10 would hit about 1.5 to 4 conflicts a week if each agent does three days of work per handover. The 20 teams were never recorded, so this cannot be reproduced; our corrected, measured run found 1 conflict in 104 clean replays (PROGRESS.md) | Earlier estimate (Sources) |
+| An earlier replay of 20 teams' git history (**unreproduced estimate**) | Same-day changes to the same file conflicted 33% of the time in teams of 2 to 10; teams of 7 to 10 would hit about 1.5 to 4 conflicts a week if each agent does three days of work per handover. The 20 teams were never recorded, so this cannot be reproduced; our corrected, measured run found 1 conflict in more than 100 clean replays (PROGRESS.md) | Earlier estimate (Sources) |
 
 The replay uses people's history, not agents, so the pilot measures the real rate.
 
@@ -465,7 +465,7 @@ Twenty-seven gaps remain on 24 October: nine to settle this week, seven to build
 
 ### Earlier estimate (not reproducible)
 
-Git history of 20 open-source product teams, 22 October 2025 to 22 October 2026. Same-day changes by two people to the same code file were replayed with git's own merge as if done in parallel; 439 clean replays were kept. Independent pairs conflicted 34 of 103 times (33%, 95% interval 25% to 43%) in teams of 2 to 10, and 20 of 82 (24%) in teams of 11 to 30. **Not reproducible** (corrected 31 October 2026): the 20 teams were never recorded, and the collision-audit scripts first existed on 25 October 2026, so this was not re-run with them. Treat it as an earlier, unreproduced estimate. The measured numbers are the corrected run in PROGRESS.md: 7 public repositories, 56 days, 1 conflict in 104 clean replays.
+Git history of 20 open-source product teams, 22 October 2025 to 22 October 2026. Same-day changes by two people to the same code file were replayed with git's own merge as if done in parallel; 439 clean replays were kept. Independent pairs conflicted 34 of 103 times (33%, 95% interval 25% to 43%) in teams of 2 to 10, and 20 of 82 (24%) in teams of 11 to 30. **Not reproducible** (corrected 31 October 2026): the 20 teams were never recorded, and the collision-audit scripts first existed on 25 October 2026, so this was not re-run with them. Treat it as an earlier, unreproduced estimate. The measured numbers are the corrected run in PROGRESS.md: 7 public repositories, 56 days, 1 conflict in more than 100 clean replays.
 
 ### Research and surveys
 

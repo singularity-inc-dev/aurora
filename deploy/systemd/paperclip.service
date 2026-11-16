@@ -15,6 +15,8 @@ Environment=HOME=@PCDATA@
 Environment=PATH=@OPT@/node/bin:@OPT@/agents/node_modules/.bin:/usr/local/bin:/usr/bin:/bin
 Environment=PAPERCLIP_TELEMETRY_DISABLED=1
 Environment=DO_NOT_TRACK=1
+# Tracing is off unless this file exists (sudo vt-tracing on). The "-" means: no file, no problem.
+EnvironmentFile=-@ETC@/tracing.env
 Environment=NODE_ENV=production
 # The public address (behind Caddy): Paperclip trusts sign-ins and changes coming from it.
 Environment=PAPERCLIP_PUBLIC_URL=@PUBLIC_URL@

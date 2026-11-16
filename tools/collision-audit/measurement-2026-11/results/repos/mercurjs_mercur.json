@@ -1,0 +1,70 @@
+{
+  "activeFrom": "2026-01-14",
+  "activeWeeks": 41.57142857142857,
+  "bin": "2-3",
+  "busiestDay": "2026-02-24",
+  "busiestDayOverlaps": 1597,
+  "busiestDayShare": 0.9632086851628469,
+  "cleanReplays": 8,
+  "commits": 1063,
+  "conflictFiles": [
+    [
+      "packages/registry/src/team-management/modules/member/types.ts",
+      1
+    ]
+  ],
+  "conflictsAll": 1,
+  "conflictsIndependent": 1,
+  "coreScreened": 3,
+  "independentPairs": 5,
+  "manifest": {
+    "bin": "2-3",
+    "branch": "main",
+    "cloneSince": "2025-10-02",
+    "commitsInClone": 1076,
+    "finished": "2026-11-01T18:03:40Z",
+    "git": "2.43.0",
+    "head": "b2153e02c989a185e6b6d90b0d83f8d8d434027e",
+    "name": "mercurjs/mercur",
+    "python": "3.13.18",
+    "started": "2026-11-01T18:02:53Z",
+    "status": "ok"
+  },
+  "name": "mercurjs/mercur",
+  "notReplayable": 142,
+  "overlaps": 1658,
+  "overlapsPerWeek": 31.7972602739726,
+  "overlapsPerWeekActive": 39.88316151202749,
+  "peopleTool": 4,
+  "rateBasis": "independent",
+  "replayed": 150,
+  "threeDayPerWeek": 32.45,
+  "threeDayPerWeekActive": 40.70189003436427,
+  "topFiles": [
+    [
+      "apps/vendor-test/src/pages/products/create/page.tsx",
+      3
+    ],
+    [
+      "packages/registry/.mercur/_generated/index.ts",
+      3
+    ],
+    [
+      "packages/registry/src/reviews/api/store/reviews/middlewares.ts",
+      3
+    ],
+    [
+      "packages/registry/src/team-management/modules/member/index.ts",
+      3
+    ],
+    [
+      "packages/registry/src/team-management/modules/member/loaders/index.ts",
+      3
+    ]
+  ],
+  "window": {
+    "days": 365,
+    "since": "2025-11-01T00:00:00+00:00",
+    "until": "2026-11-01T00:00:00+00:00"
+  }
+}

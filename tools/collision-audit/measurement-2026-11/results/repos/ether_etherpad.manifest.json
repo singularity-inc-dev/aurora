@@ -1,0 +1,13 @@
+{
+  "bin": "2-3",
+  "branch": "develop",
+  "cloneSince": "2025-10-02",
+  "commitsInClone": 1088,
+  "finished": "2026-11-01T18:02:53Z",
+  "git": "2.43.0",
+  "head": "398c5a6190996e6963b1bc1b458824c3412ac204",
+  "name": "ether/etherpad",
+  "python": "3.13.18",
+  "started": "2026-11-01T18:02:49Z",
+  "status": "ok"
+}

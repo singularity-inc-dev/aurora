@@ -1,0 +1,65 @@
+{
+  "activeFrom": "2025-11-01",
+  "activeWeeks": 52.142857142857146,
+  "bin": "5-6",
+  "busiestDay": "2025-09-30",
+  "busiestDayOverlaps": 7,
+  "busiestDayShare": 0.6363636363636364,
+  "cleanReplays": 1,
+  "commits": 263,
+  "conflictFiles": [],
+  "conflictsAll": 0,
+  "conflictsIndependent": 0,
+  "coreScreened": 5,
+  "independentPairs": 1,
+  "manifest": {
+    "bin": "5-6",
+    "branch": "develop",
+    "cloneSince": "2025-10-02",
+    "commitsInClone": 315,
+    "finished": "2026-11-01T18:03:36Z",
+    "git": "2.43.0",
+    "head": "bfab9f0a12c6f56fed6367ed45a0889790f08d8b",
+    "name": "timeplus-io/proton",
+    "python": "3.13.18",
+    "started": "2026-11-01T18:03:21Z",
+    "status": "ok"
+  },
+  "name": "timeplus-io/proton",
+  "notReplayable": 10,
+  "overlaps": 11,
+  "overlapsPerWeek": 0.21095890410958903,
+  "overlapsPerWeekActive": 0.21095890410958903,
+  "peopleTool": 6,
+  "rateBasis": "independent",
+  "replayed": 11,
+  "threeDayPerWeek": 0.31,
+  "threeDayPerWeekActive": 0.31,
+  "topFiles": [
+    [
+      "src/Interpreters/InterpreterSelectQuery_Stream.cpp",
+      1
+    ],
+    [
+      "src/Interpreters/Streaming/Aggregator/HybridAggregator/HybridAggregatorParams.h",
+      1
+    ],
+    [
+      "src/Interpreters/Streaming/HashJoin/ConcurrentHashJoin.cpp",
+      1
+    ],
+    [
+      "src/Interpreters/Streaming/HashJoin/ConcurrentHashJoin.h",
+      1
+    ],
+    [
+      "src/Interpreters/Streaming/HashJoin/HybridHashJoin/HybridHashJoin.cpp",
+      1
+    ]
+  ],
+  "window": {
+    "days": 365,
+    "since": "2025-11-01T00:00:00+00:00",
+    "until": "2026-11-01T00:00:00+00:00"
+  }
+}

@@ -1,0 +1,116 @@
+{
+  "handoverDays": 3,
+  "perWeek": {
+    "sameDay": 0.58,
+    "threeDay": 1.65
+  },
+  "rate": 0.067,
+  "repo": "OpenByteInc/QuantDinger",
+  "weeks": [
+    {
+      "sameDay": 1,
+      "threeDay": 1,
+      "week": "2025-12-29"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 1,
+      "week": "2026-01-05"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 2,
+      "week": "2026-01-12"
+    },
+    {
+      "sameDay": 2,
+      "threeDay": 2,
+      "week": "2026-01-26"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 1,
+      "week": "2026-02-02"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 3,
+      "week": "2026-03-16"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 1,
+      "week": "2026-04-13"
+    },
+    {
+      "sameDay": 4,
+      "threeDay": 8,
+      "week": "2026-04-20"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 3,
+      "week": "2026-04-27"
+    },
+    {
+      "sameDay": 2,
+      "threeDay": 3,
+      "week": "2026-05-04"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 4,
+      "week": "2026-05-11"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 3,
+      "week": "2026-05-25"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 18,
+      "week": "2026-06-29"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 2,
+      "week": "2026-08-10"
+    },
+    {
+      "sameDay": 7,
+      "threeDay": 7,
+      "week": "2026-08-24"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 1,
+      "week": "2026-09-07"
+    },
+    {
+      "sameDay": 2,
+      "threeDay": 2,
+      "week": "2026-09-14"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 3,
+      "week": "2026-09-28"
+    },
+    {
+      "sameDay": 3,
+      "threeDay": 9,
+      "week": "2026-10-12"
+    },
+    {
+      "sameDay": 5,
+      "threeDay": 12,
+      "week": "2026-10-19"
+    }
+  ],
+  "windowDays": 365,
+  "wouldBeConflictsPerWeek": {
+    "sameDay": 0.04,
+    "threeDay": 0.11
+  }
+}

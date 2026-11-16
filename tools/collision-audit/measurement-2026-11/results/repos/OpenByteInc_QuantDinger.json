@@ -1,0 +1,70 @@
+{
+  "activeFrom": "2025-12-29",
+  "activeWeeks": 43.857142857142854,
+  "bin": "5-6",
+  "busiestDay": "2026-08-27",
+  "busiestDayOverlaps": 7,
+  "busiestDayShare": 0.23333333333333334,
+  "cleanReplays": 15,
+  "commits": 698,
+  "conflictFiles": [
+    [
+      "backend_api_python/app/utils/config_loader.py",
+      1
+    ]
+  ],
+  "conflictsAll": 1,
+  "conflictsIndependent": 1,
+  "coreScreened": 5,
+  "independentPairs": 15,
+  "manifest": {
+    "bin": "5-6",
+    "branch": "main",
+    "cloneSince": "2025-10-02",
+    "commitsInClone": 757,
+    "finished": "2026-11-01T18:03:53Z",
+    "git": "2.43.0",
+    "head": "e75f0cfa9cd47de9259844fefbf20c2fa1464d45",
+    "name": "OpenByteInc/QuantDinger",
+    "python": "3.13.18",
+    "started": "2026-11-01T18:03:10Z",
+    "status": "ok"
+  },
+  "name": "OpenByteInc/QuantDinger",
+  "notReplayable": 15,
+  "overlaps": 30,
+  "overlapsPerWeek": 0.5753424657534246,
+  "overlapsPerWeekActive": 0.6840390879478828,
+  "peopleTool": 6,
+  "rateBasis": "independent",
+  "replayed": 30,
+  "threeDayPerWeek": 1.65,
+  "threeDayPerWeekActive": 1.9617263843648212,
+  "topFiles": [
+    [
+      "backend_api_python/app/data_sources/base.py",
+      3
+    ],
+    [
+      "quantdinger_vue/src/locales/lang/zh-CN.js",
+      2
+    ],
+    [
+      "backend_api_python/migrations/init.sql",
+      2
+    ],
+    [
+      "backend_api_python/app/services/backtest/metrics.py",
+      2
+    ],
+    [
+      "backend_api_python/tests/test_backtest_metrics.py",
+      2
+    ]
+  ],
+  "window": {
+    "days": 365,
+    "since": "2025-11-01T00:00:00+00:00",
+    "until": "2026-11-01T00:00:00+00:00"
+  }
+}

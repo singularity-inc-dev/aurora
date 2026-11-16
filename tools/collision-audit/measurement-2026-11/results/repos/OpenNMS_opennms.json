@@ -1,0 +1,74 @@
+{
+  "activeFrom": "2025-11-01",
+  "activeWeeks": 52.142857142857146,
+  "bin": "11-30",
+  "busiestDay": "2025-11-25",
+  "busiestDayOverlaps": 3,
+  "busiestDayShare": 0.125,
+  "cleanReplays": 5,
+  "commits": 1389,
+  "conflictFiles": [
+    [
+      "ui/tests/components/EventConfigEventCreate/BasicInformation.test.ts",
+      1
+    ],
+    [
+      "ui/tests/containers/EventConfiguration.test.ts",
+      1
+    ]
+  ],
+  "conflictsAll": 2,
+  "conflictsIndependent": 2,
+  "coreScreened": 14,
+  "independentPairs": 5,
+  "manifest": {
+    "bin": "11-30",
+    "branch": "develop",
+    "cloneSince": "2025-10-02",
+    "commitsInClone": 2358,
+    "finished": "2026-11-01T18:05:00Z",
+    "git": "2.43.0",
+    "head": "797e58db7d2ba76a7831e926b24c27be9d8666ec",
+    "name": "OpenNMS/opennms",
+    "python": "3.13.18",
+    "started": "2026-11-01T18:04:29Z",
+    "status": "ok"
+  },
+  "name": "OpenNMS/opennms",
+  "notReplayable": 19,
+  "overlaps": 24,
+  "overlapsPerWeek": 0.4602739726027397,
+  "overlapsPerWeekActive": 0.4602739726027397,
+  "peopleTool": 13,
+  "rateBasis": "independent",
+  "replayed": 24,
+  "threeDayPerWeek": 1.78,
+  "threeDayPerWeekActive": 1.78,
+  "topFiles": [
+    [
+      "opennms-assemblies/minion/src/main/filtered/bin/support_pack.sh",
+      1
+    ],
+    [
+      "opennms-base-assembly/src/main/filtered/bin/support_pack.sh",
+      1
+    ],
+    [
+      "smoke-test/src/test/java/org/opennms/smoketest/IntegrationAPIIT.java",
+      1
+    ],
+    [
+      "core/ipc/sink/kafka/itests/src/test/java/org/opennms/core/ipc/sink/kafka/itests/KafkaDispatcherBlueprintIT.java",
+      1
+    ],
+    [
+      "core/test-api/camel/src/main/java/org/opennms/core/test/camel/CamelBlueprintTest.java",
+      1
+    ]
+  ],
+  "window": {
+    "days": 365,
+    "since": "2025-11-01T00:00:00+00:00",
+    "until": "2026-11-01T00:00:00+00:00"
+  }
+}

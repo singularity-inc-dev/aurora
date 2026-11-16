@@ -1,0 +1,65 @@
+{
+  "activeFrom": "2025-11-01",
+  "activeWeeks": 52.142857142857146,
+  "bin": "2-3",
+  "busiestDay": "2026-09-02",
+  "busiestDayOverlaps": 5,
+  "busiestDayShare": 0.625,
+  "cleanReplays": 0,
+  "commits": 368,
+  "conflictFiles": [],
+  "conflictsAll": 0,
+  "conflictsIndependent": 0,
+  "coreScreened": 3,
+  "independentPairs": 0,
+  "manifest": {
+    "bin": "2-3",
+    "branch": "main",
+    "cloneSince": "2025-10-02",
+    "commitsInClone": 391,
+    "finished": "2026-11-01T18:02:57Z",
+    "git": "2.43.0",
+    "head": "61ceb6e0680bb0362dba6d0cfe346c51e3ca3a58",
+    "name": "decaporg/decap-cms",
+    "python": "3.13.18",
+    "started": "2026-11-01T18:02:49Z",
+    "status": "ok"
+  },
+  "name": "decaporg/decap-cms",
+  "notReplayable": 8,
+  "overlaps": 8,
+  "overlapsPerWeek": 0.15342465753424656,
+  "overlapsPerWeekActive": 0.15342465753424656,
+  "peopleTool": 3,
+  "rateBasis": "none",
+  "replayed": 8,
+  "threeDayPerWeek": 0.29,
+  "threeDayPerWeekActive": 0.29,
+  "topFiles": [
+    [
+      "packages/decap-cms-core/src/components/App/App.js",
+      1
+    ],
+    [
+      "packages/decap-cms-core/src/components/App/Header.js",
+      1
+    ],
+    [
+      "packages/decap-cms-core/src/components/Editor/Editor.js",
+      1
+    ],
+    [
+      "packages/decap-cms-core/src/components/Editor/EditorToolbar.js",
+      1
+    ],
+    [
+      "packages/decap-cms-core/src/components/Editor/withWorkflow.js",
+      1
+    ]
+  ],
+  "window": {
+    "days": 365,
+    "since": "2025-11-01T00:00:00+00:00",
+    "until": "2026-11-01T00:00:00+00:00"
+  }
+}

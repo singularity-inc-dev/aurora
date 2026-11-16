@@ -1,0 +1,75 @@
+{
+  "all": {
+    "conflicts": 1,
+    "interval95": [
+      0.003,
+      0.099
+    ],
+    "pairs": 53,
+    "rate": 0.019
+  },
+  "cleanReplays": 53,
+  "conflictFiles": [
+    [
+      "src/infrastructure/auth_factory.rs",
+      1
+    ]
+  ],
+  "independent": {
+    "conflicts": 1,
+    "interval95": [
+      0.003,
+      0.101
+    ],
+    "pairs": 52,
+    "rate": 0.019
+  },
+  "notReplayable": 97,
+  "overlapsPerWeek": 6.81,
+  "rateUsed": "independent",
+  "replayed": 150,
+  "repo": "AtalayaLabs/OxiCloud",
+  "topOverlapFiles": [
+    [
+      "src/common/di.rs",
+      14
+    ],
+    [
+      "src/interfaces/api/handlers/webdav_handler.rs",
+      13
+    ],
+    [
+      "src/interfaces/api/handlers/file_handler.rs",
+      12
+    ],
+    [
+      "src/infrastructure/repositories/pg/file_blob_read_repository.rs",
+      10
+    ],
+    [
+      "src/interfaces/api/handlers/auth_handler.rs",
+      10
+    ],
+    [
+      "src/main.rs",
+      9
+    ],
+    [
+      "src/application/services/folder_service.rs",
+      7
+    ],
+    [
+      "src/application/services/auth_application_service.rs",
+      6
+    ],
+    [
+      "src/infrastructure/repositories/pg/folder_db_repository.rs",
+      6
+    ],
+    [
+      "src/common/stubs.rs",
+      5
+    ]
+  ],
+  "wouldBeConflictsPerWeek": 0.13
+}

@@ -141,6 +141,14 @@ check "the agents' tools are installed from their lockfile" "$("$VT_ROOT/opt/vis
 check "Paperclip runs in authenticated mode on the system database" "$(node -p "const c=require('$VT_ROOT/var/lib/paperclip/instances/default/config.json');[c.server.deploymentMode,c.server.exposure,c.server.host,c.database.mode].join('/')")" "authenticated/public/127.0.0.1/postgres"
 check "without signing in, Paperclip shows nothing" "$(curl -s -o /dev/null -w '%{http_code}' "$PC/api/companies")" "403"
 
+echo "== 4b. Tracing: Paperclip's own OpenTelemetry export is on from its first start (into a stand-in for Jaeger)"
+OTLP_PORT=54318
+OTLP_FILE="$R/otlp-sink.ndjson"
+node "$ROOT/scripts/rehearsal/otlp-sink.mjs" "$OTLP_PORT" "$OTLP_FILE" >"$LOGS/otlp-sink.log" 2>&1 &
+EXTRA="$EXTRA $!"
+TRACING_OUT=$(bash "$KIT_BIN/vt-tracing" on --endpoint "http://127.0.0.1:$OTLP_PORT" --no-restart 2>&1)
+check "vt-tracing on saved the setting (root-only) and left Paperclip alone" "$(echo "$TRACING_OUT" | grep -c '^Tracing is on')/$(stat -c %a "$VT_ROOT/etc/vision-and-tom/tracing.env")" "1/600"
+
 echo "== 5. HTTPS through Caddy"
 CA="$VT_ROOT/var/lib/caddy/caddy/pki/authorities/local/root.crt"
 for _ in $(seq 1 30); do [ -f "$CA" ] && break; sleep 1; done
@@ -203,12 +211,34 @@ as_agent() { runuser -u vt-agent-ana -- "$@" >/dev/null 2>&1 && echo allowed || 
 check "the agent's user cannot read Paperclip's config, data folder, database password or the backups" "$(as_agent cat "$VT_ROOT/var/lib/paperclip/instances/default/config.json")/$(as_agent ls "$VT_ROOT/var/lib/paperclip")/$(as_agent cat "$SECRETS/db-url")/$(as_agent ls "$VT_ROOT/var/backups/vision-and-tom")" "refused/refused/refused/refused"
 check "the agent's user cannot log in to the database (no password, or Paperclip's embedded default)" "$(as_agent env PGCONNECT_TIMEOUT=5 /usr/lib/postgresql/16/bin/psql -w -h 127.0.0.1 -p "$PG_PORT" -U paperclip -d paperclip -tAc 'select 1')/$(as_agent env PGPASSWORD=paperclip PGCONNECT_TIMEOUT=5 /usr/lib/postgresql/16/bin/psql -w -h 127.0.0.1 -p "$PG_PORT" -U paperclip -d paperclip -tAc 'select 1')" "refused/refused"
 
-echo "-- Hand over now: the owner's own page, behind their Paperclip sign-in"
+echo "-- Hand over: the owner's own page, behind their Paperclip sign-in"
+check "vt-setup made the email service's account (the owner's, who made its key) the only caller of the plugin's routes" "$(board "$PC/api/plugins/$PLUGIN_ID/config?companyId=$CID" | json 'd.configJson.serviceUserId')" "$("${HTTPS[@]}" -H "cookie: $OWNER_COOKIE" "$URL/api/auth/get-session" | json 'd.user.id')"
+OWNER_AGENT=$(person owner@example.com | json 'd.agentId')
+PROJECT_ID=$(board "$PC/api/plugins/$PLUGIN_ID/config?companyId=$CID" | json 'd.configJson.handover.projectId')
+OWNER_TICKET=$(board -X POST "$PC/api/companies/$CID/issues" -d "{\"title\":\"Add a greeting\",\"description\":\"Say hello in greeting.txt\",\"projectId\":\"$PROJECT_ID\",\"assigneeAgentId\":\"$OWNER_AGENT\",\"status\":\"backlog\"}" | json 'd.id')
 check "without signing in, the page asks to sign in first" "$("${HTTPS[@]}" -o /dev/null -w '%{http_code}' "$URL/vt/handover")" "401"
-check "signed in, the owner sees their schedule and the button" "$("${HTTPS[@]}" -H "cookie: $OWNER_COOKIE" "$URL/vt/handover" | grep -c 'Hand over now</button>')" "1"
+HO_PAGE=$("${HTTPS[@]}" -H "cookie: $OWNER_COOKIE" "$URL/vt/handover")
+check "signed in, the owner sees their backlog ticket with a note to write, and both buttons" "$(echo "$HO_PAGE" | grep -c "value=\"$OWNER_TICKET\"")/$(echo "$HO_PAGE" | grep -c 'value="now">Hand over now</button>')/$(echo "$HO_PAGE" | grep -c 'value="scheduled">Hand over at my scheduled time')" "1/1/1"
 check "a form sent from another site is refused" "$("${HTTPS[@]}" -o /dev/null -w '%{http_code}' -X POST -H "cookie: $OWNER_COOKIE" -H "origin: https://evil.example" "$URL/vt/handover")" "403"
-check "the button starts the owner's handover now" "$("${HTTPS[@]}" -X POST -H "cookie: $OWNER_COOKIE" -H "origin: $URL" "$URL/vt/handover" | grep -c 'Started.')" "1"
-check "the plugin shows it: a Hand over now, planning" "$(board -X POST "$PC/api/plugins/$PLUGIN_ID/data/handover-status" -d "{\"companyId\":\"$CID\",\"params\":{}}" | json "(d.data.find(r=>r.owner==='owner@example.com')||{}).kind+' '+(d.data.find(r=>r.owner==='owner@example.com')||{}).status")" "now proposing"
+ho_form() { # cookie ticket -> the page after pressing Hand over now with a note on that ticket
+  "${HTTPS[@]}" -X POST -H "cookie: $1" -H "origin: $URL" --data-urlencode "action=now" --data-urlencode "pick=$2" --data-urlencode "what:$2=Say hello" \
+    --data-urlencode "done:$2=greeting.txt says hello" --data-urlencode "files:$2=greeting.txt" --data-urlencode "min:$2=60" --data-urlencode "cents:$2=100" "$URL/vt/handover"
+}
+check "the owner's tap hands over exactly that ticket with its note" "$(ho_form "$OWNER_COOKIE" "$OWNER_TICKET" | grep -c 'Handed over 1 task(s). Your agent starts now.')" "1"
+check "the plugin shows it: a Hand over now, running at once (the tap was the approval)" "$(board -X POST "$PC/api/plugins/$PLUGIN_ID/data/handover-status" -d "{\"companyId\":\"$CID\",\"params\":{}}" | json "(d.data.find(r=>r.owner==='owner@example.com')||{}).kind+' '+(d.data.find(r=>r.owner==='owner@example.com')||{}).status")" "now running"
+check "no plan ticket was made" "$(board "$PC/api/companies/$CID/issues" | json "(Array.isArray(d)?d:d.items).filter(i=>String(i.originKind||'').endsWith(':handover-plan')).length")" "0"
+# Finish it (the agent's own work is not what this rehearsal is about), so nothing runs when vt-update comes.
+board -o /dev/null -X PATCH "$PC/api/issues/$OWNER_TICKET" -d '{"status":"done"}'
+TICK_JOB=$(board "$PC/api/plugins/$PLUGIN_ID/jobs" | json 'd.find(j=>j.jobKey==="handover-tick").id')
+ho_status() { board -X POST "$PC/api/plugins/$PLUGIN_ID/data/handover-status" -d "{\"companyId\":\"$CID\",\"params\":{}}" | json "(d.data.find(r=>r.owner==='owner@example.com')||{}).status"; }
+for _ in $(seq 1 30); do board -o /dev/null -X POST "$PC/api/plugins/$PLUGIN_ID/jobs/$TICK_JOB/trigger" -d '{}'; sleep 2; [ "$(ho_status)" = "finished" ] && break; done
+check "when its ticket is done, the handover finishes" "$(ho_status)" "finished"
+# The email service looks for new mail every 60 seconds on a server (POLL_SECONDS), so allow up to 90.
+hb_id() { curl -s "$MP_API/messages" | json "(d.messages.find(m=>m.Subject.startsWith('Your handover of'))||{}).ID"; }
+for _ in $(seq 1 90); do [ -n "$(hb_id)" ] && break; sleep 1; done
+HB_TEXT=$(curl -s "$MP_API/message/$(hb_id)" | json 'd.Text' | tr -d '\r')
+check "the handback email (real SMTP) shows the owner's locked note and says only they can use the links" "$(echo "$HB_TEXT" | grep -c '^  Done when (your words; Aurora does not check this, you do): greeting.txt says hello$')/$(echo "$HB_TEXT" | grep -c 'Only you can use these links')" "1/1"
+curl -s -o /dev/null -X DELETE "$MP_API/messages"
 
 echo "-- Numbers page: the raw counts, for signed-in people on the team"
 check "without signing in, the numbers page asks to sign in first" "$("${HTTPS[@]}" -o /dev/null -w '%{http_code}' "$URL/vt/numbers")" "401"
@@ -244,6 +274,13 @@ unset DEE_KEY
 DEE_ENV=$(person dee@example.com | json 'd.agentEnvironmentId')
 check "Dee's agent runs as its own system user (environment probe)" "$(person dee@example.com | json 'd.agentUser')/$(board -X POST "$PC/api/environments/$DEE_ENV/probe" -d '{}' | json 'd.ok && d.details.username')/$(board "$PC/api/agents/$DEE_AGENT" | json "d.defaultEnvironmentId==='$DEE_ENV'")" "vt-agent-bo/vt-agent-bo/true"
 check "the plugin's route audit accepts Dee's agent" "$(board -X POST "$PC/api/plugins/$PLUGIN_ID/data/route-audit" -d "{\"companyId\":\"$CID\",\"params\":{}}" | json 'd.data.ok || JSON.stringify([...d.data.settingsProblems, ...d.data.agents.filter(a=>a.problems.length).map(a=>a.email+": "+a.problems.join("; "))])')" "true"
+echo "-- only the owner: Dee, signed in, cannot act for the owner"
+DEE_DIRECT=$("${HTTPS[@]}" -w '\n%{http_code}' -H "cookie: $DEE_COOKIE" "$URL/api/plugins/vision-and-tom.night-agents/api/handovers/status?companyId=$CID&email=owner@example.com")
+echo "    (Dee calling the plugin directly was answered: ${DEE_DIRECT##*$'\n'} $(echo "${DEE_DIRECT%$'\n'*}" | json 'd.error' | cut -c1-80))"
+check "Dee cannot call the plugin's routes herself (only the email service may)" "${DEE_DIRECT##*$'\n'}/$(echo "${DEE_DIRECT%$'\n'*}" | grep -c 'Add a greeting')" "403/0"
+check "Dee cannot fetch anyone's signed Approve links from the plugin" "$("${HTTPS[@]}" -o /dev/null -w '%{http_code}' -H "cookie: $DEE_COOKIE" "$URL/api/plugins/vision-and-tom.night-agents/api/briefings/pending?companyId=$CID")" "403"
+check "Dee's Hand over page is her own" "$("${HTTPS[@]}" -H "cookie: $DEE_COOKIE" "$URL/vt/handover" | grep -c 'Signed in as <strong>dee@example.com</strong>')" "1"
+check "Dee cannot hand over the owner's ticket" "$(ho_form "$DEE_COOKIE" "$OWNER_TICKET" | grep -c 'you can only hand over tickets assigned to your own agent')" "1"
 check "a used invite link is refused (POST)" "$("${HTTPS[@]}" -o /dev/null -w '%{http_code}' -X POST --data-urlencode "name=Mallory" --data-urlencode "password=$(rand 12)" "$LINK")/$("${HTTPS[@]}" -X POST --data-urlencode "name=M" --data-urlencode "password=$(rand 12)" "$LINK" | grep -oE '<h1>[^<]*</h1>')" "409/<h1>Invite already used</h1>"
 check "a used invite link is refused (opening it)" "$("${HTTPS[@]}" "$LINK" | grep -oE '<h1>[^<]*</h1>')" "<h1>Invite already used</h1>"
 check "still exactly two people" "$(people | json 'd.data.people.length')" "2"
@@ -404,6 +441,72 @@ check "Fay can still sign in and sees the company" "$("${HTTPS[@]}" -H "cookie: 
 OUT=$("${UPD[@]}" "$(echo "$OLD_COMMIT" | cut -c1-12)" 2>&1); echo "$OUT" >"$LOGS/update-back.log"
 check "going back: vt-update to the earlier version" "$(echo "$OUT" | grep -c '^==> Updated to')/$(git -C "$APP_DIR" rev-parse HEAD)/$(installed)" "1/$OLD_COMMIT/$OLD_V/ready"
 check "after going back the data is still there" "$(people | json 'd.data.people.length')/$("${HTTPS[@]}" "$LINK" | grep -oE '<h1>[^<]*</h1>')" "3/<h1>Invite already used</h1>"
+
+
+echo "== 16. Tracing: what left Paperclip (nothing may carry a secret or personal data)"
+PC_LOG="$STATE/paperclip.service.log"
+# Every value the rehearsal knows that must never appear in a trace. Names are reported, values never.
+CANARIES="$R/canaries.json"
+node -e '
+const fs=require("fs");
+const read=(f)=>{try{return fs.readFileSync(f,"utf8").trim()}catch{return ""}};
+const link=process.env.LINK||"";
+const c={
+  "the GitHub token": process.env.GH_TOKEN_VALUE,
+  "the SMTP password": read(process.env.SECRETS+"/smtp-password"),
+  "the owner password": process.env.OWNER_PW,
+  "Fay password": process.env.FAY_PW,
+  "the board API key": process.env.API_KEY,
+  "the owner email": "owner@example.com",
+  "an invitee email": "fay@example.com",
+  "Dee email": "dee@example.com",
+  "an invite token": link.split(/[=\/]/).filter((x)=>x.length>=24).pop()||"",
+  "this machine host name": require("os").hostname(),
+  "the rehearsal folder": process.env.R,
+  "a stranger email": "stranger.canary@example.org",
+  "a stranger password": "Stranger-Canary-pw-7731",
+  "a stranger name": "Stranger Canary Name",
+};
+fs.writeFileSync(process.argv[1], JSON.stringify(c), {mode:0o600});
+' "$CANARIES"
+export LINK GH_TOKEN_VALUE OWNER_PW FAY_PW API_KEY SECRETS R
+AUDIT() { node "$ROOT/scripts/rehearsal/otlp-audit.mjs" "$OTLP_FILE" "$CANARIES"; }
+ALLOWED_KEYS='["better_auth.operation_id","db.collection.name","db.operation.name","exception.message","exception.stacktrace","exception.type","http.route","nodejs.eventloop.state","service.name","service.version","v8js.gc.type","v8js.heap.space.name","v8js.resource.type"]'
+
+echo "-- as shipped (traces only, host details off): the whole rehearsal above, including sign-ins, invites, approvals, backup and restore"
+check "Paperclip's OpenTelemetry started (it logged its service version)" "$(grep -c 'OpenTelemetry service.version=' "$PC_LOG" | tr -d ' ' | sed 's/^[1-9][0-9]*$/yes/')" "yes"
+A1=$(AUDIT)
+echo "$A1" >"$LOGS/otlp-audit-shipped.json"
+check "traces really arrived (so the checks below are not empty)" "$(echo "$A1" | json 'd.spans>0')" "true"
+check "they come from one source only, Paperclip's sign-in library (web requests, agent runs and plugin calls create none in this version; a new source would fail here so a person looks at it)" "$(echo "$A1" | json 'd.scopes.join(",")')" "better-auth"
+check "they use only these names: route template, operation, table, error type, message and stack" "$(echo "$A1" | json "d.attributeKeys.filter(k=>!($ALLOWED_KEYS).includes(k)).join(',')")" ""
+check "no host name, machine id, user name, process id or folder is sent" "$(echo "$A1" | json 'd.attributeKeys.filter(k=>/^(host|process|os)\./.test(k)).length')" "0"
+check "no secret, address, password, token or name from the rehearsal is in what was sent" "$(echo "$A1" | json 'd.leaked.length')" "0"
+
+echo "-- with host metrics switched on, so that something is sent: only the allowed details, and no canary value"
+export PAPERCLIP_PORT=3398
+bash "$KIT_BIN/vt-tracing" on --endpoint "http://127.0.0.1:$OTLP_PORT" --with-metrics >"$LOGS/tracing-metrics.log" 2>&1
+check "Paperclip restarted with metrics on" "$(grep -c '^Paperclip was restarted' "$LOGS/tracing-metrics.log")" "1"
+# Traffic with canaries in the places a trace tends to keep them: URLs, query strings, bodies, sign-in.
+curl -s -o /dev/null "$PC/api/health?owner=owner@example.com&token=$GH_TOKEN_VALUE"
+curl -s -o /dev/null -H "authorization: Bearer $API_KEY" "$PC/api/companies?q=owner@example.com"
+curl -s -o /dev/null -X POST -H 'content-type: application/json' -d "{\"email\":\"owner@example.com\",\"password\":\"$OWNER_PW\"}" "$PC/api/auth/sign-in/email"
+# Unknown user, wrong password, and a sign-up for someone new: the places a library might echo what it was given.
+curl -s -o /dev/null -X POST -H 'content-type: application/json' -d '{"email":"stranger.canary@example.org","password":"Stranger-Canary-pw-7731"}' "$PC/api/auth/sign-in/email"
+curl -s -o /dev/null -X POST -H 'content-type: application/json' -d '{"email":"owner@example.com","password":"Stranger-Canary-pw-7731","name":"Stranger Canary Name"}' "$PC/api/auth/sign-up/email"
+curl -s -o /dev/null -X POST -H 'content-type: application/json' -d '{"email":"stranger.canary@example.org","password":"Stranger-Canary-pw-7731","name":"Stranger Canary Name"}' "$PC/api/auth/sign-up/email"
+curl -s -o /dev/null "$PC/api/invites/$(node -p "JSON.parse(require('fs').readFileSync('$CANARIES','utf8'))['an invite token']||'none'")"
+sleep 2
+# Stopping Paperclip makes it flush what it holds (it exports on shutdown).
+bash "$KIT_BIN/vt-tracing" on --endpoint "http://127.0.0.1:$OTLP_PORT" --with-metrics >"$LOGS/tracing-metrics2.log" 2>&1
+A2=$(AUDIT)
+check "something really was sent (so the checks below are not empty)" "$(echo "$A2" | json 'd.requests>0')" "true"
+echo "$A2" >"$LOGS/otlp-audit-metrics.json"
+check "everything sent uses only the names above (now with event loop, garbage collection and memory)" "$(echo "$A2" | json "d.attributeKeys.filter(k=>!($ALLOWED_KEYS).includes(k)).join(',')")" ""
+check "no host name, machine id, user name, process id or folder is sent (resource details are limited to the service name and version)" "$(echo "$A2" | json 'd.attributeKeys.filter(k=>/^(host|process|os)\./.test(k)).length')" "0"
+check "no secret, address, password, token or name from the rehearsal is in what was sent" "$(echo "$A2" | json 'd.leaked.length')" "0"
+bash "$KIT_BIN/vt-tracing" off >"$LOGS/tracing-off.log" 2>&1
+check "vt-tracing off removes the setting and restarts Paperclip, which answers again" "$([ -f "$VT_ROOT/etc/vision-and-tom/tracing.env" ] && echo still-there || echo gone)/$(curl -s -o /dev/null -w '%{http_code}' "$PC/api/health")" "gone/200"
 
 echo
 echo "Result: $PASS passed, $FAIL failed"

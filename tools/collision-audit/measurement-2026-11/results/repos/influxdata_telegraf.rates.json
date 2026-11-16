@@ -1,0 +1,70 @@
+{
+  "all": {
+    "conflicts": 0,
+    "interval95": [
+      0.0,
+      0.324
+    ],
+    "pairs": 8,
+    "rate": 0.0
+  },
+  "cleanReplays": 8,
+  "conflictFiles": [],
+  "independent": {
+    "conflicts": 0,
+    "interval95": [
+      0.0,
+      0.324
+    ],
+    "pairs": 8,
+    "rate": 0.0
+  },
+  "notReplayable": 5,
+  "overlapsPerWeek": 0.25,
+  "rateUsed": "independent",
+  "replayed": 13,
+  "repo": "influxdata/telegraf",
+  "topOverlapFiles": [
+    [
+      "plugins/common/opcua/input/input_client.go",
+      1
+    ],
+    [
+      "plugins/common/opcua/input/input_client_test.go",
+      1
+    ],
+    [
+      "plugins/inputs/docker/docker_test.go",
+      1
+    ],
+    [
+      "cmd/telegraf/telegraf.go",
+      1
+    ],
+    [
+      "config/config.go",
+      1
+    ],
+    [
+      "plugins/inputs/docker_log/docker_log.go",
+      1
+    ],
+    [
+      "plugins/inputs/system/system.go",
+      1
+    ],
+    [
+      "plugins/inputs/system/system_test.go",
+      1
+    ],
+    [
+      "plugins/inputs/redfish/redfish_test.go",
+      1
+    ],
+    [
+      "plugins/inputs/sip/sip_test.go",
+      1
+    ]
+  ],
+  "wouldBeConflictsPerWeek": 0.0
+}

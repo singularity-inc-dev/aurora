@@ -1,0 +1,66 @@
+{
+  "all": {
+    "conflicts": 0,
+    "interval95": [
+      0.0,
+      0.39
+    ],
+    "pairs": 6,
+    "rate": 0.0
+  },
+  "cleanReplays": 6,
+  "conflictFiles": [],
+  "independent": {
+    "conflicts": 0,
+    "interval95": [
+      0.0,
+      0.39
+    ],
+    "pairs": 6,
+    "rate": 0.0
+  },
+  "notReplayable": 8,
+  "overlapsPerWeek": 0.27,
+  "rateUsed": "independent",
+  "replayed": 14,
+  "repo": "cryptpad/cryptpad",
+  "topOverlapFiles": [
+    [
+      "www/common/onlyoffice/inner.js",
+      4
+    ],
+    [
+      "www/common/common-ui-elements.js",
+      2
+    ],
+    [
+      "www/form/inner.js",
+      2
+    ],
+    [
+      "www/common/drive-ui.js",
+      1
+    ],
+    [
+      "www/diagram/inner.js",
+      1
+    ],
+    [
+      "www/common/messenger-ui.js",
+      1
+    ],
+    [
+      "src/worker/modules/onlyoffice.js",
+      1
+    ],
+    [
+      "www/common/sframe-common-outer.js",
+      1
+    ],
+    [
+      "www/moderation/inner.js",
+      1
+    ]
+  ],
+  "wouldBeConflictsPerWeek": 0.0
+}

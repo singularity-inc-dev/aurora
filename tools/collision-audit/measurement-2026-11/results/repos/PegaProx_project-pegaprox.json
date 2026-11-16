@@ -1,0 +1,65 @@
+{
+  "activeFrom": "2026-01-25",
+  "activeWeeks": 40.0,
+  "bin": "7-10",
+  "busiestDay": "2026-08-30",
+  "busiestDayOverlaps": 28,
+  "busiestDayShare": 0.1497326203208556,
+  "cleanReplays": 61,
+  "commits": 1451,
+  "conflictFiles": [],
+  "conflictsAll": 0,
+  "conflictsIndependent": 0,
+  "coreScreened": 10,
+  "independentPairs": 61,
+  "manifest": {
+    "bin": "7-10",
+    "branch": "main",
+    "cloneSince": "2025-10-02",
+    "commitsInClone": 1559,
+    "finished": "2026-11-01T18:08:14Z",
+    "git": "2.43.0",
+    "head": "ea40c362c78b8d16f869f07a4d00d3f1a2028e71",
+    "name": "PegaProx/project-pegaprox",
+    "python": "3.13.18",
+    "started": "2026-11-01T18:03:53Z",
+    "status": "ok"
+  },
+  "name": "PegaProx/project-pegaprox",
+  "notReplayable": 89,
+  "overlaps": 187,
+  "overlapsPerWeek": 3.5863013698630133,
+  "overlapsPerWeekActive": 4.675,
+  "peopleTool": 12,
+  "rateBasis": "independent",
+  "replayed": 150,
+  "threeDayPerWeek": 7.35,
+  "threeDayPerWeekActive": 9.58125,
+  "topFiles": [
+    [
+      "web/index.html",
+      56
+    ],
+    [
+      "web/src/translations.js",
+      22
+    ],
+    [
+      "web/src/dashboard.js",
+      18
+    ],
+    [
+      "pegaprox/core/manager.py",
+      12
+    ],
+    [
+      "web/src/tables.js",
+      7
+    ]
+  ],
+  "window": {
+    "days": 365,
+    "since": "2025-11-01T00:00:00+00:00",
+    "until": "2026-11-01T00:00:00+00:00"
+  }
+}

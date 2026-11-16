@@ -1,0 +1,13 @@
+{
+  "bin": "7-10",
+  "branch": "main",
+  "cloneSince": "2025-10-02",
+  "commitsInClone": 928,
+  "finished": "2026-11-01T18:04:05Z",
+  "git": "2.43.0",
+  "head": "98897a2fdd71c7749ee9c76584b0f8f5efb2894b",
+  "name": "grafana/beyla",
+  "python": "3.13.18",
+  "started": "2026-11-01T18:03:48Z",
+  "status": "ok"
+}

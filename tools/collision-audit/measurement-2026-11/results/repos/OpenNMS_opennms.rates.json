@@ -1,0 +1,79 @@
+{
+  "all": {
+    "conflicts": 2,
+    "interval95": [
+      0.118,
+      0.769
+    ],
+    "pairs": 5,
+    "rate": 0.4
+  },
+  "cleanReplays": 5,
+  "conflictFiles": [
+    [
+      "ui/tests/components/EventConfigEventCreate/BasicInformation.test.ts",
+      1
+    ],
+    [
+      "ui/tests/containers/EventConfiguration.test.ts",
+      1
+    ]
+  ],
+  "independent": {
+    "conflicts": 2,
+    "interval95": [
+      0.118,
+      0.769
+    ],
+    "pairs": 5,
+    "rate": 0.4
+  },
+  "notReplayable": 19,
+  "overlapsPerWeek": 0.46,
+  "rateUsed": "independent",
+  "replayed": 24,
+  "repo": "OpenNMS/opennms",
+  "topOverlapFiles": [
+    [
+      "opennms-assemblies/minion/src/main/filtered/bin/support_pack.sh",
+      1
+    ],
+    [
+      "opennms-base-assembly/src/main/filtered/bin/support_pack.sh",
+      1
+    ],
+    [
+      "smoke-test/src/test/java/org/opennms/smoketest/IntegrationAPIIT.java",
+      1
+    ],
+    [
+      "core/ipc/sink/kafka/itests/src/test/java/org/opennms/core/ipc/sink/kafka/itests/KafkaDispatcherBlueprintIT.java",
+      1
+    ],
+    [
+      "core/test-api/camel/src/main/java/org/opennms/core/test/camel/CamelBlueprintTest.java",
+      1
+    ],
+    [
+      "opennms-webapp/src/main/java/org/opennms/web/controller/SendEventController.java",
+      1
+    ],
+    [
+      "opennms-full-assembly/src/test/java/org/opennms/assemblies/karaf/OnmsKarafTestCase.java",
+      1
+    ],
+    [
+      "ui/src/components/EventConfigurationDetail/EventConfigEventTable.vue",
+      1
+    ],
+    [
+      "ui/tests/components/EventConfigEventCreate/BasicInformation.test.ts",
+      1
+    ],
+    [
+      "ui/tests/containers/EventConfiguration.test.ts",
+      1
+    ]
+  ],
+  "wouldBeConflictsPerWeek": 0.18
+}

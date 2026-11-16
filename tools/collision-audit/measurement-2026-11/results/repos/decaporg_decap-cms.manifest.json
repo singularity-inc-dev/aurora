@@ -1,0 +1,13 @@
+{
+  "bin": "2-3",
+  "branch": "main",
+  "cloneSince": "2025-10-02",
+  "commitsInClone": 391,
+  "finished": "2026-11-01T18:02:57Z",
+  "git": "2.43.0",
+  "head": "61ceb6e0680bb0362dba6d0cfe346c51e3ca3a58",
+  "name": "decaporg/decap-cms",
+  "python": "3.13.18",
+  "started": "2026-11-01T18:02:49Z",
+  "status": "ok"
+}

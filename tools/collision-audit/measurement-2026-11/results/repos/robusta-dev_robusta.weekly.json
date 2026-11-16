@@ -1,0 +1,18 @@
+{
+  "handoverDays": 3,
+  "perWeek": {
+    "sameDay": 0.0,
+    "threeDay": 0.02
+  },
+  "rate": null,
+  "repo": "robusta-dev/robusta",
+  "weeks": [
+    {
+      "sameDay": 0,
+      "threeDay": 1,
+      "week": "2025-12-01"
+    }
+  ],
+  "windowDays": 365,
+  "wouldBeConflictsPerWeek": null
+}

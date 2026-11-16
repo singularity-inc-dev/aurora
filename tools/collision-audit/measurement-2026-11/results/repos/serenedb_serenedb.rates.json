@@ -1,0 +1,70 @@
+{
+  "all": {
+    "conflicts": 0,
+    "interval95": [
+      0.0,
+      0.082
+    ],
+    "pairs": 43,
+    "rate": 0.0
+  },
+  "cleanReplays": 43,
+  "conflictFiles": [],
+  "independent": {
+    "conflicts": 0,
+    "interval95": [
+      0.0,
+      0.082
+    ],
+    "pairs": 43,
+    "rate": 0.0
+  },
+  "notReplayable": 107,
+  "overlapsPerWeek": 10.53,
+  "rateUsed": "independent",
+  "replayed": 150,
+  "repo": "serenedb/serenedb",
+  "topOverlapFiles": [
+    [
+      "server/pg/sql_analyzer_velox.cpp",
+      15
+    ],
+    [
+      "server/connector/optimizer/iresearch_plan.cpp",
+      13
+    ],
+    [
+      "server/connector/serenedb_connector.hpp",
+      9
+    ],
+    [
+      "server/connector/duckdb_table_function.cpp",
+      9
+    ],
+    [
+      "server/search/search_table.cpp",
+      7
+    ],
+    [
+      "server/catalog/local_catalog.cpp",
+      6
+    ],
+    [
+      "server/connector/serenedb_connector.cpp",
+      6
+    ],
+    [
+      "server/connector/data_sink.cpp",
+      6
+    ],
+    [
+      "server/connector/search_filter_builder.cpp",
+      6
+    ],
+    [
+      "server/connector/duckdb_physical_create_index.cpp",
+      6
+    ]
+  ],
+  "wouldBeConflictsPerWeek": 0.0
+}

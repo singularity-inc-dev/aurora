@@ -93,7 +93,7 @@ People (≥3c) = distinct non-bot authors with ≥3 commits in the window (2026-
 
 **Replaced on 31 October** (DEVIATIONS.md, A9 and Top 10 #1). The earlier wording here quoted the five-repo batch above (three of its clones were truncated) and a 33% rate from a 20-team replay that cannot be reproduced (see below). Use only the corrected, measured run:
 
-> "We built a read-only collision audit. In a corrected run on 7 public repositories (56 days, September to October 2026, 8 to 47 regular contributors each), same-day edits to the same file happened 0.4 to 36 times a week. 1 of 104 clean replays of those overlaps conflicted in git. This measures people, not agents; the pilot will measure agents."
+> "We built a read-only collision audit. In a corrected run on 7 public repositories (56 days, September to October 2026, 8 to 47 regular contributors each), same-day edits to the same file happened 0.4 to 36 times a week. Replaying those overlaps found 1 conflict in more than 100 clean replays. This measures people, not agents; the pilot will measure agents."
 
 Do not cite 33% (or "1.5 to 4 conflicts a week"). If it must be mentioned, call it "an earlier, unreproduced estimate".
 
@@ -121,7 +121,7 @@ The three repos cloned with `--depth 200` (ruff, biome, zed) were re-run with `-
 
 Commit-days = distinct calendar days with ≥1 non-bot commit in the 56-day window, from the GitHub commit search (screening pass, not the clone). grafana/tempo failed because GitHub's shallow clone for that repo only went back to 2026-09-08 (7 days into the 56-day window), not to the requested window start; 36 commit-days is from the screening pass. The four near-miss repos (tempo, firecracker, karpenter, thanos) each fall short of the ≥40 commit-days threshold; their overlap rates reflect lower activity.
 
-**Results across the corrected run (measured rows only, excluding the failed clone):** 212 total replays, 104 clean replays, 1 conflict (biome, 1%). The 33% figure from the spec could not be reproduced — no list of the 20 teams and no earlier version of the scripts exist in this repo.
+**Results across the corrected run (measured rows only, excluding the failed clone):** 272 replays, 144 clean replays, 1 conflict (biome). The 33% figure from the spec could not be reproduced — no list of the 20 teams and no earlier version of the scripts exist in this repo.
 
 ## Ready for the first real run (spec gap 3): steps 1 to 5 done
 

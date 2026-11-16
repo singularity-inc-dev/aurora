@@ -17,6 +17,8 @@ export interface LinkCheck {
   kind?: "approve" | "reject";
   task?: { identifier: string | null; title: string };
   github?: string;
+  /** The task's owner: only they may press Approve or Reject (checked against their Paperclip sign-in). */
+  owner?: string;
 }
 
 /** What the plugin asks the email service to publish on GitHub for an approved task. */
@@ -46,6 +48,14 @@ export interface StuckApproval {
   actionId: string;
   taskId: string;
   publish: PublishRequest;
+}
+
+/** What the plugin's replay-save route answers (plugin/src/replaysave.ts). Contract-tested live by scripts/it/v1g.sh. */
+export interface ReplaySaveResult {
+  added: number;
+  skipped: Array<{ taskId: string; reason: string }>;
+  tasks: Array<Record<string, unknown>>;
+  checks: Record<string, unknown>;
 }
 
 export interface WaitingPullRequest {
@@ -90,13 +100,49 @@ export type InviteClaim =
     }
   | { ok: false; status: "invalid" | "expired" | "already-used" | "refused"; message: string };
 
+/** One ticket the owner can hand over (in their agent's backlog), with a draft note if there is one. */
+export interface HandoverTicket {
+  id: string;
+  identifier: string | null;
+  title: string;
+  description: string;
+  /** A note started earlier: "agent" = suggested by the owner's agent (Help me plan). */
+  draft: { source: "owner" | "agent"; what: string; doneWhen: string; files: string } | null;
+}
+
 export interface HandoverStatus {
   ok: boolean;
   message?: string;
   email?: string;
   timezone?: string;
   handoverStartHour?: number;
+  maxTasks?: number;
+  helpMePlan?: boolean;
+  limits?: { defaultMinutes: number; maxMinutes: number; defaultBudgetCents: number; maxBudgetCents: number };
+  tickets?: HandoverTicket[];
+  /** Handed over for the next scheduled handover, not started yet. */
+  queued?: Array<{ taskId: string; title: string; doneWhen: string }>;
   handovers?: Array<{ handoverKey: string; kind: "scheduled" | "now"; status: string; stopReason: string | null }>;
+}
+
+/** One task of the owner's handover: their note. */
+export interface HandoverTask {
+  issueId: string;
+  what: string;
+  doneWhen: string;
+  files: string;
+  maxMinutes?: string;
+  budgetCents?: string;
+}
+
+export interface HandoverAnswer {
+  ok: boolean;
+  message?: string;
+  /** Teammates' files a ticket reached into (nothing was handed over). */
+  overlaps?: string[];
+  /** Warnings worth the owner's attention (e.g. GitHub teams in CODEOWNERS). */
+  notes?: string[];
+  handoverKey?: string | null;
 }
 
 /** What the service needs from the plugin. Kept as an interface so tests can fake it. */
@@ -104,22 +150,30 @@ export interface PluginApi {
   pendingEmails(): Promise<Email[]>;
   markSent(briefingId: string): Promise<void>;
   preview(token: string): Promise<LinkCheck>;
-  execute(token: string, reason: string | null): Promise<LinkOutcome>;
+  /** `signedInAs`: who is signed in to Paperclip in the browser that pressed the button (the plugin refuses anyone but the owner). */
+  execute(token: string, reason: string | null, signedInAs: string): Promise<LinkOutcome>;
   publishResult(token: string, result: PublishResult): Promise<LinkOutcome>;
   waitingPullRequests(): Promise<{ repo: string | null; pullRequests: WaitingPullRequest[] }>;
   pullRequestUpdate(taskId: string, state: "merged" | "closed", mergeSha: string | null): Promise<void>;
   createInvite(email: string, timezone: string | null, agent?: AgentBinding | null): Promise<{ ok: boolean; message?: string; url?: string; email?: string; expiresAt?: string }>;
   previewInvite(token: string): Promise<InviteCheck>;
   claimInvite(token: string, timezone: string | null): Promise<InviteClaim>;
-  /** Hand over now (only ever called for the owner signed in to Paperclip). */
+  /** The owner's Hand over page (only ever called for the owner signed in to Paperclip). */
   handoverStatus(email: string): Promise<HandoverStatus>;
-  startHandover(email: string): Promise<{ ok: boolean; message?: string; handoverKey?: string }>;
+  /** The owner's tap: exactly these tasks with these notes, now or at their scheduled time. */
+  startHandover(email: string, when: "now" | "scheduled", tasks: HandoverTask[]): Promise<HandoverAnswer>;
+  /** Take back what waits for the scheduled handover. */
+  withdrawHandover(email: string): Promise<HandoverAnswer>;
+  /** Help me plan (only if it is on for the owner): ask the agent for draft suggestions. */
+  askSuggestions(email: string): Promise<HandoverAnswer>;
   /** The pilot's numbers from the event log (piece F): a summary, and the measurement sheet as CSV. */
   numbers(): Promise<Record<string, unknown>>;
   numbersCsv(): Promise<string>;
   /** Raw counts per person and per task kind (milestone 6), and the event log as CSV. */
   counts(): Promise<RawCounts>;
   eventsCsv(): Promise<string>;
+  /** Save decided tasks for the replay tool and return them (see docs/REPLAY.md). */
+  replaySave(limit: number, includeUndecided: boolean): Promise<ReplaySaveResult>;
   finishInvite(
     inviteId: string,
     result: { ok: true; agentId: string; userId: string; attempt?: number } | { ok: false; message: string; attempt?: number; userId?: string | null; agentId?: string | null },
@@ -143,18 +197,69 @@ function headersFor(cfg: ServiceConfig): Record<string, string> {
   return headers;
 }
 
+/** Longest any one HTTP call (to Paperclip or GitHub) may take, answer body included. */
+export const HTTP_TIMEOUT_MS = 30_000;
+
+export interface FetchLimits {
+  timeoutMs?: number;
+  /** Tries in all for a call that is safe to repeat (default 3). */
+  attempts?: number;
+  /** Pause before the second try; doubles each time (default 500 ms). */
+  baseDelayMs?: number;
+}
+
+/** Options for one call: `repeatable` marks a POST that is safe to send twice. GET and HEAD always are. */
+export type LimitedInit = RequestInit & { repeatable?: boolean };
+
+const LIMITED = Symbol("limitedFetch");
+
+/**
+ * fetch with a time limit on every call, so one slow answer never hangs a step.
+ * A call that is safe to repeat is retried with backoff after a network error, a
+ * time-out or a 5xx answer; never after a 4xx, and never a one-time action.
+ */
+export function limitedFetch(fetchImpl: typeof fetch = fetch, limits: FetchLimits = {}): typeof fetch {
+  if ((fetchImpl as { [LIMITED]?: boolean })[LIMITED]) return fetchImpl;
+  const timeoutMs = limits.timeoutMs ?? HTTP_TIMEOUT_MS;
+  const attempts = Math.max(1, limits.attempts ?? 3);
+  const base = limits.baseDelayMs ?? 500;
+  const limited = (async (input: string | URL | Request, init: LimitedInit = {}) => {
+    const { repeatable, ...rest } = init;
+    const method = (rest.method ?? "GET").toUpperCase();
+    const tries = repeatable || method === "GET" || method === "HEAD" ? attempts : 1;
+    let last: unknown;
+    for (let attempt = 1; attempt <= tries; attempt += 1) {
+      if (attempt > 1) await new Promise((r) => setTimeout(r, base * 2 ** (attempt - 2)));
+      const limit = AbortSignal.timeout(timeoutMs);
+      try {
+        const res = await fetchImpl(input, { ...rest, signal: rest.signal ? AbortSignal.any([rest.signal, limit]) : limit });
+        if (res.status < 500 || attempt === tries) return res;
+        last = new PaperclipError(res.status, `answered ${res.status}`);
+      } catch (err) {
+        last = err;
+      }
+    }
+    throw last;
+  }) as typeof fetch;
+  (limited as unknown as { [LIMITED]: boolean })[LIMITED] = true;
+  return limited;
+}
+
 /** Calls the plugin's board-only routes under /api/plugins/:plugin/api/. */
-export function paperclipApi(cfg: ServiceConfig, fetchImpl: typeof fetch = fetch): PluginApi {
+export function paperclipApi(cfg: ServiceConfig, rawFetch: typeof fetch = fetch): PluginApi {
+  const fetchImpl = limitedFetch(rawFetch);
   const base = `${cfg.paperclipUrl}/api/plugins/${encodeURIComponent(cfg.plugin)}/api`;
   const headers = headersFor(cfg);
   const company = `companyId=${encodeURIComponent(cfg.companyId)}`;
 
-  async function call<T>(method: "GET" | "POST", path: string, body?: Record<string, unknown>, okStatuses: number[] = []): Promise<T> {
-    const res = await fetchImpl(`${base}${path}`, {
+  async function call<T>(method: "GET" | "POST", path: string, body?: Record<string, unknown>, okStatuses: number[] = [], repeatable = false): Promise<T> {
+    const init: LimitedInit = {
       method,
       headers,
+      repeatable,
       ...(body ? { body: JSON.stringify({ companyId: cfg.companyId, ...body }) } : {}),
-    });
+    };
+    const res = await fetchImpl(`${base}${path}`, init);
     if (!res.ok && !okStatuses.includes(res.status)) throw new PaperclipError(res.status, `Paperclip answered ${res.status} for ${path.split("?")[0]}`);
     return (await res.json()) as T;
   }
@@ -164,10 +269,11 @@ export function paperclipApi(cfg: ServiceConfig, fetchImpl: typeof fetch = fetch
       return (await call<{ emails: Email[] }>("GET", `/briefings/pending?${company}`)).emails;
     },
     async markSent(briefingId) {
-      await call("POST", `/briefings/${encodeURIComponent(briefingId)}/sent`, {});
+      // Safe to repeat: it only moves a briefing from pending to sent.
+      await call("POST", `/briefings/${encodeURIComponent(briefingId)}/sent`, {}, [], true);
     },
     preview: (token) => call<LinkCheck>("POST", "/links/preview", { token }),
-    execute: (token, reason) => call<LinkOutcome>("POST", "/links/execute", { token, ...(reason !== null ? { reason } : {}) }),
+    execute: (token, reason, signedInAs) => call<LinkOutcome>("POST", "/links/execute", { token, signedInAs, ...(reason !== null ? { reason } : {}) }),
     publishResult: (token, result) => call<LinkOutcome>("POST", "/links/publish-result", { token, ...result }),
     waitingPullRequests: () => call("GET", `/prs/waiting?${company}`),
     async pullRequestUpdate(taskId, state, mergeSha) {
@@ -182,7 +288,9 @@ export function paperclipApi(cfg: ServiceConfig, fetchImpl: typeof fetch = fetch
     },
     recoverApproval: (actionId, olderThanMinutes, result) => call<LinkOutcome>("POST", "/links/recover", { actionId, olderThanMinutes, ...result }),
     handoverStatus: (email) => call<HandoverStatus>("GET", `/handovers/status?${company}&email=${encodeURIComponent(email)}`, undefined, [404]),
-    startHandover: (email) => call("POST", "/handovers/start", { email }, [404, 409]),
+    startHandover: (email, when, tasks) => call("POST", "/handovers/start", { email, when, tasks }, [400, 404, 409]),
+    withdrawHandover: (email) => call("POST", "/handovers/withdraw", { email }, [404]),
+    askSuggestions: (email) => call("POST", "/handovers/suggest", { email }, [404, 409]),
     numbers: () => call("GET", `/numbers?${company}`),
     async numbersCsv() {
       return (await call<{ csv: string }>("GET", `/numbers/csv?${company}`)).csv;
@@ -193,6 +301,7 @@ export function paperclipApi(cfg: ServiceConfig, fetchImpl: typeof fetch = fetch
     async eventsCsv() {
       return (await call<{ csv: string }>("GET", `/events/csv?${company}`)).csv;
     },
+    replaySave: (limit, includeUndecided) => call<ReplaySaveResult>("POST", "/replay/save", { limit, includeUndecided }),
   };
 }
 
@@ -223,7 +332,8 @@ export interface PersonApi {
   acceptInvite(cookie: string, paperclipInviteToken: string): Promise<void>;
 }
 
-export function boardApi(cfg: ServiceConfig, fetchImpl: typeof fetch = fetch): BoardApi {
+export function boardApi(cfg: ServiceConfig, rawFetch: typeof fetch = fetch): BoardApi {
+  const fetchImpl = limitedFetch(rawFetch);
   const headers = headersFor(cfg);
   let pluginId: string | null = null;
   async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -235,7 +345,7 @@ export function boardApi(cfg: ServiceConfig, fetchImpl: typeof fetch = fetch): B
     if (pluginId) return pluginId;
     const list = await req<Array<{ id: string; pluginKey?: string; key?: string }>>("GET", "/api/plugins");
     const found = list.find((p) => (p.pluginKey ?? p.key) === cfg.plugin);
-    if (!found) throw new PaperclipError(404, "the Vision and Tom plugin is not installed");
+    if (!found) throw new PaperclipError(404, "the Aurora plugin is not installed");
     pluginId = found.id;
     return pluginId;
   }
@@ -291,7 +401,8 @@ export interface SessionApi {
   whoIs(cookie: string): Promise<{ email: string } | null>;
 }
 
-export function sessionApi(cfg: ServiceConfig, fetchImpl: typeof fetch = fetch): SessionApi {
+export function sessionApi(cfg: ServiceConfig, rawFetch: typeof fetch = fetch): SessionApi {
+  const fetchImpl = limitedFetch(rawFetch);
   const origin = new URL(cfg.paperclipPublicUrl).origin;
   return {
     async whoIs(cookie) {
@@ -316,7 +427,8 @@ async function sessionOf(res: Response): Promise<{ cookie: string; userId: strin
   return { cookie, userId: body.user.id };
 }
 
-export function personApi(cfg: ServiceConfig, fetchImpl: typeof fetch = fetch): PersonApi {
+export function personApi(cfg: ServiceConfig, rawFetch: typeof fetch = fetch): PersonApi {
+  const fetchImpl = limitedFetch(rawFetch);
   // Paperclip's auth checks that requests come from its own public address.
   const origin = new URL(cfg.paperclipPublicUrl).origin;
   return {

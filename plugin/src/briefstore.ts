@@ -25,6 +25,21 @@ export interface BriefingItem {
   carried?: boolean;
   /** Run flags on this task when the email was built (absent when there are none). */
   flags?: RunFlag[];
+  /** The owner's locked handover note for this task (none for e.g. a teammate's hand-off). */
+  note?: ItemNote | null;
+}
+
+/** What the handback shows of the owner's handover note. */
+export interface ItemNote {
+  what: string;
+  doneWhen: string;
+  files: string[];
+  maxMinutes: number;
+  budgetCents: number;
+  /** The ticket's title or description changed after the owner handed it over. */
+  ticketEdited: boolean;
+  /** "agent": the owner handed over a task their agent suggested (Help me plan). */
+  suggestedByAgent?: boolean;
 }
 
 /** A conflict the merge replay found, as one owner sees it (piece E). */
@@ -201,6 +216,18 @@ export async function claimDecision(db: Db, taskId: string, actionId: string, cu
           `UPDATE ${t(db, "task_events")} SET decision_action_id = $1, updated_at = now() WHERE task_id = $2 AND decision_action_id IS NULL AND outcome = $3`,
           [actionId, taskId, currentOutcome],
         );
+  return rowCount === 1;
+}
+
+/**
+ * Clear a "blocked" or "failed" outcome so the task can be approved after all
+ * (B4, B5). Only while nobody is deciding it; returns false if it changed meanwhile.
+ */
+export async function reopenStopped(db: Db, taskId: string, outcome: "blocked" | "failed"): Promise<boolean> {
+  const { rowCount } = await db.execute(
+    `UPDATE ${t(db, "task_events")} SET outcome = NULL, updated_at = now() WHERE task_id = $1 AND outcome = $2 AND decision_action_id IS NULL`,
+    [taskId, outcome],
+  );
   return rowCount === 1;
 }
 

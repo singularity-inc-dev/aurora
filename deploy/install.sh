@@ -145,7 +145,7 @@ mkdir -p "$SYSTEMD_DIR"
 for unit in "$KIT"/systemd/*; do
   sed -e "s#@OPT@#$OPT#g" -e "s#@ETC@#$ETC#g" -e "s#@PCDATA@#$PCDATA#g" -e "s#@MAILDATA@#$MAILDATA#g" -e "s#@VTROOT@#$VT_ROOT#g" -e "s#@BASE@#${GITHUB_BASE_BRANCH:-main}#g" -e "s#@PUBLIC_URL@#$PUBLIC_URL#g" "$unit" >"$SYSTEMD_DIR/$(basename "$unit")"
 done
-for cmd in vt-invite vt-secret vt-check vt-backup vt-restore vt-setup vt-model-access vt-numbers vt-stop vt-start vt-update; do
+for cmd in vt-invite vt-secret vt-check vt-backup vt-restore vt-setup vt-model-access vt-numbers vt-replay vt-tracing vt-stop vt-start vt-update; do
   ln -sf "$KIT/bin/$cmd" "$OPT/bin/$cmd"
   rehearsal || ln -sf "$OPT/bin/$cmd" "/usr/local/bin/$cmd"
 done

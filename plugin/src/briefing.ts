@@ -10,11 +10,14 @@ import {
   insertAction,
   insertBriefing,
   newId,
+  reopenStopped,
   type Briefing,
   type BriefingConflict,
   type BriefingItem,
   type Category,
+  type ItemNote,
 } from "./briefstore.js";
+import { noteForTask, ticketDigest } from "./notes.js";
 import { recordConflict } from "./conflictstore.js";
 import { replayPairs, type ReadyBranch } from "./replay.js";
 import { isClean, revParse, shortStat } from "./merge.js";
@@ -40,6 +43,8 @@ export interface TaskFacts {
   summary: string;
   /** Run flags (tool error, checks failed, not tested, timed out, budget stop, rejected). */
   flags?: readonly RunFlag[];
+  /** Fingerprint of the ticket's text now (to compare with the one handed over). */
+  digest: string | null;
 }
 
 export interface Classified {
@@ -48,6 +53,8 @@ export interface Classified {
   reason: string | null;
   /** Only Ready tasks can be approved; every task can be rejected. */
   approvable: boolean;
+  /** Blocked or failed by the handover, but Ready now: that outcome must be cleared before it is offered (B4, B5). */
+  reopen?: boolean;
 }
 
 /**
@@ -59,8 +66,13 @@ export function classify(f: TaskFacts): Classified {
     f.checksResult === "not-tested" ? "NOT TESTED (no test command is set up; check it yourself before you approve)" : f.checksResult === "no-changes" ? "found no changes" : f.checksResult;
   const checks = f.checksResult ? `checks ${result}${f.checksHead ? ` on ${f.checksHead.slice(0, 7)}` : ""}` : "checks not run";
   const no = (category: Category, reason: string): Classified => ({ category, checks, reason, approvable: false });
-  if (f.outcome === "failed") return no("failed", "timed out after its retries");
-  if (f.outcome === "blocked") return no("blocked", "stopped by the handover");
+  if (f.outcome === "failed" || f.outcome === "blocked") {
+    // Not final (B4, B5): the plugin cannot stop a run, so work may land after the handover
+    // stopped it or its time-outs ran out. If it is Ready by the same rules, it may be approved.
+    const asIfOpen = classify({ ...f, outcome: null });
+    if (asIfOpen.approvable) return { ...asIfOpen, reopen: true };
+    return f.outcome === "failed" ? no("failed", "timed out after its retries") : no("blocked", "stopped by the handover");
+  }
   if (!f.startedAt) return no("blocked", "not started in this handover");
   if (f.issueStatus && !["done", "in_review"].includes(f.issueStatus)) return no("blocked", `agent left it ${f.issueStatus}`);
   if (!f.worktree || !f.branchHead) return no("blocked", "no worktree for this task");
@@ -90,6 +102,7 @@ async function gatherFacts(ctx: PluginContext, companyId: string, taskId: string
     clean: false,
     summary: issue?.title ?? "(missing ticket)",
     flags: flagsOf(ev, await listFlagsForTask(ctx.db, taskId)),
+    digest: issue ? ticketDigest(issue.title, issue.description) : null,
   };
   const ws = issue?.executionWorkspaceId ? await ctx.executionWorkspaces.get(issue.executionWorkspaceId, companyId) : null;
   const cwd = ws?.cwd ?? ws?.path ?? null;
@@ -151,8 +164,10 @@ export async function createBriefing(
   const thisOne = run?.taskIds ?? [];
   const taskIds = [...thisOne, ...carriedTaskIds.filter((id) => !thisOne.includes(id))];
   const mine: ReadyBranch[] = [];
+  const factsDigest = new Map<string, string | null>();
   for (const taskId of taskIds) {
     const f = await gatherFacts(ctx, companyId, taskId);
+    factsDigest.set(taskId, f.digest);
     if (f.outcome === "accepted" || f.outcome === "rejected") continue;
     const carried = !thisOne.includes(taskId);
     if (f.decisionActionId) {
@@ -175,8 +190,12 @@ export async function createBriefing(
       }
       continue;
     }
-    const c = classify(f);
-    const ready = readyBranch(f, person.email);
+    let c = classify(f);
+    if (c.reopen) {
+      if (await reopenStopped(ctx.db, taskId, f.outcome === "failed" ? "failed" : "blocked")) f.outcome = null;
+      else c = f.outcome === "failed" ? { ...c, category: "failed", reason: "timed out after its retries", approvable: false } : { ...c, category: "blocked", reason: "stopped by the handover", approvable: false };
+    }
+    const ready = c.approvable ? readyBranch(f, person.email) : null;
     if (ready) mine.push(ready);
     const action = (kind: LinkKind) => {
       const a = {
@@ -209,6 +228,7 @@ export async function createBriefing(
       ...(f.flags?.length ? { flags: [...f.flags] } : {}),
     });
   }
+  for (const item of items) item.note = await itemNote(ctx, item.taskId, factsDigest.get(item.taskId) ?? null);
   if (!run && items.length === 0) return null;
   const notes = run?.status === "budget_stopped" ? ["Your agent hit this handover's budget cap and was paused. Resume it in Paperclip when you are ready."] : [];
 
@@ -250,6 +270,33 @@ export async function createBriefing(
   return { ...briefing, status: "pending" };
 }
 
+/** The owner's locked note for a handback item, and whether the ticket was edited since. */
+async function itemNote(ctx: PluginContext, taskId: string, digestNow: string | null): Promise<ItemNote | null> {
+  const n = await noteForTask(ctx.db, taskId);
+  if (!n) return null;
+  return {
+    what: n.what,
+    doneWhen: n.doneWhen,
+    files: n.claims,
+    maxMinutes: n.maxMinutes,
+    budgetCents: n.budgetCents,
+    ticketEdited: !!n.ticketDigest && !!digestNow && n.ticketDigest !== digestNow,
+    ...(n.source === "agent" ? { suggestedByAgent: true } : {}),
+  };
+}
+
+/** The note's lines in the handback: what was asked, the owner's own "done when", the limits. */
+export function noteLines(n: ItemNote): string[] {
+  const what = n.what.length > 300 ? `${n.what.slice(0, 297)}...` : n.what;
+  const lines = [
+    `You asked: ${what.replace(/\s+/g, " ")}`,
+    `Done when (your words; Aurora does not check this, you do): ${n.doneWhen.replace(/\s+/g, " ")}`,
+    `Limits: only ${n.files.join(", ")}; ${n.maxMinutes} minutes; ${n.budgetCents} cents.`,
+  ];
+  if (n.ticketEdited) lines.push("WARNING: the ticket's text was changed after you handed it over. The note above is what you handed over.");
+  return lines;
+}
+
 /** "2026-10-24" (a scheduled handover) or "2026-10-24 14:05 UTC" (Hand over now). */
 export function describeKey(key: string): string {
   return key.length > 10 ? `${key.replace("T", " ")} UTC` : key;
@@ -288,7 +335,7 @@ export function renderBriefing(b: Briefing, links: LinkSettings, secret: string,
     ? `A teammate's new work conflicts with yours${conflictCount ? ` (${conflicts.length})` : ""}: ${count("ready")} ready for your decision`
     : `Your handover of ${describeKey(b.handoverKey)}: ${count("ready")} ready, ${count("blocked")} blocked, ${count("failed")} failed${flaggedItems.length ? `, ${flaggedItems.length} flagged` : ""}${waiting ? `, ${waiting} waiting for review` : ""}${conflictCount}`;
   const intro = notice
-    ? "Vision and Tom test-merged a teammate's new work with yours and found a conflict. Your tasks below are still waiting for your decision."
+    ? "Aurora test-merged a teammate's new work with yours and found a conflict. Your tasks below are still waiting for your decision."
     : `Here is what your agent did in your handover of ${describeKey(b.handoverKey)}.`;
 
   const text: string[] = [intro, ""];
@@ -301,6 +348,8 @@ export function renderBriefing(b: Briefing, links: LinkSettings, secret: string,
     text.push(`- ${name}`);
     if (flagLine) text.push(`  ${flagLine}`);
     text.push(`  ${i.checks}${i.reason ? ` (${i.reason})` : ""}`);
+    const noted = i.note ? noteLines(i.note) : [];
+    for (const l of noted) text.push(`  ${l}`);
     if (i.carried) text.push("  From an earlier email; still waiting for your decision.");
     if (i.prUrl) text.push(`  Pull request: ${i.prUrl}`);
     if (approve) text.push(`  Approve: ${approve}`);
@@ -310,6 +359,7 @@ export function renderBriefing(b: Briefing, links: LinkSettings, secret: string,
       `<li><p><strong>${esc(name)}</strong><br>` +
         (flagLine ? `<strong>${esc(flagLine)}</strong><br>` : "") +
         `${esc(i.checks)}${i.reason ? ` (${esc(i.reason)})` : ""}` +
+        noted.map((l) => `<br>${l.startsWith("WARNING") ? `<strong>${esc(l)}</strong>` : esc(l)}`).join("") +
         (i.carried ? "<br><em>From an earlier email; still waiting for your decision.</em>" : "") +
         `</p><p>` +
         (i.prUrl ? `<a href="${esc(i.prUrl)}">Pull request</a> &nbsp; ` : "") +
@@ -377,7 +427,7 @@ export function renderBriefing(b: Briefing, links: LinkSettings, secret: string,
     html.push("</ul>");
   }
   const footer = [
-    `Links expire ${expiresAt.toISOString().replace("T", " ").slice(0, 16)} UTC and work once. Approve merges only if the branch is unchanged since this email. Anything you have not decided comes back in your next handback email with fresh links.`,
+    `Only you can use these links: the button works only while you are signed in to Paperclip as ${b.owner}. Links expire ${expiresAt.toISOString().replace("T", " ").slice(0, 16)} UTC and work once. Approve merges only if the branch is unchanged since this email. Anything you have not decided comes back in your next handback email with fresh links.`,
     `Happens automatically: ${actionsIn("automatic").join(", ")}. Needs your tap: ${actionsIn("needs-tap").join(", ")}. Never: ${actionsIn("never").join(", ")}.`,
   ];
   text.push(...footer);

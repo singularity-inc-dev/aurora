@@ -67,14 +67,18 @@ export async function listRuns(db: Db, companyId: string, limit = 50): Promise<H
   return rows.map(toRun);
 }
 
-/** Claim a handover for a person (scheduled or "now"). Returns false if that one already exists. */
+/**
+ * Claim a handover for a person (scheduled or "now"), in one insert. Owner-chosen
+ * work is created already approved, with exactly the owner's tasks: the owner's
+ * tap is the approval. Returns false if that handover already exists.
+ */
 export async function claimRun(
   db: Db,
-  run: Pick<HandoverRun, "companyId" | "owner" | "agentId" | "handoverKey" | "kind"> & { startsAt: Date; endsAt: Date },
+  run: Pick<HandoverRun, "companyId" | "owner" | "agentId" | "handoverKey" | "kind"> & { startsAt: Date; endsAt: Date; taskIds: string[] },
 ): Promise<boolean> {
   const { rowCount } = await db.execute(
-    `INSERT INTO ${table(db)} (company_id, owner, agent_id, handover_key, kind, starts_at, ends_at, status) VALUES ($1, $2, $3, $4, $5, $6, $7, 'proposing') ON CONFLICT (company_id, owner, handover_key) DO NOTHING`,
-    [run.companyId, run.owner, run.agentId, run.handoverKey, run.kind, run.startsAt.toISOString(), run.endsAt.toISOString()],
+    `INSERT INTO ${table(db)} (company_id, owner, agent_id, handover_key, kind, starts_at, ends_at, status, task_ids) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (company_id, owner, handover_key) DO NOTHING`,
+    [run.companyId, run.owner, run.agentId, run.handoverKey, run.kind, run.startsAt.toISOString(), run.endsAt.toISOString(), "approved", JSON.stringify(run.taskIds)],
   );
   return rowCount === 1;
 }

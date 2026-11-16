@@ -35,9 +35,9 @@ export const RUN_CHECKS_TOOL: PluginToolDeclaration = {
 
 export const PROPOSE_TOOL: PluginToolDeclaration = {
   name: TOOL_PROPOSE,
-  displayName: "Propose this handover's tasks",
+  displayName: "Suggest tasks to your owner",
   description:
-    "Propose up to 3 tasks for this handover. Each task is either an existing backlog ticket assigned to you (issueId) or a new one (title, description), and lists the files and folders it may change (claims). A task that reaches into another owner's files goes to that owner's agent instead. A person (never an agent) approves the plan on the plan ticket; nothing runs before that.",
+    "Only when your owner asked you for suggestions (a \"Suggest tasks\" ticket assigned to you): suggest up to 3 tasks. Each is an existing backlog ticket assigned to you (issueId) or a new one (title, description), lists the files and folders it may change (claims), and may say how your owner will know it is done (doneWhen). Suggestions are only drafts: your owner edits them and hands over what they choose. Never start work on a suggestion yourself.",
   parametersSchema: {
     type: "object",
     properties: {
@@ -50,7 +50,8 @@ export const PROPOSE_TOOL: PluginToolDeclaration = {
           properties: {
             issueId: { type: "string", description: "An existing backlog ticket assigned to you." },
             title: { type: "string", description: "Title for a new ticket." },
-            description: { type: "string", description: "What needs doing and how to know it is done." },
+            description: { type: "string", description: "What needs doing." },
+            doneWhen: { type: "string", description: "How your owner will know it is done, in one or two sentences. Your owner can change it." },
             claims: {
               type: "array",
               minItems: 1,

@@ -1,0 +1,211 @@
+{
+  "handoverDays": 3,
+  "perWeek": {
+    "sameDay": 1.75,
+    "threeDay": 4.32
+  },
+  "rate": 0.0,
+  "repo": "DefectDojo/django-DefectDojo",
+  "weeks": [
+    {
+      "sameDay": 0,
+      "threeDay": 2,
+      "week": "2025-11-03"
+    },
+    {
+      "sameDay": 15,
+      "threeDay": 26,
+      "week": "2025-11-10"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 2,
+      "week": "2025-11-17"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 1,
+      "week": "2025-12-01"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 2,
+      "week": "2025-12-08"
+    },
+    {
+      "sameDay": 3,
+      "threeDay": 1,
+      "week": "2025-12-15"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 1,
+      "week": "2025-12-29"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 2,
+      "week": "2026-01-05"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 1,
+      "week": "2026-01-19"
+    },
+    {
+      "sameDay": 2,
+      "threeDay": 1,
+      "week": "2026-01-26"
+    },
+    {
+      "sameDay": 2,
+      "threeDay": 25,
+      "week": "2026-02-02"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 1,
+      "week": "2026-02-09"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 1,
+      "week": "2026-02-16"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 9,
+      "week": "2026-02-23"
+    },
+    {
+      "sameDay": 3,
+      "threeDay": 0,
+      "week": "2026-03-02"
+    },
+    {
+      "sameDay": 2,
+      "threeDay": 4,
+      "week": "2026-03-09"
+    },
+    {
+      "sameDay": 2,
+      "threeDay": 2,
+      "week": "2026-03-16"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 4,
+      "week": "2026-03-23"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 4,
+      "week": "2026-03-30"
+    },
+    {
+      "sameDay": 6,
+      "threeDay": 6,
+      "week": "2026-04-20"
+    },
+    {
+      "sameDay": 2,
+      "threeDay": 8,
+      "week": "2026-04-27"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 3,
+      "week": "2026-05-04"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 1,
+      "week": "2026-06-01"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 1,
+      "week": "2026-06-08"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 1,
+      "week": "2026-06-15"
+    },
+    {
+      "sameDay": 4,
+      "threeDay": 5,
+      "week": "2026-06-29"
+    },
+    {
+      "sameDay": 8,
+      "threeDay": 13,
+      "week": "2026-07-06"
+    },
+    {
+      "sameDay": 2,
+      "threeDay": 8,
+      "week": "2026-07-13"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 5,
+      "week": "2026-07-20"
+    },
+    {
+      "sameDay": 5,
+      "threeDay": 5,
+      "week": "2026-07-27"
+    },
+    {
+      "sameDay": 4,
+      "threeDay": 28,
+      "week": "2026-08-03"
+    },
+    {
+      "sameDay": 13,
+      "threeDay": 16,
+      "week": "2026-08-10"
+    },
+    {
+      "sameDay": 6,
+      "threeDay": 13,
+      "week": "2026-08-31"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 2,
+      "week": "2026-09-07"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 5,
+      "week": "2026-09-21"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 2,
+      "week": "2026-09-28"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 8,
+      "week": "2026-10-05"
+    },
+    {
+      "sameDay": 1,
+      "threeDay": 5,
+      "week": "2026-10-19"
+    },
+    {
+      "sameDay": 0,
+      "threeDay": 1,
+      "week": "2026-10-26"
+    }
+  ],
+  "windowDays": 365,
+  "wouldBeConflictsPerWeek": {
+    "sameDay": 0.0,
+    "threeDay": 0.0
+  }
+}

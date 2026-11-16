@@ -1,0 +1,75 @@
+{
+  "all": {
+    "conflicts": 1,
+    "interval95": [
+      0.022,
+      0.471
+    ],
+    "pairs": 8,
+    "rate": 0.125
+  },
+  "cleanReplays": 8,
+  "conflictFiles": [
+    [
+      "packages/registry/src/team-management/modules/member/types.ts",
+      1
+    ]
+  ],
+  "independent": {
+    "conflicts": 1,
+    "interval95": [
+      0.036,
+      0.624
+    ],
+    "pairs": 5,
+    "rate": 0.2
+  },
+  "notReplayable": 142,
+  "overlapsPerWeek": 31.8,
+  "rateUsed": "independent",
+  "replayed": 150,
+  "repo": "mercurjs/mercur",
+  "topOverlapFiles": [
+    [
+      "apps/vendor-test/src/pages/products/create/page.tsx",
+      3
+    ],
+    [
+      "packages/registry/.mercur/_generated/index.ts",
+      3
+    ],
+    [
+      "packages/registry/src/reviews/api/store/reviews/middlewares.ts",
+      3
+    ],
+    [
+      "packages/registry/src/team-management/modules/member/index.ts",
+      3
+    ],
+    [
+      "packages/registry/src/team-management/modules/member/loaders/index.ts",
+      3
+    ],
+    [
+      "packages/registry/src/team-management/modules/member/models/member-invite.ts",
+      3
+    ],
+    [
+      "packages/registry/src/team-management/modules/member/models/member.ts",
+      3
+    ],
+    [
+      "packages/registry/src/team-management/modules/member/service.ts",
+      3
+    ],
+    [
+      "packages/registry/src/team-management/modules/member/types.ts",
+      3
+    ],
+    [
+      "packages/registry/src/team-management/workflows/member/steps/create-member-invite.ts",
+      3
+    ]
+  ],
+  "wouldBeConflictsPerWeek": 6.36
+}
