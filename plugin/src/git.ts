@@ -42,6 +42,12 @@ export async function diffStats(cwd: string, base: string, head: string): Promis
   return { files: [...files].sort(), addedLines: added, removedLines: removed };
 }
 
+/** Every file a commit range touches, by its exact path: a rename counts as both names, a deletion too. */
+export async function changedFiles(cwd: string, base: string, head: string): Promise<string[]> {
+  const out = await git(cwd, ["-c", "core.quotePath=false", "diff", "--name-only", "--no-renames", base, head, "--"]);
+  return [...new Set(out.split("\n").filter(Boolean))].sort();
+}
+
 /** Every line added from `base` to `head` (committed only), with its new line number. */
 export async function addedLines(cwd: string, base: string, head: string): Promise<AddedLine[]> {
   const result: AddedLine[] = [];

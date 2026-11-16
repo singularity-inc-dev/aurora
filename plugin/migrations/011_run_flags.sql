@@ -1,6 +1,6 @@
 -- Milestone 6: run flags that nothing else records (tool error, timeout, budget stop).
 -- Failed checks, "not tested" and rejected are read from task_events, not stored here.
--- One row per task and kind; a repeat updates the detail.
+-- One row per task and kind. A repeat updates the detail.
 CREATE TABLE IF NOT EXISTS "plugin_vision_and_tom_d7896c8063".run_flags (
   task_id text NOT NULL,
   company_id text NOT NULL,

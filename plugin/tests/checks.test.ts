@@ -34,6 +34,24 @@ describe("runChecksGate", () => {
     expect(gateWord("not-tested")).not.toMatch(/pass/i);
   });
 
+  it("the handover note's files: a committed change outside them fails the gate, renames included", async () => {
+    const { worktree } = makeRepoWithWorktree();
+    write(worktree, "src/ui/button.tsx", "export {};\n");
+    commit(worktree);
+    const inside = await runChecksGate(worktree, "main", { ...base, testCommand: "true" }, undefined, ["src/ui"]);
+    expect(inside).toMatchObject({ passed: true, result: "passed" });
+    expect(byName(inside, "files")).toMatchObject({ status: "passed", summary: "only the files the handover note allows" });
+
+    write(worktree, "src/api/secret-door.ts", "export {};\n");
+    sh(worktree, "mv", "src/ui/button.tsx", "src/ui-old.tsx");
+    commit(worktree);
+    const outside = await runChecksGate(worktree, "main", { ...base, testCommand: "true" }, undefined, ["src/ui"]);
+    expect(outside).toMatchObject({ passed: false, result: "failed" });
+    expect(byName(outside, "files")).toMatchObject({ status: "failed", summary: "2 file(s) outside the handover note: `src/api/secret-door.ts`, `src/ui-old.tsx`" });
+    // No note (e.g. a teammate's hand-off ticket): no files check.
+    expect((await runChecksGate(worktree, "main", { ...base, testCommand: "true" })).results.map((r) => r.name)).not.toContain("files");
+  });
+
   it("a failure still wins over not tested", async () => {
     const { worktree } = makeRepoWithWorktree();
     write(worktree, "big.txt", "x\n".repeat(50));

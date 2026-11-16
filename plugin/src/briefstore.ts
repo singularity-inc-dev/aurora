@@ -25,6 +25,21 @@ export interface BriefingItem {
   carried?: boolean;
   /** Run flags on this task when the email was built (absent when there are none). */
   flags?: RunFlag[];
+  /** The owner's locked handover note for this task (none for e.g. a teammate's hand-off). */
+  note?: ItemNote | null;
+}
+
+/** What the handback shows of the owner's handover note. */
+export interface ItemNote {
+  what: string;
+  doneWhen: string;
+  files: string[];
+  maxMinutes: number;
+  budgetCents: number;
+  /** The ticket's title or description changed after the owner handed it over. */
+  ticketEdited: boolean;
+  /** "agent": the owner handed over a task their agent suggested (Help me plan). */
+  suggestedByAgent?: boolean;
 }
 
 /** A conflict the merge replay found, as one owner sees it (piece E). */

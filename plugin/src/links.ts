@@ -57,6 +57,8 @@ export interface LinkCheck {
   task?: { identifier: string | null; title: string };
   /** Set when Approve publishes to GitHub ("owner/name"). */
   github?: string;
+  /** The task's owner: only they may use the link (the email service checks their sign-in). */
+  owner?: string;
 }
 
 const INVALID = { ok: false as const, status: "invalid" as const, message: "This link is not valid." };
@@ -96,7 +98,15 @@ export async function previewLink(ctx: PluginContext, settings: PluginSettings, 
   if (auth.action.state !== "new") {
     return { ok: false, status: "already-used", message: `This link was already used: ${auth.action.result ?? "in progress"}.`, kind: auth.claims.k, task };
   }
-  return { ok: true, status: "valid", message: "ok", kind: auth.claims.k, task, ...(settings.github && auth.claims.k === "approve" ? { github: settings.github.repo } : {}) };
+  return {
+    ok: true,
+    status: "valid",
+    message: "ok",
+    kind: auth.claims.k,
+    task,
+    owner: auth.claims.o,
+    ...(settings.github && auth.claims.k === "approve" ? { github: settings.github.repo } : {}),
+  };
 }
 
 /** Normalise a reject reason to one line; null if empty or too long. */
@@ -113,10 +123,17 @@ export async function executeLink(
   token: string,
   rawReason: unknown,
   now: Date,
+  signedInAs: unknown,
 ): Promise<LinkOutcome> {
   const auth = await authenticate(ctx, settings, companyId, token, now);
   if (!auth.ok) return auth;
   const { claims, action } = auth;
+  // Only the task's owner decides it. The email service says who is signed in to
+  // Paperclip in the browser that pressed the button; anyone else is refused
+  // before the link is used up, so the owner can still use it.
+  if (typeof signedInAs !== "string" || signedInAs.trim().toLowerCase() !== claims.o) {
+    return { ok: false, status: "refused", message: `Only ${claims.o} can ${claims.k} this task. Sign in to Paperclip as ${claims.o}, then open the link again.` };
+  }
   try {
     assertTier(claims.k === "approve" ? "merge-task" : "reject-task", "needs-tap");
   } catch (err) {

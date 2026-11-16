@@ -16,7 +16,7 @@ function parseClaims(raw: unknown): string[] {
 }
 
 export async function recordClaims(db: Db, taskId: string, claims: string[]): Promise<void> {
-  await db.execute(`UPDATE ${events(db)} SET claims = $1, updated_at = now() WHERE task_id = $2`, [JSON.stringify(claims), taskId]);
+  await db.execute(`UPDATE ${events(db)} SET claims = $1, claims_released_at = NULL, updated_at = now() WHERE task_id = $2`, [JSON.stringify(claims), taskId]);
 }
 
 /** A task's claims end when the task is decided (an outcome) or its plan expired (released). */
