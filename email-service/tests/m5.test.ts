@@ -58,6 +58,7 @@ function plugin(over: Partial<PluginApi> = {}): PluginApi & { calls: string[] } 
     numbersCsv: async () => "Date\r\n",
     counts: async () => parseRawCounts({ team: ZERO, people: [] }),
     eventsCsv: async () => "task id\r\n",
+    replaySave: async () => ({ added: 0, skipped: [], tasks: [], checks: {} }),
     finishInvite: async (_id, r) => {
       calls.push(`finish:${r.ok ? "ok" : r.message}`);
       return r.ok ? { ok: true, message: "joined" } : { ok: true, message: "recorded", retry: true };

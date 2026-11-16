@@ -4,7 +4,7 @@
  * scripts/integration-test.sh.
  */
 type Row = Record<string, unknown>;
-type TableName = "task_events" | "handover_runs" | "briefings" | "link_actions" | "invites" | "pull_requests" | "overlaps" | "conflicts" | "run_flags" | "handover_notes";
+type TableName = "task_events" | "handover_runs" | "briefings" | "link_actions" | "invites" | "pull_requests" | "overlaps" | "conflicts" | "run_flags" | "handover_notes" | "saved_tasks";
 
 export interface FakeDb {
   namespace: string;
@@ -25,6 +25,7 @@ const KEYS: Record<TableName, string[]> = {
   conflicts: ["company_id", "task_a", "task_b", "head_a", "head_b"],
   run_flags: ["task_id", "kind"],
   handover_notes: ["id"],
+  saved_tasks: ["task_id"],
 };
 const DEFAULTS: Record<TableName, Row> = {
   task_events: {},
@@ -37,6 +38,7 @@ const DEFAULTS: Record<TableName, Row> = {
   conflicts: {},
   run_flags: {},
   handover_notes: { claims: "[]", done_when: "" },
+  saved_tasks: { inputs_redacted: false, description_truncated: false, description: "" },
 };
 
 function tableOf(sql: string): TableName {
@@ -82,7 +84,7 @@ function applySet(row: Row, set: string, params: unknown[]): void {
 }
 
 export function createFakeDb(namespace = "ns"): FakeDb {
-  const tables: Record<TableName, Row[]> = { task_events: [], handover_runs: [], briefings: [], link_actions: [], invites: [], pull_requests: [], overlaps: [], conflicts: [], run_flags: [], handover_notes: [] };
+  const tables: Record<TableName, Row[]> = { task_events: [], handover_runs: [], briefings: [], link_actions: [], invites: [], pull_requests: [], overlaps: [], conflicts: [], run_flags: [], handover_notes: [], saved_tasks: [] };
   const costs: FakeDb["costs"] = [];
   return {
     namespace,

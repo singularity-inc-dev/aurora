@@ -10,6 +10,7 @@ import { HANDOFF_ORIGIN, HANDOVER_TICK_JOB } from "./ids.js";
 import { numbersCsv } from "./numbers.js";
 import { loadNumbers } from "./numberstore.js";
 import { loadCounts, loadEventLogCsv } from "./countstore.js";
+import { saveReplayTasks } from "./replaysave.js";
 import { getOpenRun, listRuns } from "./handoverstore.js";
 import { askForSuggestions, handOver, limitBounds, parseHandoverRequest, projectAreas, ProposalRefused, suggestTasks, taskLimit, tickAll, withdrawQueued } from "./handoverrunner.js";
 import { noteForTask, notesOf, queuedTaskIds } from "./notes.js";
@@ -310,7 +311,7 @@ const plugin = definePlugin({
             agent: run.agentId,
             taskKind: "task",
           });
-          await recordChecks(ctx.db, issueId, report.result, report.headSha);
+          await recordChecks(ctx.db, issueId, report.result, report.headSha, report.baseSha);
           return {
             content: `Checks ${report.result === "passed" || report.result === "failed" ? report.result : gateWord(report.result)}: ${report.results.map((r) => `${r.name} ${r.status}`).join(", ")}.`,
             data: { passed: report.passed, result: report.result, headSha: report.headSha, documentKey, results: report.results.map(({ output: _o, ...r }) => r) },
@@ -466,6 +467,11 @@ const plugin = definePlugin({
       case "events-csv":
         // The event log, one row per task. Like numbers-csv, the CSV text travels inside JSON.
         return { status: 200, body: { csv: await loadEventLogCsv(ctx, input.companyId) } };
+      case "replay-save": {
+        // Save decided tasks for the replay script (evals). Board-only, like every route here.
+        const limit = typeof body.limit === "number" && Number.isFinite(body.limit) ? body.limit : 20;
+        return { status: 200, body: await saveReplayTasks(ctx, input.companyId, settings.checks, { limit, includeUndecided: body.includeUndecided === true }) };
+      }
       case "invite-create": {
         const created = await createInvite(ctx, settings, input.companyId, body, now);
         return { status: created.ok ? 201 : 409, body: created };

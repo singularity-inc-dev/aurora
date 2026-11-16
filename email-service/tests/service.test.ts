@@ -54,6 +54,9 @@ function fakeApi(over: Partial<PluginApi> = {}): PluginApi & { calls: string[] }
     async eventsCsv() {
       return "task id\r\n";
     },
+    async replaySave() {
+      return { added: 0, skipped: [], tasks: [], checks: {} };
+    },
     async pullRequestUpdate(taskId, state) {
       calls.push(`pr-update:${taskId}:${state}`);
     },

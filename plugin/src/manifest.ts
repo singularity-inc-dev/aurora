@@ -75,6 +75,7 @@ const manifest: PaperclipPluginManifestV1 = {
     { routeKey: "numbers-csv", method: "GET", path: "/numbers/csv", auth: "board", capability: "api.routes.register", companyResolution: { from: "query", key: "companyId" } },
     { routeKey: "counts", method: "GET", path: "/counts", auth: "board", capability: "api.routes.register", companyResolution: { from: "query", key: "companyId" } },
     { routeKey: "events-csv", method: "GET", path: "/events/csv", auth: "board", capability: "api.routes.register", companyResolution: { from: "query", key: "companyId" } },
+    { routeKey: "replay-save", method: "POST", path: "/replay/save", auth: "board", capability: "api.routes.register", companyResolution: { from: "body", key: "companyId" } },
     { routeKey: "invite-create", method: "POST", path: "/invites", auth: "board", capability: "api.routes.register", companyResolution: { from: "body", key: "companyId" } },
     { routeKey: "invite-preview", method: "POST", path: "/invites/preview", auth: "board", capability: "api.routes.register", companyResolution: { from: "body", key: "companyId" } },
     { routeKey: "invite-claim", method: "POST", path: "/invites/claim", auth: "board", capability: "api.routes.register", companyResolution: { from: "body", key: "companyId" } },
